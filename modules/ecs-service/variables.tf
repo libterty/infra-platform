@@ -3,7 +3,7 @@ variable "name" {
   description = "Service name; also the task family, log group suffix and target group name prefix."
 
   validation {
-    # 上限 26：target group 名稱是 "<name>-<port>"，AWS 上限 32 字元
+    # Max 26: the target group name is "<name>-<port>" and AWS caps it at 32 chars.
     condition     = can(regex("^[a-z][a-z0-9-]{1,25}$", var.name))
     error_message = "name must be 2-26 chars of lowercase letters, digits or hyphens, starting with a letter."
   }
@@ -152,7 +152,7 @@ variable "autoscaling" {
     policy       = optional(string, "target_tracking")
     target_tracking = optional(object({
       cpu_percent         = optional(number, 60)
-      requests_per_target = optional(number) # ALBRequestCountPerTarget；需要 load_balancer.alb_arn_suffix
+      requests_per_target = optional(number) # ALBRequestCountPerTarget
       scale_in_cooldown   = optional(number, 300)
       scale_out_cooldown  = optional(number, 60)
     }), {})
@@ -197,9 +197,9 @@ variable "autoscaling" {
 
 variable "load_balancer" {
   type = object({
-    # 模式一：外部已建好 target group，只傳 ARN
+    # Mode 1: an existing target group.
     target_group_arn = optional(string)
-    # 模式二：module 建 target group 與 listener rule
+    # Mode 2: the module creates the target group and listener rule.
     listener_arn  = optional(string)
     vpc_id        = optional(string)
     priority      = optional(number)
@@ -213,7 +213,7 @@ variable "load_balancer" {
       healthy_threshold   = optional(number, 3)
       unhealthy_threshold = optional(number, 3)
     }), {})
-    # 兩種模式共用：requests_per_target 與告警需要
+    # Both modes: required by requests_per_target and alarms.
     alb_arn_suffix = optional(string)
   })
   default     = null
@@ -258,7 +258,7 @@ variable "container_health_check" {
 variable "service_connect" {
   type = object({
     namespace_arn = string
-    dns_name      = optional(string) # null 時用 var.name
+    dns_name      = optional(string) # null uses var.name
   })
   default     = null
   description = "Service Connect registration; null disables it."

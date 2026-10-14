@@ -5,7 +5,7 @@ locals {
     local.create_target_group ? aws_lb_target_group.this[0].arn : var.load_balancer.target_group_arn
   )
 
-  # arn:aws:elasticloadbalancing:<region>:<account>:targetgroup/<name>/<id>；告警的 TargetGroup 維度要帶 targetgroup/ 前綴
+  # The alarm TargetGroup dimension needs the targetgroup/<name>/<id> part of the ARN.
   target_group_arn_suffix = local.has_lb ? split(":", local.target_group_arn)[5] : null
 }
 
@@ -31,7 +31,7 @@ resource "aws_lb_target_group" "this" {
 
   tags = local.tags
 
-  # 名稱帶 port，改 port 時新舊名稱不同，才能先建後刪。
+  # The port in the name lets a port change create the new group before destroying the old one.
   lifecycle {
     create_before_destroy = true
   }
