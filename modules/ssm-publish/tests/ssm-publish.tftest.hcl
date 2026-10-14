@@ -59,14 +59,14 @@ run "outputs_cover_both_maps" {
     error_message = "names must map every string and list key to its parameter path"
   }
 
-  # arns 的值是 computed，plan 階段是 unknown；只能斷言 key 集合。
+  # arns are unknown at plan, so only the key set is asserted.
   assert {
     condition     = toset(keys(output.arns)) == toset(["vpc_id", "subnet_ids_db"])
     error_message = "arns keys must be the union of strings and lists keys"
   }
 }
 
-# computed 的 arn 在 plan 階段是 unknown；override_during = plan 讓它在 plan 就有值。
+# Computed values are unknown at plan; override_during = plan lets plan-time runs read them.
 run "arns_expose_parameter_arns" {
   command = plan
 
