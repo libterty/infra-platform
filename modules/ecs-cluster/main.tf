@@ -23,7 +23,7 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
   }
 }
 
-# 不預建的話 AWS 會在首次寫入指標時自動建立，且永不過期。
+# Pre-created because AWS otherwise creates it on first write with no expiry.
 resource "aws_cloudwatch_log_group" "container_insights" {
   count = var.container_insights != "disabled" ? 1 : 0
 
