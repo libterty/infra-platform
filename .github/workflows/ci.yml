@@ -1,0 +1,43 @@
+name: CI
+
+# 離線驗證：不給任何雲端憑證，也不讀 repository secret。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.15.8"
+  TFLINT_VERSION: "v0.64.0"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .cache/plugins
+          key: tf-plugins-${{ runner.os }}-${{ hashFiles('**/versions.tf', '**/.terraform.lock.hcl') }}
+          restore-keys: tf-plugins-${{ runner.os }}-
+
+      - name: Validate
+        run: scripts/validate.sh

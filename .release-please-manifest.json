@@ -1,0 +1,10 @@
+{
+  "modules/alb": "0.1.0",
+  "modules/ecs-cluster": "0.1.0",
+  "modules/ecs-service": "0.1.0",
+  "modules/ecs-service-alarms": "0.1.0",
+  "modules/rds": "0.1.0",
+  "modules/sns-alarm-topic": "0.1.0",
+  "modules/ssm-publish": "0.1.0",
+  "modules/vpc": "0.1.0"
+}
