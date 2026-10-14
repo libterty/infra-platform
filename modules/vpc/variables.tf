@@ -1,5 +1,5 @@
 variable "name" {
-  description = "VPC 名稱，同時是各資源 Name tag 的前綴。"
+  description = "VPC name; also the Name tag prefix of every resource."
   type        = string
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,47}$", var.name))
@@ -8,7 +8,7 @@ variable "name" {
 }
 
 variable "cidr" {
-  description = "VPC 的 IPv4 網路位址，/16 到 /24。"
+  description = "VPC IPv4 network address, /16 to /24."
   type        = string
   validation {
     condition = (
@@ -22,7 +22,7 @@ variable "cidr" {
 }
 
 variable "azs" {
-  description = "使用的 AZ，2 到 4 個；順序決定各輸出 list 的順序與 single NAT 的位置。"
+  description = "2 to 4 AZs. The order sets the order of output lists and the AZ of a single NAT."
   type        = list(string)
   validation {
     condition     = length(var.azs) >= 2 && length(var.azs) <= 4 && length(distinct(var.azs)) == length(var.azs)
@@ -36,7 +36,7 @@ variable "subnets" {
     type        = string # public | private | isolated
     newbits     = optional(number)
     netnum_base = optional(number)
-    cidrs       = optional(map(string)) # key 必須涵蓋每一個 AZ
+    cidrs       = optional(map(string)) # keys must cover every AZ
   }))
   validation {
     condition     = alltrue([for k, v in var.subnets : can(regex("^[a-z][a-z0-9_]*$", k)) && contains(["public", "private", "isolated"], v.type)])
@@ -61,7 +61,7 @@ variable "subnets" {
 }
 
 variable "nat_mode" {
-  description = "none 不建 NAT；single 一顆放在第一個 AZ；per_az 每個 AZ 一顆。"
+  description = "none creates no NAT; single puts one in the first AZ; per_az puts one in each AZ."
   type        = string
   default     = "single"
   validation {
@@ -71,7 +71,7 @@ variable "nat_mode" {
 }
 
 variable "gateway_endpoints" {
-  description = "Gateway endpoint，關聯所有 private 與 isolated tier 的路由表。"
+  description = "Gateway endpoints, associated with every private and isolated tier route table."
   type        = set(string)
   default     = ["s3"]
   validation {
@@ -81,9 +81,9 @@ variable "gateway_endpoints" {
 }
 
 variable "interface_endpoints" {
-  description = "Interface endpoint 的服務清單與放置的 tier；null 表示不建。"
+  description = "Interface endpoint services and the tier they are placed in; null creates none."
   type = object({
-    services    = set(string) # 例：["ecr.api", "ecr.dkr", "logs", "secretsmanager", "kms"]
+    services    = set(string) # e.g. ["ecr.api", "ecr.dkr", "logs", "secretsmanager", "kms"]
     subnet_tier = string
   })
   default = null
@@ -94,9 +94,9 @@ variable "interface_endpoints" {
 }
 
 variable "flow_log" {
-  description = "Flow log 送 S3；null 表示不建。"
+  description = "Flow log to S3; null creates none."
   type = object({
-    destination_arn = string                  # S3 bucket ARN（可帶 /prefix）
+    destination_arn = string                  # S3 bucket ARN, optionally with /prefix
     traffic_type    = optional(string, "ALL") # ACCEPT | REJECT | ALL
   })
   default = null
@@ -110,7 +110,7 @@ variable "flow_log" {
 }
 
 variable "tags" {
-  description = "額外的 tag；Name 由 module 加上。"
+  description = "Extra tags; the module adds Name."
   type        = map(string)
   default     = {}
 }

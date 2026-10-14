@@ -40,7 +40,7 @@ resource "aws_vpc" "this" {
   }
 }
 
-# 不宣告任何規則，等於清空 default SG，避免資源誤用。
+# Declaring no rules strips the default SG so nothing can rely on it.
 resource "aws_default_security_group" "this" {
   vpc_id = aws_vpc.this.id
 

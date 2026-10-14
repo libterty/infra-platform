@@ -5,7 +5,7 @@ variables {
   cidr = "10.0.0.0/20"
   azs  = ["ap-northeast-1a", "ap-northeast-1c"]
 
-  # 多數 run 沒有 public tier；nat_mode 保持 none，避免 NAT 的 precondition 讓 negative test 因錯誤原因通過。
+  # nat_mode none keeps the NAT precondition from passing negative tests for the wrong reason.
   nat_mode = "none"
   subnets = {
     public = { type = "public", newbits = 4, netnum_base = 0 }
@@ -266,10 +266,8 @@ run "adjacent_cidrs_pass" {
   }
 }
 
-# 重現 project-a infra-v2/terraform/network/subnets-app.tf 的坑：兩種 newbits 從同一個 /16 切，
-# 2 個 AZ 剛好填滿相鄰區段，第 3 個 AZ 靜默撞進別的 tier。槽位數檢查擋不住，只有重疊檢查擋得住。
-# app：/19 netnum 4、5（128.0–191.255），第 3 個 AZ 為 netnum 6（192.0/19）。
-# agent：/20 netnum 12、13（192.0–223.255），槽位 12+3 <= 16 沒有超出。
+# The third AZ of app (/19 netnum 6 = 192.0/19) overlaps agent (/20 netnum 12-13) while the slot check
+# still passes (12+3 <= 16); only the overlap check catches it.
 run "third_az_overlap_two_az_passes" {
   command = plan
 
@@ -302,7 +300,7 @@ run "third_az_overlap_fails" {
   expect_failures = [aws_vpc.this]
 }
 
-# project-a 原本的配置（兩個 /19 各 netnum 4 與 6）第 3 個 AZ 會先被槽位檢查擋下。
+# Two /19 tiers at netnum 4 and 6: the third AZ fails the slot check first.
 run "legacy_layout_third_az_fails" {
   command = plan
 
@@ -341,8 +339,7 @@ run "add_az_keeps_existing_keys" {
   }
 }
 
-# 位置決定槽位：去掉非最後一個 AZ 時，後面 AZ 的 CIDR 會前移，key 不變。
-# 要完全不動就改用 cidrs 明確指定，或只從尾端移除 AZ。
+# Slots are positional: removing a middle AZ shifts later CIDRs but keeps keys. Use cidrs to pin them.
 run "remove_az_keeps_remaining_keys" {
   command = plan
 
