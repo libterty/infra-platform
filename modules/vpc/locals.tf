@@ -2,7 +2,7 @@ locals {
   az_index   = { for i, az in var.azs : az => i }
   vpc_prefix = tonumber(split("/", var.cidr)[1])
 
-  # 算不出來（槽位不夠、少給 AZ）時為 null，由 aws_vpc.this 的 precondition 報錯。
+  # null when it cannot be computed (no slot left, AZ missing from cidrs); the aws_vpc.this precondition reports it.
   subnet_cidr = {
     for tier, t in var.subnets : tier => {
       for az in var.azs : az => try(
@@ -27,7 +27,7 @@ locals {
   has_public   = length(local.public_tiers) > 0
   public_tier  = try(local.public_tiers[0], null)
 
-  # CIDR 換成 [start, end] 整數區間，兩兩比對是否重疊。
+  # CIDRs become [start, end] integer ranges for pairwise overlap checks.
   vpc_start = sum([for i, o in split(".", cidrhost(var.cidr, 0)) : tonumber(o) * pow(256, 3 - i)])
   vpc_end   = local.vpc_start + pow(2, 32 - local.vpc_prefix) - 1
 
@@ -54,7 +54,7 @@ locals {
     if local.subnet_ranges[k].start < local.vpc_start || local.subnet_ranges[k].end > local.vpc_end
   ]
 
-  # precondition 用的違規清單；空表示通過。
+  # Violation lists for the preconditions; empty means pass.
   tiers_cidrs_azs_mismatch = [for tier, t in var.subnets : tier if t.cidrs != null && toset(keys(t.cidrs)) != toset(var.azs)]
   tiers_newbits_invalid = [
     for tier, t in var.subnets : tier
