@@ -13,7 +13,7 @@ provider "aws" {
   region = "ap-northeast-1"
 }
 
-# 一般 RDS，不開 Proxy。subnet、SG、role、topic 的值在實際專案由 SSM 讀出，這裡用佔位值。
+# IDs and ARNs are placeholders for values a real stack reads from SSM.
 module "db" {
   source = "../.."
 
@@ -29,7 +29,7 @@ module "db" {
   subnet_ids         = ["subnet-0aaaaaaaaaaaaaaaa", "subnet-0bbbbbbbbbbbbbbbb"]
   security_group_ids = ["sg-0123456789abcdef0"]
 
-  # rds 與 aurora 要自己給連線數門檻（max_connections 取決於 instance class）
+  # rds and aurora need an explicit threshold because max_connections depends on the instance class.
   alarm_config   = { connections_threshold = 80 }
   sns_topic_arns = ["arn:aws:sns:ap-northeast-1:111111111111:alpha-dev-alarms"]
 
