@@ -13,8 +13,7 @@ provider "aws" {
   region = "ap-northeast-1"
 }
 
-# Aurora Serverless v2，一個 reader，開 Proxy 與 Enhanced Monitoring。
-# role 由 iam-base stack 建，這裡用佔位 ARN。
+# Roles come from the iam-base stack; ARNs here are placeholders.
 module "db" {
   source = "../.."
 

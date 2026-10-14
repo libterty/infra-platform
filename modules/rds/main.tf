@@ -12,7 +12,6 @@ locals {
   )
   has_reader = local.is_aurora && local.reader_count > 0
 
-  # Aurora instance identifiers, index 0 is the writer; rds has a single instance named after the module.
   instance_identifiers = (
     local.is_rds ? [var.name] :
     [for i in range(1 + local.reader_count) : i == 0 ? "${var.name}-writer" : "${var.name}-reader-${i}"]
