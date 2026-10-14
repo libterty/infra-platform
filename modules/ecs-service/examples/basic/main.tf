@@ -13,7 +13,7 @@ provider "aws" {
   region = "ap-northeast-1"
 }
 
-# 不接 LB 的 worker：固定 2 個 task。role ARN、subnet、SG 在實際專案由 SSM 讀進來，這裡用假值。
+# ARNs and IDs are placeholders for values a real stack reads from SSM.
 module "worker" {
   source = "../.."
 

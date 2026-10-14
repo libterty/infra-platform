@@ -134,7 +134,7 @@ resource "aws_ecs_service" "this" {
 
   tags = local.tags
 
-  # aws_appautoscaling_target 擁有容量；沒有這行，每次 apply 都會把 desired_count 改回輸入值。
+  # The autoscaling target owns capacity; without this every apply resets desired_count.
   lifecycle {
     ignore_changes = [desired_count]
   }

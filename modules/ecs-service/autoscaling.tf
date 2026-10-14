@@ -4,7 +4,6 @@ locals {
   use_step            = local.autoscaling_policy == "step"
   use_requests        = local.use_target_tracking && try(var.autoscaling.target_tracking.requests_per_target, null) != null
 
-  # step 的四組：每組一個 policy 與一個觸發它的 alarm
   step_groups = local.use_step ? {
     cpu_scale_out = {
       metric  = "CPUUtilization", comparison = "GreaterThanOrEqualToThreshold", threshold = var.autoscaling.step.cpu_scale_out_threshold
@@ -25,7 +24,7 @@ locals {
   } : {}
 }
 
-# 一律建立：service 忽略 desired_count，容量由這個 target 決定。
+# Always created, even without autoscaling, because the service ignores desired_count.
 resource "aws_appautoscaling_target" "this" {
   service_namespace  = "ecs"
   scalable_dimension = "ecs:service:DesiredCount"

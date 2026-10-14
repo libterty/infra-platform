@@ -13,7 +13,7 @@ provider "aws" {
   region = "ap-northeast-1"
 }
 
-# listener_arn 模式：module 建 target group 與 listener rule，並用 CPU 加請求數做 target tracking。
+# listener_arn mode with CPU and request-count target tracking.
 module "api" {
   source = "../.."
 
