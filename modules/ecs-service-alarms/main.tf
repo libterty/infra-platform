@@ -17,7 +17,6 @@ locals {
     TargetGroup  = local.lb == null ? "" : local.lb.target_group_arn_suffix
   }
 
-  # Each entry sets either metric (single metric) or queries (metric math); the other is null or empty.
   alarm_defs = {
     cpu_high = {
       description         = "CPUUtilization >= ${local.cfg.ecs.cpu_threshold}% for 5 minutes"

@@ -6,9 +6,7 @@ variables {
   service_name = "alpha-api"
 }
 
-# sns_topic_arns has no default. terraform test cannot expect_failures on a missing required variable
-# (it errors before validation), so that is checked by hand: dropping the variable fails with
-# "No value for required variable".
+# A missing sns_topic_arns errors before validation, so expect_failures cannot cover it; checked by hand.
 
 run "sns_topic_empty" {
   command = plan
