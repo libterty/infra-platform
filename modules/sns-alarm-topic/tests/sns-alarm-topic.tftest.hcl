@@ -100,7 +100,7 @@ run "kms_key_is_applied" {
   }
 }
 
-# topic_arn 與訂閱 arn 是 computed，plan 階段是 unknown；override_during = plan 讓它們在 plan 就有值。
+# Computed values are unknown at plan; override_during = plan lets plan-time runs read them.
 run "outputs_expose_topic_and_subscriptions" {
   command = plan
 
