@@ -7,6 +7,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cache_root="${repo_root}/.cache"
 export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-${cache_root}/plugins}"
 mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+# module 沒有 lock 檔，不開這個旗標的話 terraform 不用快取、每個目錄重新下載 provider。
+# 範本 stack 仍以 -lockfile=readonly 核對 lock 檔的 checksum。
+export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true
 
 # 步驟 0：第二道防線。測試漏寫 mock_provider 時要失敗，而不是拿到本機的 aws-vault session。
 for v in $(env | sed -n 's/^\(AWS_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
