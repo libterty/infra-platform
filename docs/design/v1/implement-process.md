@@ -852,7 +852,7 @@ scripts/validate.sh
 |---|---|
 | `docs/guides/consuming-modules.md` | 專案怎麼引用（`git::https://github.com/<org>/<repo>.git//modules/<name>?ref=<name>-v<semver>`）、私有 repo 的 git 認證、Git source 只能 `ref` 釘死、**從範本複製出去時把相對路徑 source 改成 git source**（一個 module 一行的手改方式，加一次改完的指令）、升版、讀 CHANGELOG、升級到真 registry 時消費端改什麼 |
 | `docs/guides/project-infra-standard.md` | 8 個 stack 的拆法與 apply 順序、iam 為什麼拆兩個、SG 集中在 network、SSM 合約（含 subnet tier 調整時 key 怎麼變、下游怎麼接）、流量規格對照表與 IP 規劃公式、環境切換四件事、客戶自管模式 A／B |
-| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則（0.x 期間 MINOR 可以有破壞性變更；`rds` 的型態互換、`vpc` 的 subnet 位址變動屬於 MAJOR 等級的影響）、release-please 流程、一個 commit 只動一個 module |
+| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則（0.x 期間 MINOR 可以有破壞性變更；`rds` 的型態互換、`vpc` 的 subnet 位址變動屬於 MAJOR 等級的影響）、release-please 流程、一個 commit 只動一個 module、第一次發版前手動打 8 個 `<module>-v0.1.0` tag 的步驟與指令（D24） |
 | `docs/guides/delivering-to-customer.md` | FDE：`vendor-modules.sh`、`terraform providers mirror`、客戶自管資源的 SSM 合約（模式 A 只交 VPC id，模式 B 交全部 network key）、客戶環境差異怎麼回報 |
 | `docs/guides/team-roles.md` | 四個團隊的責任與交接點，對到 CODEOWNERS |
 | `scripts/vendor-modules.sh` | 只做 `git::...?ref=<tag>` → vendored 相對路徑。`git archive <tag> modules/<name>` 解到目標的 `vendor/modules/<name>/`，只改寫完全符合的 source 行，寫 `vendor/modules/VERSIONS`（名稱、tag、commit SHA） |
@@ -1066,6 +1066,7 @@ Phase 1 定案的寫法：<computed 值的處理方式、override_data／mock_re
 | D21 | iam-app 從 Proxy role ARN 的最後一段取名稱；iam-base 建 role 不加 path | 主 agent 決定 |
 | D22 | `no_iam_resources` 不寫成 run，由 S4 負責；`proxy.role_arn` 宣告成 `optional(string)`，用 validation 擋 null | 主 agent 決定；`terraform test` 無法列舉資源型別，型別錯誤 `expect_failures` 抓不到 |
 | D23 | tfvars（dev、prod、examples）不在測試裡複製值，由 `validate.sh` 對範本 stack 另跑 `terraform test -var-file=...` | 主 agent 決定 |
+| D24 | 第一個版本 tag `<module>-v0.1.0` 由人手動打（8 個），manifest 維持 `0.1.0`；之後交給 release-please | 使用者決定；release-please 會把 manifest 的版本當成已發布 |
 
 衝突時以 design-docs.md 為準。
 
