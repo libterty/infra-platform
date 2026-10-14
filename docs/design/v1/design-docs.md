@@ -10,7 +10,14 @@ infra-platform 是Terraform private registry 的範例 repo。它用「Git tag �
 
 第一版做出一個最小的三層架構：ALB 放 public subnet，ECS 服務（AP 層）與資料庫（DB 層）放 private subnet。內容是：
 
-- 8 個 module，起始版本都是 `v0.1.0`：`vpc`、`alb`、`rds`、`ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`sns-alarm-topic`、`ssm-publish`。`rds` 一個 module 支援一般 RDS、Aurora、Aurora Serverless v2 三種型態，RDS Proxy 是選項。
+- 15 個 module，起始版本都是 `v0.1.0`：
+  - 網路與入口：`vpc`、`alb`
+  - 資料：`rds`（一個 module 支援一般 RDS、Aurora、Aurora Serverless v2 三種型態，RDS Proxy 是選項）
+  - 運算：`ecs-cluster`、`ecs-service`、`ecs-service-alarms`
+  - 共用基礎：`kms-key`、`ecr-repository`、`s3-bucket`、`sns-alarm-topic`、`security-group`
+  - IAM：`iam-role`、`iam-role-policy`
+  - 跨 stack 傳值：`ssm-publish`、`ssm-read`
+- 範本的 stack 只呼叫 module，不寫原生 AWS resource；例外只有一個（`foundation` 的 secret 容器），明列在 §5.3。整個 repo 只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM。
 - 1 份 8 個 stack 的專案 infra 範本：照 project-a 的 state 拆法，修掉已知的坑；在本 repo 內用相對路徑引用 module；附 PoC／一般正式／大流量三組範例 tfvars（§5.11）。
 - 使用與發版文件、3 份 ADR、CI 與 release 設定。
 
@@ -47,12 +54,19 @@ infra-platform/
 │   ├── vpc/
 │   ├── alb/
 │   ├── rds/
+│   ├── kms-key/
+│   ├── ecr-repository/
+│   ├── s3-bucket/
+│   ├── iam-role/
+│   ├── iam-role-policy/
+│   ├── security-group/
+│   ├── ssm-read/
 │   ├── ecs-cluster/
 │   ├── ecs-service/
 │   ├── ecs-service-alarms/
 │   ├── sns-alarm-topic/
 │   └── ssm-publish/
-│       （每個都有 main.tf variables.tf outputs.tf versions.tf README.md CHANGELOG.md examples/basic/ tests/<name>.tftest.hcl）
+│       （每個都有 main.tf variables.tf outputs.tf versions.tf README.md CHANGELOG.md examples/<情境>/ tests/*.tftest.hcl）
 ├── templates/
 │   └── project-infra/
 │       └── infra/terraform/<stack>/...   # §5；8 個 stack，用相對路徑引用 ../../../../../modules/<name>
@@ -102,7 +116,7 @@ infra-platform/
 
 ### 2.3 這個 repo 怎麼成為前身
 
-簡報（`infra-platform/docs/slides/terraform-split/v7/07-infra-core-framework.pptx`）的敘事是「先從 ECS 開始、先試行」。第一版以 ECS 為主，再補上 VPC、ALB、RDS 三個 module，湊成最小三層架構，用一個專案範本證明「引用 → 升版 → 交付」整條路走得通。四個團隊還沒拆，這個 repo 先用 CODEOWNERS 與文件把邊界畫出來；團隊成立時，邊界不用重畫，只要把 team slug 填進去。
+簡報（`infra-platform/docs/slides/terraform-split/v7/07-infra-core-framework.pptx`）的敘事是「先從 ECS 開始、先試行」。第一版以 ECS 為主，再補上 VPC、ALB、RDS 湊成最小三層架構，以及 KMS、ECR、S3、IAM、SSM 讀取這些每個專案都會用到的基礎 module，用一個專案範本證明「引用 → 升版 → 交付」整條路走得通。四個團隊還沒拆，這個 repo 先用 CODEOWNERS 與文件把邊界畫出來；團隊成立時，邊界不用重畫，只要把 team slug 填進去。
 
 ## 3. Registry 設計
 
@@ -125,7 +139,7 @@ infra-platform/
 
 - 這是 release-please manifest 模式的預設格式（`<component>-v<version>`），也對得上 HCP Terraform private registry 的 Module Tag Prefix。
 - 不用帶斜線的 `ecs-service/v1.0.0`：HCP 是否支援沒有查證，斜線在 URL 的 `?ref=` 也容易出錯。
-- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|alb|rds|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
+- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
 
 ### 3.3 消費端寫法
 
@@ -164,8 +178,8 @@ module "api" {
 
 - **in-place 變更要寫進 CHANGELOG**。MINOR 版如果會讓既有資源 in-place 更新（例如告警門檻從 80 改 85），CHANGELOG 必須寫出消費端 plan 會看到哪幾個資源、哪個屬性變了。
 - **ECS task definition 的變更要特別標註**。task definition 只要內容變就會產生新 revision，ECS 會滾動部署。不會 replace 資源位址，算 MINOR，但 CHANGELOG 要寫「會觸發一次部署」。
-- **起始版本**：8 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
-- **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 8 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在 Phase 8 驗收過的 commit 上手動打 8 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
+- **起始版本**：15 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
+- **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 15 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在整體驗收通過的 commit 上手動打 15 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
 
 ### 3.6 升級到真 registry 的路徑
 
@@ -197,12 +211,14 @@ module 程式碼不用改。這是第一版就照 standard module structure（`m
 
 | 項目 | 約定 |
 |---|---|
-| 目錄 | `main.tf`、`variables.tf`、`outputs.tf`、`versions.tf`、`README.md`、`CHANGELOG.md`、`examples/basic/`、`tests/<name>.tftest.hcl` |
+| 目錄 | `main.tf`、`variables.tf`、`outputs.tf`、`versions.tf`、`README.md`、`CHANGELOG.md`、`examples/<情境>/`（至少一個，例如 `basic`、`https`、`aurora-serverless-proxy`）、`tests/*.tftest.hcl`（可以依主題拆成多檔）；資源多時可以依主題拆 `.tf`（例如 `alarms.tf`、`proxy.tf`） |
 | `versions.tf` | `required_version = ">= 1.10"`；`aws = { source = "hashicorp/aws", version = ">= 6.0, < 7.0" }`；**module 裡不寫 `provider` 與 `backend`** |
 | 版本範圍 | module 用範圍（`>= 6.0, < 7.0`），root 用 `~> 6.x` 加 `.terraform.lock.hcl` 釘死實際版本 |
 | lock 檔 | **module 不提交 `.terraform.lock.hcl`**（Terraform 只採用 root module 的 lock，module 的 lock 對消費端沒有作用）；範本的每個 stack 是 root，要提交 |
 | 依賴 | 一律從外部傳入（cluster ARN、role ARN、subnet、SG、topic ARN），module 之間不互相呼叫，平坦組合 |
-| IAM | **module 不建任何 IAM 資源，沒有例外**（包括 `rds` 需要的 Proxy role 與 Enhanced Monitoring role）。role 在範本的 `iam-base`／`iam-app` stack 建，module 只收 ARN（§5.4） |
+| IAM | **只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（`aws_iam_role`、`aws_iam_role_policy`）。其他 13 個 module 不建任何 `aws_iam_*`，需要 role 的地方（ECS execution／task role、RDS Proxy role、Enhanced Monitoring role）一律收 ARN；範本的 stack 也一律透過這兩個 module（§5.4）。由 `scripts/validate.sh` 靜態檢查（§5.6 S4） |
+| stack 只呼叫 module | 範本的 stack 不寫原生 AWS resource，只呼叫 module。例外要列在 §5.3〈stack 裡的原生資源〉並寫理由，`scripts/validate.sh` 依這份清單檢查。data source 不算（`data "aws_ssm_parameter"` 除外，只能在 `ssm-read` 裡） |
+| 註解與訊息的語言 | `modules/` 底下的 `.tf` 與 `.tftest.hcl`，所有註解、`description`、`error_message` 一律只用英文，不可中英混雜，禁止任何 icon／emoji。註解只寫「程式碼看不出來的原因」，不要寫多。`README.md`、`CHANGELOG.md` 不受這條限制。本文件 HCL 範例裡的中文註解只為了說明，實作時要改成英文或拿掉 |
 | inline 規則 | security group 與 route table 一律用獨立資源（`aws_vpc_security_group_ingress_rule`／`egress_rule`、`aws_route`），不用 inline `ingress {}`／`route {}`。inline 寫法對整個 SG／整張表有權威性，客戶在 console 加的規則與路由會在下一次 apply 被靜默刪除（`project-a/docs/reports/2026-09-04-customer-owned-network-and-terraform.md`、`project-a/infra-v2/terraform/network/nat.tf` 的註解） |
 | 告警 | 會建告警的 module（`alb`、`rds`、`ecs-service-alarms`）一律必填 `sns_topic_arns`，`alarm_actions` 與 `ok_actions` 都接 |
 | 開關 | 不用 `enable_xxx`。資源要不要建，由「相依的輸入有沒有給」決定（例如 `load_balancer = null` 就不建 target group） |
@@ -324,7 +340,7 @@ variable "tags" {
 | `aws_ecs_service.this` | 一律；`lifecycle { ignore_changes = [desired_count] }` |
 | `aws_appautoscaling_target.this` | **一律**。`autoscaling = null` 時 `min = max = desired_count`，讓改 `desired_count` 真的生效（因為 service 忽略了 `desired_count`） |
 | `aws_appautoscaling_policy.cpu`／`.requests` | `autoscaling.policy = "target_tracking"`；`requests` 只在 `requests_per_target != null` |
-| `aws_appautoscaling_policy.step_*` 與 4 個 scaling 用 `aws_cloudwatch_metric_alarm` | `autoscaling.policy = "step"`（CPU、記憶體各一組 scale-out／scale-in） |
+| `aws_appautoscaling_policy.step[<key>]` 與 `aws_cloudwatch_metric_alarm.scaling[<key>]`，key 為 `cpu_scale_out`、`cpu_scale_in`、`memory_scale_out`、`memory_scale_in` | `autoscaling.policy = "step"`。scaling 告警 `period = 60`、`treat_missing_data = "notBreaching"`、`alarm_actions` 只接 scaling policy（不接 SNS）；CPU scale-in 用 `LessThanThreshold`，記憶體 scale-in 用 `LessThanOrEqualToThreshold`（照 project-c 的 `< 40`、`<= 50`） |
 | `aws_lb_target_group.this`、`aws_lb_listener_rule.this` | `load_balancer.listener_arn != null` |
 
 **輸入**
@@ -593,7 +609,9 @@ variable "tags" {
 | target group | 名稱 `<name>-<container_port>`、`target_type = "ip"`、`protocol = "HTTP"`、`create_before_destroy = true` | 名稱帶 port，改 port 時新舊名稱不同，`create_before_destroy` 才成立。範例用 `name_prefix = "svc-"`，在 console 與告警維度裡分不出是哪個服務 |
 | 步進式擴縮 | 三階 +1／+2／+3，scale-in −1，評估期 1 分鐘／5 分鐘 | 照 project-c；門檻與冷卻開在 `autoscaling.step` |
 
-**輸出**：`service_name`、`service_arn`、`cluster_name`（從 ARN 拆出）、`task_definition_arn`、`task_definition_family`、`container_name`（固定 `app`）、`log_group_name`、`log_group_arn`、`target_group_arn`（模式一回傳傳入值、模式二回傳建立的、沒有 LB 時 `null`）、`target_group_arn_suffix`（從 ARN 拆出，給告警用）、`autoscaling_resource_id`（`service/<cluster>/<service>`）。
+region 不另外收變數，從 `cluster_arn` 第四段拆出（`awslogs-region` 用它）；log driver 另外固定 `awslogs-stream-prefix = "app"`、`max-buffer-size = "25m"`（照 project-a）；port mapping 與 Service Connect 的 port name 固定為 `app`。
+
+**輸出**：`service_name`、`service_arn`（取 `aws_ecs_service.this.id`，provider 的 ECS service `id` 就是 ARN）、`cluster_name`（從 ARN 拆出）、`task_definition_arn`、`task_definition_family`、`container_name`（固定 `app`）、`log_group_name`、`log_group_arn`、`target_group_arn`（模式一回傳傳入值、模式二回傳建立的、沒有 LB 時 `null`）、`target_group_arn_suffix`（從 ARN 拆出，給告警用）、`autoscaling_resource_id`（`service/<cluster>/<service>`）。
 
 **刻意不做**
 
@@ -631,6 +649,8 @@ variable "tags" {
 | `latency_p95` | `TargetResponseTime` p95 | > `alb.latency_p95_threshold_ms`（800）/ 1000 | 300 秒 × 3 | notBreaching | `load_balancer != null` |
 | `unhealthy_hosts` | `HealthyHostCount`（Minimum） | < `alb.healthy_host_min`（1），3 中 2 | 60 秒 | notBreaching | `load_balancer != null` |
 | `target_connection_errors` | `TargetConnectionErrorCount`（Sum） | > 0 | 300 秒 × 1 | notBreaching | `load_balancer != null` |
+
+實作把上表所有告警集中在一個資源 `aws_cloudwatch_metric_alarm.this[<key>]`（`for_each` 一張告警定義表，key 同上表），新增告警只要加一列定義；告警名稱 `<name>-<key>`。
 
 跟 project-c 的差別：project-c 的 Container Insights 告警是 cluster 層級，ALB 告警只看單一 ALB；這裡全部帶 `ServiceName` 或 `TargetGroup` 維度，一個服務一組。service 層級的 `CpuUtilized`／`CpuReserved` 維度是否在 `enhanced` 與 `enabled` 兩種模式都有，要等有 AWS 環境時確認（§7.3）。
 
@@ -830,7 +850,7 @@ variable "lists" {
 **刻意不做**
 
 - 不支援 `SecureString`。secret 不進 SSM，走 Secrets Manager（§5.6、§8.2）。
-- 不提供讀取用的 module。讀取就是一個 `data "aws_ssm_parameter"` 加 `for_each`，包一層 module 反而看不出讀了什麼（寫法見 §5.6）。
+- 不負責讀取。讀取由配對的 `ssm-read` module 負責（§4.13），兩者的路徑與 key 規則相同。
 
 ### 4.7 `vpc`
 
@@ -985,6 +1005,10 @@ variable "tags" {
 
 **自動切的建議切法**：每個 tier 預留 4 個 AZ 的槽位（`netnum_base` 以 4 為間隔），之後從 2 個 AZ 加到 3、4 個時，既有 subnet 不用動。範本的範例（§5.11）照這個切。
 
+**增減 AZ 時 CIDR 會不會變（實作確認）**：subnet 的 key 是 `"<tier>/<az>"`，增減 AZ 時既有的 key 不變。但自動切的槽位是照 AZ 在 `azs` 清單裡的**位置**算的（`cidrsubnet(cidr, newbits, netnum_base + index)`，`modules/vpc/locals.tf`）：在清單尾端加 AZ、或移除最後一個 AZ，其他 subnet 的 CIDR 不變；**移除中間的 AZ，後面 AZ 的 CIDR 會位移，subnet 會重建**。要固定每個 AZ 的 CIDR，就用明確指定的 `cidrs`。module README 已寫明。
+
+實作另外多了兩條檢查：`cidrs` 的值必須是合法 IPv4 CIDR；自動切時 `newbits >= 1`、`netnum_base >= 0`、切出的 subnet 不得小於 `/28`。interface endpoint 的服務名稱不得帶 `com.amazonaws.` 前綴。
+
 **輸出**
 
 | 輸出 | 型別 | 說明 |
@@ -999,7 +1023,7 @@ variable "tags" {
 
 **範本固定的三個 tier 名稱**：`public`（type `public`）、`app`（type `private`）、`data`（type `isolated`；DB 需要對外連線時改 `private`）。這三個名稱寫進 SSM 合約（§5.6），不可更改；要加 tier 可以，名稱不能跟這三個衝突。
 
-**刻意不做**：IPv6、private NAT、Transit Gateway 與 VPC peering 的路由（§1）；NACL（用 SG 就夠，NACL 是無狀態的，調錯很難查）；flow log 送 CloudWatch Logs（要多一個 IAM role，與「module 不建 IAM」衝突）；流量規格 preset（放範本的範例 tfvars，§5.11）。
+**刻意不做**：IPv6、private NAT、Transit Gateway 與 VPC peering 的路由（§1）；NACL（用 SG 就夠，NACL 是無狀態的，調錯很難查）；flow log 送 CloudWatch Logs（要多一個 IAM role，而只有 `iam-role` 能建 IAM）；流量規格 preset（放範本的範例 tfvars，§5.11）。
 
 ### 4.8 `alb`
 
@@ -1018,9 +1042,9 @@ variable "tags" {
 | `aws_lb.this` | 一律；`load_balancer_type = "application"`、`drop_invalid_header_fields = true` |
 | `aws_lb_listener.https` | `certificate_arn != null`；443、`ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"`、預設 action 回 404 |
 | `aws_lb_listener_certificate.additional` | `for_each = additional_certificate_arns` |
-| `aws_lb_listener.http` | 一律；有憑證時預設 action 為 301 轉到 HTTPS，沒有憑證時預設 action 回 404 |
+| `aws_lb_listener.http` | 一律；有憑證時預設 action 為 301 轉到 HTTPS，沒有憑證時預設 action 回 404（本文 `Not Found`） |
 | `aws_wafv2_web_acl_association.this` | `web_acl_arn != null` |
-| `aws_cloudwatch_metric_alarm.elb_5xx` | 一律 |
+| `aws_cloudwatch_metric_alarm.elb_5xx` | 一律；名稱 `<name>-elb-5xx`，`HTTPCode_ELB_5XX_Count` 的 `Sum`，`comparison_operator = "GreaterThanOrEqualToThreshold"`（門檻預設 1，等於「大於 0」），`evaluation_periods = 1`，`treat_missing_data = "notBreaching"` |
 
 預設 action 回 404（`text/plain`）而不是 project-a 的 403：沒有對應的路由就是「找不到」，不是「被禁止」。這只是回應碼的選擇，安全性相同。
 
@@ -1152,15 +1176,24 @@ variable "tags" {
 |---|---|---|---|
 | `aws_db_subnet_group.this` | ✓ | ✓ | ✓ |
 | `aws_db_parameter_group.rds`（family `postgres<major>`） | ✓ | | |
-| `aws_db_instance.this` | ✓ | | |
+| `aws_db_instance.this[0]` | ✓ | | |
 | `aws_rds_cluster_parameter_group.this`（family `aurora-postgresql<major>`） | | ✓ | ✓ |
 | `aws_db_parameter_group.aurora_instance`（family `aurora-postgresql<major>`；`instance_parameters` 非空才建） | | 選用 | 選用 |
-| `aws_rds_cluster.this` | | ✓ | ✓（加 `dynamic "serverlessv2_scaling_configuration"`） |
-| `aws_rds_cluster_instance.this`（`count = 1 + reader_count`，index 0 是 writer） | | 指定的 class | `db.serverless` |
+| `aws_rds_cluster.this[0]` | | ✓ | ✓（加 `dynamic "serverlessv2_scaling_configuration"`） |
+| `aws_rds_cluster_instance.this`（`count = 1 + reader_count`，index 0 是 writer；識別碼 `<name>-writer`、`<name>-reader-N`） | | 指定的 class | `db.serverless` |
 | `aws_cloudwatch_log_group.postgresql` | `/aws/rds/instance/<name>/postgresql` | `/aws/rds/cluster/<name>/postgresql` | 同 aurora |
 | `random_id.final_snapshot` | ✓ | ✓ | ✓ |
 | Proxy 一組（見下） | `proxy != null` | `proxy != null` | `proxy != null` |
 | 告警（見下） | ✓ | ✓ | ✓ |
+
+實作細節（以 `modules/rds/` 為準）：
+
+- 型態切換用 `count`，所以 `aws_db_instance`、`aws_rds_cluster` 的位址都帶 `[0]`。
+- 一般 RDS 的 instance 識別碼就是 `name`；Aurora 的 instance 是 `<name>-writer`、`<name>-reader-1`、`<name>-reader-2`……，告警的 key 與名稱也帶這個後綴（例如 `cpu_high_writer`）。
+- 因為 final snapshot 的 `random_id`，`versions.tf` 多宣告 `hashicorp/random >= 3.0`。
+- 參數群組裡只有 `shared_preload_libraries` 用 `apply_method = "pending-reboot"`，其他參數 `immediate`。Aurora 的 instance 參數群組只放呼叫端給的 `instance_parameters`，不含四個預設參數（預設參數在 cluster 參數群組）。
+- Proxy 的 read-only endpoint 名稱是 `<name>-ro`；Performance Insights 沿用 `kms_key_arn`；Aurora 的 `promotion_tier` writer 為 0、reader 為 1。
+- validation 比本節列的多，例如 `performance_insights_retention_days` 只收 AWS 接受的值（7、731，或 31 的倍數且不超過 713）、`monitoring.interval` 只收 1、5、10、15、30、60；以 `modules/rds/variables.tf` 為準。`sns_topic_arns` 的 ARN regex 結尾是 `.+`，比 `alb`、`ecs-service-alarms` 的 `[A-Za-z0-9_-]+` 寬（§9.4 D17）。
 
 `aurora` 與 `aurora_serverless` 共用同一組資源位址，互換時是就地修改（instance class 在 provisioned 與 `db.serverless` 之間切換）。`rds` 與 Aurora 互換是 destroy 加 create，會被 `deletion_protection` 擋下；這屬於資料遷移，不是改一個變數，README 要寫清楚。兩種互換的實際行為 mock 驗不到，列在 §7.3。
 
@@ -1439,32 +1472,604 @@ variable "alarm_config" {
 
 **刻意不做**：一般 RDS 的 read replica；RDS Multi-AZ DB cluster（第四種型態）；同一個 cluster 混用 provisioned 與 serverless instance；應用程式專用帳號與 Proxy 的 IAM 認證（§8.2）；MySQL；IAM（Proxy 與 Enhanced Monitoring 的 role 都從外部傳入）；`random_password`（`scripts/validate.sh` 會擋，§7.1）。
 
-### 4.10 module 怎麼串：完整三層
+### 4.10 `kms-key`
 
-下面依 apply 順序列出四個 stack 裡的 module 呼叫，示範一個 module 的輸出怎麼變成下一個 module 的輸入。同一個 stack 內直接引用 module 輸出；跨 stack 一律經過 SSM（`local.in` 是 `ssm-inputs.tf` 讀出來的純量，`local.in_lists` 是清單，寫法見 §5.6）。
+**用途**：建一把對稱式 customer managed key（CMK）、它的 key policy 與 alias。專案共用的那把由 `foundation` 呼叫一次。
 
-**注意：這段的 `source` 是範本「複製到專案 repo 之後」的樣子。** 在本 repo 裡，範本用相對路徑引用 module（例如 `source = "../../../../../modules/vpc"`），這樣本 repo 才能在 tag 還不存在、repo 還沒上 GitHub 的時候跑 `init -backend=false`、`validate`、`test`。怎麼改見 §5.1〈module 的 source〉。
+**參考來源**
+
+- `aws_kms_key` 加 `aws_kms_alias`、`deletion_window_in_days = 30`、key policy 第一段固定給帳號 root：`project-c-infra/modules/infra-platform/kms.tf`、`kms-policies.tf`
+- 依服務加 statement、用 `kms:ViaService` 條件限縮：同上 `kms-policies.tf` 的 `DbLifecycleDecryptViaSecretsManager`
+- project-a 沒有自建 CMK，secret 用 AWS managed key `alias/aws/secretsmanager`（`project-a/infra-v2/terraform/foundation/secrets.tf`）
+
+**資源**：`aws_kms_key.this`、`aws_kms_key_policy.this`、`aws_kms_alias.this`。
+
+**固定行為**
+
+| 項目 | 值 | 理由 |
+|---|---|---|
+| key 類型 | `SYMMETRIC_DEFAULT`、`ENCRYPT_DECRYPT`、單一 region | 第一版只有加密用途 |
+| 自動輪替 | `enable_key_rotation = true` | 不開放關閉 |
+| key policy 第一段 | 帳號 root（`arn:aws:iam::<account>:root`）`kms:*` | 少了這段，IAM policy 無法再授權這把 key，key 可能變成沒人管得了。這是 AWS 的預設寫法，project-c 也是 |
+| 服務 statement | 每個服務 principal 一段，`Resource = "*"`（key policy 裡的 `*` 指這把 key 本身） | — |
+| alias | `alias/<name>` | — |
+
+**輸入**
 
 ```hcl
-# ── network stack ────────────────────────────────────────────
-module "vpc" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/vpc?ref=vpc-v0.1.0"
-
-  name     = local.name_prefix
-  cidr     = var.vpc.cidr
-  azs      = var.vpc.azs
-  nat_mode = var.vpc.nat_mode
-  subnets  = var.vpc.subnets # 範例 tfvars 見 §5.11；tier 名稱 public／app／data 固定
-  interface_endpoints = var.vpc.interface_endpoints
-  flow_log            = var.vpc.flow_log ? { destination_arn = local.in["flow_log_bucket_arn"] } : null
+variable "name" {
+  type        = string
+  description = "Key alias without the alias/ prefix."
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9/_-]{1,250}$", var.name)) && !startswith(var.name, "aws/")
+    error_message = "name must be 1-250 chars of letters, digits, /, _ or -, and must not start with aws/."
+  }
 }
-# 之後用 aws_security_group + aws_vpc_security_group_*_rule 建 ALB、各服務、DB、Proxy 的 SG（§5.3），
-# 再用 ssm-publish 發布 vpc_id、subnet_ids_<tier>、sg_* 等 key（§5.6）。
 
-# ── data stack ───────────────────────────────────────────────
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "deletion_window_in_days" {
+  type    = number
+  default = 30
+  validation {
+    condition     = var.deletion_window_in_days >= 7 && var.deletion_window_in_days <= 30
+    error_message = "deletion_window_in_days must be between 7 and 30."
+  }
+}
+
+variable "administrator_arns" {
+  type        = list(string)
+  default     = []
+  description = "Extra IAM principals allowed to administer the key. The account root is always included."
+  validation {
+    condition     = alltrue([for a in var.administrator_arns : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:(role|user)/", a))])
+    error_message = "administrator_arns must be IAM role or user ARNs; wildcards are not allowed."
+  }
+}
+
+variable "service_principals" {
+  type = map(object({
+    actions = optional(list(string), ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"])
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  }))
+  default     = {}
+  description = "Service principal (e.g. logs.ap-northeast-1.amazonaws.com) => actions and conditions it gets on this key."
+  validation {
+    condition     = alltrue([for k in keys(var.service_principals) : can(regex("^[a-z0-9.-]+\\.amazonaws\\.com$", k))])
+    error_message = "Keys must be AWS service principals ending in .amazonaws.com; * is not allowed."
+  }
+  validation {
+    condition     = alltrue(flatten([for v in values(var.service_principals) : [for a in v.actions : a != "*" && a != "kms:*"]]))
+    error_message = "Service principals must not get * or kms:*."
+  }
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+**輸出**：`key_arn`、`key_id`、`alias_name`、`alias_arn`。
+
+**範本 `foundation` 給的服務**：`logs.<region>.amazonaws.com`（條件 `ArnLike kms:EncryptionContext:aws:logs:arn = arn:aws:logs:<region>:<account>:log-group:*`）、`cloudwatch.amazonaws.com`（告警發布到加密的 SNS）、`sns.amazonaws.com`、`rds.amazonaws.com`、`secretsmanager.amazonaws.com`（後兩者通常靠 `kms:ViaService` 走 IAM 授權即可，是否需要放進 key policy 依實測決定）。每個服務接受哪些條件 key 各不相同，這張清單**未在實環境驗證**（§7.3）。
+
+**刻意不做**：非對稱 key、multi-region key、外部金鑰材料、grant 管理、對 `*` principal 開放（validation 擋）。
+
+### 4.11 `ecr-repository`
+
+**用途**：建一個 ECR repository 與它的 lifecycle policy。一次呼叫一個 repository，`containerimage` 用 `for_each` 對每個服務呼叫一次。
+
+**參考來源**
+
+- `IMMUTABLE`、`scan_on_push`、KMS 加密：`project-c-infra/modules/infra-platform/ecr.tf`（project-c 的 `force_delete = true`，這裡改成固定 `false`）
+- lifecycle policy 的寫法：`project-a/infra-v2/terraform/containerimage/ecr.tf`（project-a 是 `MUTABLE`、保留最近 N 個、`force_delete = true`，這三項都不沿用）
+
+**資源**：`aws_ecr_repository.this`、`aws_ecr_lifecycle_policy.this`。
+
+**固定行為**
+
+| 項目 | 值 | 理由 |
+|---|---|---|
+| `image_tag_mutability` | `IMMUTABLE` | 同一個 tag 不能被覆蓋，部署才可追溯 |
+| `image_scanning_configuration.scan_on_push` | `true` | — |
+| `force_delete` | `false` | 還有映像時 destroy 會失敗，不會連映像一起刪 |
+| lifecycle 規則 | 規則 1：`tagStatus = "untagged"`、`sinceImagePushed` 超過 `untagged_expire_days` 天就刪；規則 2：`tagStatus = "any"`、`imageCountMoreThan` 超過 `keep_count` 就刪舊的 | `tagged` 規則在 ECR 必須搭配 tag 前綴或樣式，用 `any` 搭配優先序較單純 |
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = length(var.name) >= 2 && length(var.name) <= 256 && can(regex("^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$", var.name))
+    error_message = "name must be a valid ECR repository name (lowercase, digits, . _ - and / separators)."
+  }
+}
+
+variable "kms_key_arn" {
+  type        = string
+  default     = null
+  description = "Customer managed key for image encryption. null uses AES256."
+}
+
+variable "lifecycle_rules" {
+  type = object({
+    untagged_expire_days = optional(number, 7)
+    keep_count           = optional(number, 50)
+  })
+  default = {}
+  validation {
+    condition     = var.lifecycle_rules.untagged_expire_days >= 1 && var.lifecycle_rules.keep_count >= 1
+    error_message = "untagged_expire_days and keep_count must be at least 1."
+  }
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+**輸出**：`repository_url`、`arn`、`name`、`registry_id`。
+
+注意：已經存在的 repository 改 `kms_key_arn`（加密設定）會讓 repository 重建，映像會跟著消失。這屬於 MAJOR 等級的變更，要先把映像搬走。
+
+**刻意不做**：repository policy（跨帳號拉映像）、replication、pull-through cache、enhanced scanning（Inspector）。
+
+### 4.12 `s3-bucket`
+
+**用途**：建一個給 log 用的 S3 bucket：封鎖公開存取、加密、生命週期、只允許 TLS，以及依輸入加上 log delivery 的寫入權限。`foundation` 用它建 flow log bucket 與 ALB access log bucket。
+
+**參考來源**
+
+- ALB access log 的 bucket：`project-a/infra-v2/terraform/loadbalancer/access-logs.tf`。兩個重點都沿用：加密必須是 AES256（ALB 不支援 CMK，設了 log 會無聲消失）；舊 region（例如 `ap-northeast-1`）要給「該 region 的 ELB 服務帳號」寫入權限，只給服務主體會 Access Denied，所以兩種 principal 都給。
+- 封鎖公開存取、AES256、lifecycle：`project-c-infra/modules/infra-platform/s3.tf`
+
+**資源**：`aws_s3_bucket.this`、`aws_s3_bucket_public_access_block.this`、`aws_s3_bucket_ownership_controls.this`、`aws_s3_bucket_server_side_encryption_configuration.this`、`aws_s3_bucket_lifecycle_configuration.this`、`aws_s3_bucket_policy.this`；`log_delivery` 含 `alb_access_logs` 時另讀 `data "aws_elb_service_account"`。
+
+**固定行為**
+
+| 項目 | 值 |
+|---|---|
+| 封鎖公開存取 | 四項全開 |
+| object ownership | `BucketOwnerEnforced`（停用 ACL） |
+| 只允許 TLS | bucket policy 一律有一段 `Deny`，條件 `aws:SecureTransport = false` |
+| lifecycle | 過期天數由變數決定；未完成的 multipart upload 7 天後清除 |
+| bucket policy 的 `depends_on` | 等 public access block 建好（照 project-a 的寫法，避免 policy 先套用時被判為公開） |
+
+**log delivery 的 statement**（`log_delivery` 決定加哪些）
+
+| 值 | principal | action 與 resource | 條件 |
+|---|---|---|---|
+| `alb_access_logs` | ① 該 region 的 ELB 服務帳號（`data.aws_elb_service_account`）② `logdelivery.elasticloadbalancing.amazonaws.com` | `s3:PutObject` on `<bucket>/*AWSLogs/<account>/*` | ② 加 `aws:SourceAccount` |
+| `vpc_flow_logs` | `delivery.logs.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl` on bucket | `aws:SourceAccount`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.name)) && !strcontains(var.name, "--")
+    error_message = "name must be 3-63 chars of lowercase letters, digits or hyphens; dots are not allowed (they break TLS virtual-host addressing)."
+  }
+}
+
+variable "kms_key_arn" {
+  type        = string
+  default     = null
+  description = "null uses SSE-S3 (AES256). ALB access log buckets must stay on SSE-S3."
+}
+
+variable "expiration_days" {
+  type    = number
+  default = 90
+  validation {
+    condition     = var.expiration_days >= 1 && var.expiration_days <= 3650
+    error_message = "expiration_days must be between 1 and 3650."
+  }
+}
+
+variable "log_delivery" {
+  type        = set(string)
+  default     = []
+  description = "Log sources allowed to write: alb_access_logs, vpc_flow_logs."
+  validation {
+    condition     = alltrue([for v in var.log_delivery : contains(["alb_access_logs", "vpc_flow_logs"], v)])
+    error_message = "log_delivery accepts alb_access_logs and vpc_flow_logs."
+  }
+}
+
+variable "force_destroy" {
+  type    = bool
+  default = false
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+跨變數 validation：`log_delivery` 含 `alb_access_logs` 時，`kms_key_arn` 必須是 null。錯誤訊息寫明「ALB access log delivery does not support SSE-KMS; logs would be dropped silently」。這條把「ALB log bucket 只能 SSE-S3」從文件約定變成程式擋。
+
+**輸出**：`bucket_name`、`arn`、`bucket_regional_domain_name`。
+
+**刻意不做**：versioning、replication、object lock、bucket 本身的 access logging、event notification、CORS、跨帳號寫入。第一版的用途只有 log，這些都用不到。
+
+### 4.13 `ssm-read`
+
+**用途**：跟 `ssm-publish` 配對的讀取 module。給 key 清單，回傳字串與清單。範本每個 stack 的 `ssm-inputs.tf` 改成呼叫它，不再各自寫 `data "aws_ssm_parameter"` 與 `split()`。
+
+**參考來源**：`project-a/infra-v2/terraform/application/ssm-inputs.tf`（`data "aws_ssm_parameter"` 加 `for_each`、讀 `insecure_value`）；`ssm-publish` 的路徑與 key 規則（§4.6）。
+
+**資源**：`data "aws_ssm_parameter" "this"`，`for_each` 為 `strings` 與 `lists` 的值去重後的集合。沒有任何 resource。
+
+**輸入**
+
+```hcl
+variable "ssm_prefix" {
+  type        = string
+  description = "/<project>/<env>, same as ssm-publish."
+  validation {
+    condition     = can(regex("^/[a-z][a-z0-9-]*/[a-z][a-z0-9]*$", var.ssm_prefix))
+    error_message = "ssm_prefix must be /<project>/<env>."
+  }
+}
+
+variable "strings" {
+  type        = map(string)
+  default     = {}
+  description = "Local name => \"<stack>/<key>\" for String parameters."
+  validation {
+    condition     = alltrue([for v in values(var.strings) : can(regex("^[a-z][a-z0-9-]*/[a-z][a-z0-9_]*$", v))])
+    error_message = "Each value must be <stack>/<key> with a kebab-case stack and a snake_case key."
+  }
+}
+
+variable "lists" {
+  type        = map(string)
+  default     = {}
+  description = "Local name => \"<stack>/<key>\" for StringList parameters."
+  validation {
+    condition     = alltrue([for v in values(var.lists) : can(regex("^[a-z][a-z0-9-]*/[a-z][a-z0-9_]*$", v))])
+    error_message = "Each value must be <stack>/<key> with a kebab-case stack and a snake_case key."
+  }
+}
+```
+
+**輸出**：`strings`（`map(string)`，key 為本地名稱）、`lists`（`map(list(string))`，以逗號切開）。
+
+**行為**：只讀 `insecure_value`。參數不存在時 plan 直接失敗，這是刻意的：上游還沒 apply 或客戶還沒發布，不應該繼續規劃。JSON 值（例如 `database`）放在 `strings`，由呼叫端 `jsondecode()`；module 不猜哪些值是 JSON。
+
+**刻意不做**：讀 `SecureString`（secret 不進 SSM）、預設值（缺 key 就該失敗）、遞迴讀整個路徑（`aws_ssm_parameters_by_path` 會讓讀取清單變成隱性的）。
+
+### 4.14 `iam-role`
+
+**用途**：建一個 IAM role：trust policy 加 inline policy。**整個 repo 只有這個 module 與 `iam-role-policy`（§4.15）可以建 IAM 資源**，範本的 stack 也一律透過它們。不得使用 `aws_iam_role_policies_exclusive` 這類獨佔管理 inline policy 的資源，否則會刪掉 `iam-role-policy` 附加的 policy。
+
+**參考來源**
+
+- trust 只給服務主體、inline policy、不掛 AWS managed policy：`project-a/infra-v2/terraform/iam/ecs-roles.tf`（project-a 用 `data "aws_iam_policy_document"`；這裡改收 `jsonencode` 產生的字串，理由見 §5.4）
+- 反例：project-c 掛了 `AmazonBedrockFullAccess` 等 managed policy（`project-c-infra/modules/infra-platform/iam-ecs.tf`），共用 policy 掛到多個 role（`iam-baseline.tf`）；這兩種都不沿用
+
+**資源**：`aws_iam_role.this`、`aws_iam_role_policy.this`（`for_each = inline_policies`）。沒有 `aws_iam_role_policy_attachment`、沒有 `aws_iam_policy`。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9+=,.@_-]{1,64}$", var.name))
+    error_message = "name must be 1-64 chars of letters, digits or +=,.@_-."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "trust" {
+  type = object({
+    service_principals = set(string)       # e.g. ["ecs-tasks.amazonaws.com"]
+    source_account     = optional(string)  # adds aws:SourceAccount when set
+  })
+  validation {
+    condition = (
+      length(var.trust.service_principals) > 0 &&
+      alltrue([for p in var.trust.service_principals : can(regex("^[a-z0-9.-]+\\.amazonaws\\.com$", p))]) &&
+      (var.trust.source_account == null ? true : can(regex("^[0-9]{12}$", var.trust.source_account)))
+    )
+    error_message = "trust needs at least one AWS service principal (no wildcards); source_account must be a 12-digit account ID."
+  }
+}
+
+variable "inline_policies" {
+  type        = map(string)
+  default     = {}
+  description = "Policy name => policy JSON built with jsonencode()."
+  validation {
+    condition     = alltrue([for p in values(var.inline_policies) : can(jsondecode(p).Statement)])
+    error_message = "Each inline policy must be a JSON document with a Statement."
+  }
+  validation {
+    condition = alltrue(flatten([
+      for p in values(var.inline_policies) : [
+        for s in jsondecode(p).Statement : [
+          for a in flatten([try(s.Action, [])]) : a != "*" && !endswith(a, ":*")
+        ] if try(s.Effect, "Allow") == "Allow"
+      ]
+    ]))
+    error_message = "Allow statements must not use * or service:* actions."
+  }
+}
+
+variable "permissions_boundary" {
+  type    = string
+  default = null
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+**輸出**：`arn`、`name`、`id`。`arn` 的 output 加 `depends_on = [aws_iam_role_policy.this]`：拿到 ARN 的下游，一定是在 inline policy 都附加之後才開始建（範例的 `core` module 用同樣的手法，見 `infra-platform/docs/slides/terraform-split/terraform-platform-example/platform/modules/core/main.tf`）。
+
+**這個 module 鎖住什麼、鎖不住什麼**
+
+| 鎖得住（module 測試） | 鎖不住（範本 stack 的測試負責） |
+|---|---|
+| Allow statement 沒有 `*`、沒有 `service:*` 動作 | `Resource = "*"` 是否只用在允許的 action（module 不知道哪些 action 不支援 resource-level） |
+| 沒有 AWS managed policy（module 根本不收） | Resource 是否恰為該給的 ARN |
+| trust 只給服務主體，不能給 `*` 或任意 AWS principal | 哪個 role 該有哪些權限 |
+
+**刻意不做**：AWS managed policy、customer managed policy（`aws_iam_policy`）、instance profile、trust 給 AWS 帳號或 OIDC（GitHub Actions 的部署 role 不在範本範圍）、`max_session_duration` 調整。
+
+### 4.15 `iam-role-policy`
+
+**用途**：對一個**已經存在**的 role 附加 inline policy。只建 `aws_iam_role_policy`，不建 role。用在 role 與它的權限必須在不同時間點建立的情況，第一版只有一個：RDS Proxy 的 role 要在資料庫之前存在，讀 master secret 的權限要等 secret 存在後才附加（§5.4）。
+
+**參考來源**：`project-a/infra-v2/terraform/database/rds-proxy.tf`（project-a 在同一個 stack 裡建 role 與 policy，所以 policy 能直接引用 secret ARN；範本把兩者拆到 `iam-base` 與 `iam-app`，才需要這個 module）。
+
+**資源**：`aws_iam_role_policy.this`（`for_each = policies`）。
+
+**輸入**
+
+```hcl
+variable "role_arn" {
+  type        = string
+  description = "Existing role to attach the policies to. Must have no path; the role name is taken from the last ARN segment."
+  validation {
+    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[a-zA-Z0-9+=,.@_-]{1,64}$", var.role_arn))
+    error_message = "role_arn must be an IAM role ARN without a path."
+  }
+}
+
+variable "policies" {
+  type        = map(string)
+  description = "Policy name => policy JSON built with jsonencode()."
+  validation {
+    condition     = length(var.policies) > 0 && alltrue([for p in values(var.policies) : can(jsondecode(p).Statement)])
+    error_message = "Give at least one policy; each must be a JSON document with a Statement."
+  }
+  validation {
+    condition = alltrue(flatten([
+      for p in values(var.policies) : [
+        for s in jsondecode(p).Statement : [
+          for a in flatten([try(s.Action, [])]) : a != "*" && !endswith(a, ":*")
+        ] if try(s.Effect, "Allow") == "Allow"
+      ]
+    ]))
+    error_message = "Allow statements must not use * or service:* actions."
+  }
+}
+```
+
+**輸出**：`policy_names`（`list(string)`）、`role_name`。
+
+**跟 `iam-role` 的關係**
+
+- 兩者的「禁止萬用動作」validation 寫法一字不差。這段邏輯重複在兩個 module 裡是刻意的：Terraform module 之間不能共用 validation，抽成第三個 module 只為了放一段表達式不划算。
+- `iam-role` **不得**使用 `aws_iam_role_policies_exclusive` 這類「獨佔管理 inline policy」的資源。用了的話，`iam-role` 每次 apply 都會把 `iam-role-policy` 附加的 policy 刪掉，兩邊互相覆蓋。
+- 「只有 `iam-role` 與 `iam-role-policy` 建 IAM」由 §5.6 S4 檢查。
+
+**刻意不做**：建 role、附加 AWS managed policy 或 customer managed policy（`aws_iam_role_policy_attachment`）、有 path 的 role。
+
+### 4.16 `security-group`
+
+**用途**：一次呼叫建一組**互相引用**的 security group 與它們的規則。network stack 用它建 ALB、各服務、DB、Proxy 的 SG，整條 ALB → app → db／proxy 的規則鏈在同一次呼叫裡表達。
+
+**為什麼是「一組」而不是「一個」**：規則鏈是雙向引用的，例如 ALB SG 的 egress 指向 app SG、app SG 的 ingress 又指向 ALB SG。如果 module 一次只建一個 SG，stack 只能用 `for_each` 呼叫同一個 module block，而 module 的引數不能引用自己（`module.sg["app"]` 不能出現在 `module.sg` 的引數裡），Terraform 會報自我引用。把整組 SG 放進同一次呼叫，規則用 SG 的 key 互相指，module 裡面先建 SG、再建規則，就沒有循環。
+
+**參考來源**
+
+- SG 與規則分開、規則一律用獨立的 `aws_vpc_security_group_ingress_rule`／`egress_rule`、不准 inline：`project-a/infra-v2/terraform/network/security-groups.tf`（註解說明 inline 規則會刪掉不歸 Terraform 管的規則）、`security-group-rules.tf`
+- 客戶在 SG 上加的規則不會被洗掉的前提，就是沒有 inline 規則：`project-a/docs/reports/2026-09-04-customer-owned-network-and-terraform.md`
+- 範例的服務 SG 寫法：`infra-platform/docs/slides/terraform-split/terraform-platform-example/platform/modules/ecs-web-service/main.tf`
+
+**資源**：`aws_security_group.this`（`for_each = security_groups`）、`aws_vpc_security_group_ingress_rule.this`、`aws_vpc_security_group_egress_rule.this`（`for_each` 分別是 `rules` 裡 `type = "ingress"`／`"egress"` 的項目）。沒有 inline `ingress {}`／`egress {}`。Terraform 建立 SG 時會移除 AWS 預設的「全部對外放行」egress，所以沒有寫的方向就是不通。
+
+**輸入**
+
+```hcl
+variable "vpc_id" {
+  type = string
+}
+
+variable "security_groups" {
+  type = map(object({
+    name        = string
+    description = string
+  }))
+  description = "Key => security group. Rules refer to groups by this key."
+  validation {
+    condition     = length(var.security_groups) > 0 && alltrue([for k in keys(var.security_groups) : can(regex("^[a-z][a-z0-9_]*$", k))])
+    error_message = "Give at least one security group; keys must be snake_case."
+  }
+}
+
+variable "rules" {
+  type = map(object({
+    security_group = string                 # key in security_groups the rule belongs to
+    type           = string                 # ingress | egress
+    description    = string
+    ip_protocol    = optional(string, "tcp")
+    from_port      = optional(number)       # null with ip_protocol = "-1"
+    to_port        = optional(number)       # defaults to from_port
+    # exactly one peer:
+    peer_group     = optional(string)       # key in security_groups
+    peer_group_id  = optional(string)       # security group outside this call
+    cidr_ipv4      = optional(string)
+    prefix_list_id = optional(string)
+    allow_internet = optional(bool, false)  # required to open ingress to 0.0.0.0/0
+  }))
+  default     = {}
+  description = "Rule key => rule. Keys are stable for_each keys; name them after what the rule allows."
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 |
+|---|---|
+| 規則屬於存在的 SG | `security_group` 與 `peer_group` 都必須是 `security_groups` 的 key |
+| 恰好一個來源／目的地 | `peer_group`、`peer_group_id`、`cidr_ipv4`、`prefix_list_id` 恰好一個非 null |
+| type | 只收 `ingress`、`egress` |
+| port | `ip_protocol` 是 `tcp`／`udp` 時 `from_port` 必填、`0..65535`，`to_port >= from_port`；`-1` 時兩者都是 null |
+| **對全網開放要明說** | `type = "ingress"` 且 `cidr_ipv4 = "0.0.0.0/0"` 時，`allow_internet` 必須是 `true`。避免 DB 或服務的 SG 被一行寫錯的 CIDR 打開 |
+| CIDR 格式 | `cidr_ipv4` 必須是合法的 IPv4 CIDR |
+
+**輸出**：`security_group_ids`（`map(string)`，key 同 `security_groups`）、`security_group_arns`。
+
+**範本怎麼表達規則鏈**：network stack 不手寫每一條規則，而是用 `services`、`data_stores`、`alb_ingress` 在 locals 展開成 `rules` map（§5.3）。展開後的樣子：
+
+```hcl
+module "sg" {
+  source = "../../../../../modules/security-group"
+  vpc_id = module.vpc.vpc_id
+
+  security_groups = {
+    alb      = { name = "${local.name_prefix}-alb", description = "ALB" }
+    api      = { name = "${local.name_prefix}-api", description = "api service" }
+    db       = { name = "${local.name_prefix}-db", description = "database" }
+    db_proxy = { name = "${local.name_prefix}-db-proxy", description = "RDS Proxy" }
+  }
+
+  rules = {
+    alb_in_https      = { security_group = "alb", type = "ingress", description = "clients", from_port = 443, cidr_ipv4 = "0.0.0.0/0", allow_internet = true }
+    alb_in_http       = { security_group = "alb", type = "ingress", description = "redirect to https", from_port = 80, cidr_ipv4 = "0.0.0.0/0", allow_internet = true }
+    alb_out_api       = { security_group = "alb", type = "egress", description = "to api", from_port = 8080, peer_group = "api" }
+    api_in_alb        = { security_group = "api", type = "ingress", description = "from alb", from_port = 8080, peer_group = "alb" }
+    api_out_https     = { security_group = "api", type = "egress", description = "AWS APIs", from_port = 443, cidr_ipv4 = "0.0.0.0/0" }
+    api_out_proxy     = { security_group = "api", type = "egress", description = "to db proxy", from_port = 5432, peer_group = "db_proxy" }
+    db_proxy_in_api   = { security_group = "db_proxy", type = "ingress", description = "from api", from_port = 5432, peer_group = "api" }
+    db_proxy_out_db   = { security_group = "db_proxy", type = "egress", description = "to db", from_port = 5432, peer_group = "db" }
+    db_in_proxy       = { security_group = "db", type = "ingress", description = "from db proxy", from_port = 5432, peer_group = "db_proxy" }
+  }
+}
+```
+
+**「沒有憑證時 ALB SG 不准對 0.0.0.0/0 開 80」放在 network stack，不放在 module。** 這條要知道兩件事：哪個 SG 是 ALB、ALB 有沒有憑證。兩者都是專案的語意，`security-group` 是通用 module，不知道誰是 ALB，也不該知道憑證。放進 module 就得加一個「這是沒有憑證的 ALB」之類的旗標，等於把 stack 的決定搬進 module。所以：
+
+- module 只負責通用的底線：任何 ingress 要對 `0.0.0.0/0` 開放，都必須明寫 `allow_internet = true`。
+- network stack 的 `alb_ingress` validation 負責 ALB 專屬的規則：`https = false` 時 `cidrs` 不得含 `0.0.0.0/0`，展開規則時也就不會出現 `allow_internet = true` 的 80（§5.3、§8.4）。`alb_ingress.https` 同時是發布給 `loadbalancer` 的單一決定點，兩條檢查都綁在同一個值上。
+
+**刻意不做**：IPv6 規則、預設的 egress 放行、一次呼叫只建一個 SG 的介面（理由見上）、NACL。
+
+### 4.17 module 怎麼串：完整三層
+
+下面依 apply 順序列出每個 stack 裡的 module 呼叫，示範一個 module 的輸出怎麼變成下一個 module 的輸入。同一個 stack 內直接引用 module 輸出；跨 stack 一律經過 SSM：寫用 `ssm-publish`，讀用 `ssm-read`（`module.in.strings`、`module.in.lists`，寫法見 §5.6）。stack 裡唯一的原生 resource 是 `foundation` 的 secret 容器（§5.3 例外清單）。
+
+**注意：這段的 `source` 是範本「複製到專案 repo 之後」的樣子。** 在本 repo 裡，範本用相對路徑引用 module（例如 `source = "../../../../../modules/vpc"`），這樣本 repo 才能在 tag 還不存在、repo 還沒上 GitHub 的時候跑 `init -backend=false`、`validate`、`test`。怎麼改見 §5.1〈module 的 source〉。為了篇幅，下面的 `source` 只寫 module 名稱與版本。
+
+```hcl
+# ── foundation ───────────────────────────────────────────────
+module "kms" {
+  source             = "git::https://github.com/<org>/<repo>.git//modules/kms-key?ref=kms-key-v0.1.0"
+  name               = local.name_prefix
+  service_principals = local.kms_service_principals # logs, cloudwatch, sns ...（§4.10）
+}
+
+module "alarm_topic" {
+  source              = "git::.../modules/sns-alarm-topic?ref=sns-alarm-topic-v0.1.0"
+  name                = "${local.name_prefix}-alarms"
+  email_subscriptions = var.alarm_emails
+  kms_master_key_id   = module.kms.key_arn
+}
+
+module "flow_log_bucket" {
+  source       = "git::.../modules/s3-bucket?ref=s3-bucket-v0.1.0"
+  name         = "${local.name_prefix}-flow-logs-${local.account_id}"
+  log_delivery = ["vpc_flow_logs"]
+}
+
+module "alb_log_bucket" {
+  source       = "git::.../modules/s3-bucket?ref=s3-bucket-v0.1.0"
+  name         = "${local.name_prefix}-alb-logs-${local.account_id}"
+  log_delivery = ["alb_access_logs"] # kms_key_arn 必須留 null（module validation 擋）
+}
+
+# ── containerimage ───────────────────────────────────────────
+module "ecr" {
+  source      = "git::.../modules/ecr-repository?ref=ecr-repository-v0.1.0"
+  for_each    = toset(var.services)
+  name        = "${local.name_prefix}-${each.key}"
+  kms_key_arn = module.in.strings["kms_key_arn"]
+}
+
+# ── network ──────────────────────────────────────────────────
+module "vpc" {
+  source              = "git::.../modules/vpc?ref=vpc-v0.1.0"
+  name                = local.name_prefix
+  cidr                = var.vpc.cidr
+  azs                 = var.vpc.azs
+  nat_mode            = var.vpc.nat_mode
+  subnets             = var.vpc.subnets # 範例 tfvars 見 §5.11；tier 名稱 public／app／data 固定
+  interface_endpoints = var.vpc.interface_endpoints
+  flow_log            = var.vpc.flow_log ? { destination_arn = module.in.strings["flow_log_bucket_arn"] } : null
+}
+module "sg" {
+  source          = "git::.../modules/security-group?ref=security-group-v0.1.0"
+  vpc_id          = module.vpc.vpc_id
+  security_groups = local.security_groups # alb、每個服務、db、db_proxy
+  rules           = local.sg_rules        # 由 services、data_stores、alb_ingress 展開（§4.16、§5.3）
+}
+
+# ── iam-base ─────────────────────────────────────────────────
+module "ecs_execution_role" {
+  source = "git::.../modules/iam-role?ref=iam-role-v0.1.0"
+  name   = "${local.name_prefix}-ecs-execution"
+  trust  = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id }
+  inline_policies = {
+    pull-and-log = jsonencode({ Version = "2012-10-17", Statement = local.execution_statements })
+  }
+}
+
+module "rds_proxy_role" {
+  source = "git::.../modules/iam-role?ref=iam-role-v0.1.0"
+  name   = "${local.name_prefix}-rds-proxy"
+  trust  = { service_principals = ["rds.amazonaws.com"], source_account = local.account_id }
+  # 只有 trust；讀 secret 的 policy 由 iam-app 在 secret 存在後附加（§5.4）
+}
+
+# ── data ─────────────────────────────────────────────────────
 module "db" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/rds?ref=rds-v0.1.0"
-
+  source             = "git::.../modules/rds?ref=rds-v0.1.0"
   name               = "${local.name_prefix}-db"
   deployment         = var.db.deployment
   engine_version     = var.db.engine_version
@@ -1472,60 +2077,88 @@ module "db" {
   rds                = var.db.rds
   aurora             = var.db.aurora
   serverless         = var.db.serverless
-  subnet_ids         = local.in_lists["subnet_ids_data"]
-  security_group_ids = [local.in["sg_db_id"]]
-  kms_key_arn        = local.in["kms_key_arn"]
+  subnet_ids         = module.in.lists["subnet_ids_data"]
+  security_group_ids = [module.in.strings["sg_db_id"]]
+  kms_key_arn        = module.in.strings["kms_key_arn"]
 
   # 有沒有 Proxy 由 network stack 決定（SG 規則在那裡），這裡照著讀
-  proxy = jsondecode(local.in["db_proxy"]).enabled ? {
-    security_group_ids = [local.in["sg_db_proxy_id"]]
-    role_arn           = local.in["role_rds_proxy_arn"]
+  proxy = jsondecode(module.in.strings["db_proxy"]).enabled ? {
+    security_group_ids = [module.in.strings["sg_db_proxy_id"]]
+    role_arn           = module.in.strings["role_rds_proxy_arn"]
   } : null
 
-  monitoring     = { role_arn = local.in["role_rds_monitoring_arn"] }
-  sns_topic_arns = [local.in["alarm_topic_arn"]]
+  monitoring     = { role_arn = module.in.strings["role_rds_monitoring_arn"] }
+  sns_topic_arns = [module.in.strings["alarm_topic_arn"]]
 }
 # ssm-publish 發布 database = jsonencode({ enabled = true, app_endpoint = module.db.app_endpoint, ... })
 
-# ── loadbalancer stack ───────────────────────────────────────
-module "alb" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/alb?ref=alb-v0.1.0"
-
-  name               = "${local.name_prefix}-alb"
-  subnet_ids         = local.in_lists["subnet_ids_public"]
-  security_group_ids = [local.in["sg_alb_id"]]
-  certificate_arn    = var.certificate_arn
-  access_logs        = var.access_logs_enabled ? { bucket = local.in["alb_log_bucket_name"], prefix = local.name_prefix } : null
-  sns_topic_arns     = [local.in["alarm_topic_arn"]]
+# ── iam-app ──────────────────────────────────────────────────
+locals {
+  database = jsondecode(module.in.strings["database"])
 }
 
-# ── application stack ────────────────────────────────────────
+module "rds_proxy_secret_access" {
+  source   = "git::.../modules/iam-role-policy?ref=iam-role-policy-v0.1.0"
+  for_each = local.database.enabled ? { proxy = true } : {}
+  role_arn = module.in.strings["role_rds_proxy_arn"]
+  policies = {
+    read-master-secret = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = local.database.secret_arn },
+        {
+          Effect    = "Allow", Action = ["kms:Decrypt"], Resource = module.in.strings["kms_key_arn"]
+          Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.${local.region}.amazonaws.com" } }
+        },
+      ]
+    })
+  }
+}
+
+module "task_role" {
+  source   = "git::.../modules/iam-role?ref=iam-role-v0.1.0"
+  for_each = toset(module.in.lists["services"])
+  name     = "${local.name_prefix}-${each.key}-task"
+  trust    = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id }
+  inline_policies = local.task_policies[each.key] # 依 data_access、ecs_exec_services 組出來，見 §5.4
+}
+
+# ── loadbalancer ─────────────────────────────────────────────
+module "alb" {
+  source             = "git::.../modules/alb?ref=alb-v0.1.0"
+  name               = "${local.name_prefix}-alb"
+  subnet_ids         = module.in.lists["subnet_ids_public"]
+  security_group_ids = [module.in.strings["sg_alb_id"]]
+  certificate_arn    = var.certificate_arn
+  access_logs        = var.access_logs_enabled ? { bucket = module.in.strings["alb_log_bucket_name"], prefix = local.name_prefix } : null
+  sns_topic_arns     = [module.in.strings["alarm_topic_arn"]]
+}
+
+# ── application ──────────────────────────────────────────────
 locals {
-  database = jsondecode(local.in["database"])
+  database = jsondecode(module.in.strings["database"])
 }
 
 module "cluster" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/ecs-cluster?ref=ecs-cluster-v0.1.0"
-
-  name = "${local.name_prefix}-app"
+  source = "git::.../modules/ecs-cluster?ref=ecs-cluster-v0.1.0"
+  name   = "${local.name_prefix}-app"
 }
 
 module "api" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/ecs-service?ref=ecs-service-v0.1.0"
-
+  source             = "git::.../modules/ecs-service?ref=ecs-service-v0.1.0"
   name               = "${local.name_prefix}-api"
   cluster_arn        = module.cluster.cluster_arn
-  image              = "${local.in["ecr_api_url"]}:${var.api_image_tag}"
+  image              = "${module.in.strings["ecr_api_url"]}:${var.api_image_tag}"
   container_port     = 8080
-  execution_role_arn = local.in["role_ecs_execution_arn"]
-  task_role_arn      = local.in["role_api_task_arn"]
+  execution_role_arn = module.in.strings["role_ecs_execution_arn"]
+  task_role_arn      = module.in.strings["role_api_task_arn"]
 
   # 開關由 iam-app 決定，跟 task role 的 ssmmessages 權限同一個來源（§5.4）
-  enable_execute_command = jsondecode(local.in["ecs_exec_api"]).enabled
+  enable_execute_command = jsondecode(module.in.strings["ecs_exec_api"]).enabled
 
   network = {
-    subnet_ids         = local.in_lists["subnet_ids_app"]
-    security_group_ids = [local.in["sg_api_id"]]
+    subnet_ids         = module.in.lists["subnet_ids_app"]
+    security_group_ids = [module.in.strings["sg_api_id"]]
   }
 
   # DB 連線資訊；application 不需要知道有沒有開 Proxy、是哪種型態
@@ -1538,11 +2171,11 @@ module "api" {
   }
 
   load_balancer = {
-    listener_arn   = local.in["listener_arn"]
-    vpc_id         = local.in["vpc_id"]
+    listener_arn   = module.in.strings["listener_arn"]
+    vpc_id         = module.in.strings["vpc_id"]
     priority       = 100
     path_patterns  = ["/api/*"]
-    alb_arn_suffix = local.in["alb_arn_suffix"]
+    alb_arn_suffix = module.in.strings["alb_arn_suffix"]
   }
 
   desired_count = var.api_desired_count
@@ -1554,16 +2187,15 @@ module "api" {
 }
 
 module "api_alarms" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/ecs-service-alarms?ref=ecs-service-alarms-v0.1.0"
-
+  source         = "git::.../modules/ecs-service-alarms?ref=ecs-service-alarms-v0.1.0"
   name           = module.api.service_name
   cluster_name   = module.cluster.cluster_name
   service_name   = module.api.service_name
-  sns_topic_arns = [local.in["alarm_topic_arn"]]
+  sns_topic_arns = [module.in.strings["alarm_topic_arn"]]
   max_capacity   = var.api_max_capacity
 
   load_balancer = {
-    alb_arn_suffix          = local.in["alb_arn_suffix"]
+    alb_arn_suffix          = module.in.strings["alb_arn_suffix"]
     target_group_arn_suffix = module.api.target_group_arn_suffix
   }
 
@@ -1572,6 +2204,8 @@ module "api_alarms" {
 ```
 
 告警分在三個地方，各自只建一份：ALB 整體（ELB 5xx）在 `alb`、資料庫在 `rds`、每個服務在 `ecs-service-alarms`。服務的告警直接吃 `module.api` 的輸出，同一次 apply 建立。project-a 的告警放在 `postdeploy` stack，cluster 名稱、service 名稱、target group suffix 都寫在 tfvars（`project-a/infra-v2/terraform/postdeploy/envs/devbox.tfvars`），前面的 stack 換了資源，這份 tfvars 不改，plan 也不會提醒。
+
+上面範例裡的中文註解只為了說明；寫進 `modules/` 底下的 `.tf` 時，註解一律用英文（§4.1）。
 
 ## 5. 專案 infra 規範（給專案 app team）
 
@@ -1643,7 +2277,7 @@ infra/
 - **相對路徑 → `git::...?ref=`**：專案 app team 複製範本時手動改，一個 module 一行。改法與一次改完的指令寫在 `docs/guides/consuming-modules.md`。改完要跑 `terraform init -backend=false` 確認抓得到 tag。
 - **`git::...?ref=` → vendored 相對路徑**：由 `scripts/vendor-modules.sh` 負責（§8.7）。這支腳本**只做這個方向**，不處理本 repo 範本的相對路徑；FDE 的輸入是一個已經釘好 tag 的專案 repo。
 
-範本裡的 `git::` 範例（例如 §4.10）都是「複製出去之後」的樣子，文件出現時要標明。
+範本裡的 `git::` 範例（例如 §4.17）都是「複製出去之後」的樣子，文件出現時要標明。
 
 ### 5.2 state 拆分原則
 
@@ -1660,25 +2294,27 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 
 | 順序 | stack | 放什麼 | 用到的 module | 擁有者 | 變動頻率 | 讀（SSM，來源 stack） | 寫（SSM key） |
 |---|---|---|---|---|---|---|---|
-| 1 | `foundation` | 告警 SNS、專案共用 KMS key、Secrets Manager secret 容器（不含值）、flow log bucket、ALB access log bucket | `sns-alarm-topic`、`ssm-publish` | 專案 app team；客戶自管時為客戶 | 低 | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
-| 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
-| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、ALB／各服務／DB／Proxy 的 SG | `vpc`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
-| 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | `ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
-| 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | `rds`、`ssm-publish` | 同上 | 低 | `foundation`、`network`、`iam-base` | `database`（JSON） |
-| 6 | `iam-app` | Proxy role 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | `ssm-publish` | 同上 | 低～中（新增服務、調權限時） | `foundation`、`containerimage`、`network`、`iam-base`、`data` | `role_<service>_task_arn`、`ecs_exec_<service>` |
-| 7 | `loadbalancer` | ALB、listener、ELB 5xx 告警、WAF 關聯 | `alb`、`ssm-publish` | 專案 app team | 低～中 | `foundation`、`network` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` |
-| 8 | `application` | ECS cluster、service、autoscaling、服務告警、dashboard | `ecs-cluster`、`ecs-service`、`ecs-service-alarms` | 專案 app team | 高 | 前七個 | —（不需要時不發布） |
+| 1 | `foundation` | 告警 SNS、專案共用 KMS key、Secrets Manager secret 容器（不含值）、flow log bucket、ALB access log bucket | `kms-key`、`sns-alarm-topic`、`s3-bucket` ×2、`ssm-publish`（另有一個原生 resource，見下） | 專案 app team；客戶自管時為客戶 | 低 | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
+| 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
+| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、ALB／各服務／DB／Proxy 的 SG | `vpc`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
+| 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | `iam-role` ×3、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
+| 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | `rds`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`network`、`iam-base` | `database`（JSON） |
+| 6 | `iam-app` | Proxy role 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低～中（新增服務、調權限時） | `foundation`、`containerimage`、`network`、`iam-base`、`data` | `role_<service>_task_arn`、`ecs_exec_<service>` |
+| 7 | `loadbalancer` | ALB、listener、ELB 5xx 告警、WAF 關聯 | `alb`、`ssm-read`、`ssm-publish` | 專案 app team | 低～中 | `foundation`、`network` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` |
+| 8 | `application` | ECS cluster、service、autoscaling、服務告警、dashboard | `ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`ssm-read` | 專案 app team | 高 | 前七個 | —（不需要時不發布） |
 
-**`foundation` 的兩個 log bucket**：分成兩個是因為 bucket policy 不同。
+**`foundation` 的兩個 log bucket**：都用 `s3-bucket` module（§4.12）建，分成兩個是因為 bucket policy 不同。
 
-| bucket | 加密 | bucket policy 允許 | 其他 |
+| bucket | `s3-bucket` 的輸入 | 加密 | 其他 |
 |---|---|---|---|
-| flow log | SSE-S3 | `delivery.logs.amazonaws.com` 寫入，條件 `aws:SourceAccount` 為本帳號 | Block Public Access、lifecycle 90 天過期（預設值，專案依稽核需求調整） |
-| ALB access log | **只能 SSE-S3**：ALB 的 log delivery 不支援 customer managed KMS，設了 log 會無聲遺失（`project-a/infra-v2/terraform/loadbalancer/access-logs.tf` 的註解） | 該 region 的 ELB log delivery 寫入（寫法照 project-a `access-logs.tf`） | 同上 |
+| flow log | `log_delivery = ["vpc_flow_logs"]` | SSE-S3（`kms_key_arn = null`） | lifecycle 90 天過期（預設值，專案依稽核需求調整） |
+| ALB access log | `log_delivery = ["alb_access_logs"]` | **只能 SSE-S3**：ALB 的 log delivery 不支援 customer managed KMS，設了 log 會無聲遺失（`project-a/infra-v2/terraform/loadbalancer/access-logs.tf` 的註解）；`s3-bucket` 的 validation 會擋掉給 `kms_key_arn` 的寫法 | 同上 |
+
+專案共用的 KMS key 用 `kms-key` module 建，`service_principals` 給 CloudWatch Logs、CloudWatch、SNS（§4.10）。
 
 兩個 bucket 都由 `foundation` 建，即使該環境沒開 flow log 或 access log 也建（空 bucket 沒有費用），下游只靠 tfvars 的開關決定要不要用，SSM key 一律存在。
 
-**`containerimage` 的寫法**（原生資源，沒有 module）：
+**`containerimage` 的寫法**（`ecr-repository` 用 `for_each` 對每個服務呼叫一次；下表的值是 module 的固定行為或範本給的輸入）：
 
 | 項目 | 值 | 理由 |
 |---|---|---|
@@ -1692,7 +2328,7 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 
 **`network` 的寫法**
 
-`network` 預設呼叫 `vpc` module 建 VPC（模式 A 改成登記既有 VPC，見 §5.8），再用原生資源建 SG。SG 不做成 module：規則跟專案的服務拓樸綁在一起，用一份服務清單在 locals 展開成規則表，比一個通用 SG module 好讀。
+`network` 預設呼叫 `vpc` module 建 VPC（模式 A 改成登記既有 VPC，見 §5.8），再呼叫 `security-group` module（§4.16）一次建 ALB、各服務、DB、Proxy 的 SG 與規則。stack 自己不寫任何 SG resource，只負責把一份服務清單在 locals 展開成 `security_groups` 與 `rules` 兩個 map 傳進 module。
 
 ```hcl
 variable "vpc" {
@@ -1758,7 +2394,7 @@ variable "alb_ingress" {
 | 至少一個來源 | `alb_ingress.https = true` 時，`cidrs` 與 `prefix_list_ids` 也至少一個非空（要開全網就明寫 `0.0.0.0/0`） |
 | 模式 A 的 id 存在 | `data "aws_vpc"`、`data "aws_subnet"` 用 `for_each` 讀一次，id 不存在時 plan 失敗 |
 
-規則表（全部用 `aws_vpc_security_group_ingress_rule`／`egress_rule` 搭配 `for_each`，來源用 `referenced_security_group_id`，不寫 inline 規則）：
+規則表（由 locals 展開成 `security-group` 的 `rules`；module 裡一律用 `aws_vpc_security_group_ingress_rule`／`egress_rule` 搭配 `for_each`，來源用 `peer_group`（同一次呼叫裡的 SG，對應 `referenced_security_group_id`）、CIDR 或 prefix list，沒有 inline 規則）：
 
 | 從 | 到 | port | 條件 |
 |---|---|---|---|
@@ -1782,6 +2418,16 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 | `db_proxy` | `{"enabled":false}` | `data` | `enabled` 為 true 才把 `proxy` 物件傳進 `rds` |
 | `data_access` | `{"db":["api","worker"]}` | `iam-app` | 名單上的服務，task role 才能讀 DB secret |
 
+#### stack 裡的原生資源（例外清單）
+
+範本的 stack 原則上只呼叫 module。下表是唯一允許的原生 resource（SG 已改由 `security-group` module 建，不在清單上），`scripts/validate.sh` 依這張表檢查（§5.6 S8）；要加新的例外，先改這張表並寫理由。
+
+| stack | 原生 resource | 理由 | 之後怎麼收 |
+|---|---|---|---|
+| `foundation` | `aws_secretsmanager_secret`（應用程式 secret 的容器，不含值） | 只有一個 resource、兩三個屬性，包成 module 省不到東西（已拍板，§9.2 決策 30） | 有輪替、跨帳號 policy 這類需求時再做 `secret` module，這一列刪掉 |
+
+不算原生 resource、可以留在 stack 的：`data "aws_caller_identity"`、`data "aws_region"`、模式 A 的 `data "aws_vpc"`／`data "aws_subnet"`、`terraform_data` 這類不碰 AWS 的資源。`data "aws_ssm_parameter"` 不行，只能在 `ssm-read` 裡（§5.6 S3）。
+
 **跟 project-a 的對照**（`project-a/docs/spec/infra.md`〈infra-v2 的 stack 之間怎麼傳值〉）：
 
 | project-a stack | 範本 | 說明 |
@@ -1799,56 +2445,64 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 
 ### 5.4 `iam-base` 與 `iam-app` 的寫法
 
-module 一律不建 IAM（已拍板，§9.2）。角色集中在兩個 IAM stack，原因：權限審查只要看兩個地方；客戶自管 IAM 時只要接這兩個 stack，而且在客戶的部署 role 不能改 IAM 的環境（例如 project-a prod b2c 的 deploy role 明確 Deny `iam:Put*`），module 自建 role 根本 apply 不過。
+**只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（已拍板，§9.2）。範本的 stack 也不直接寫 `aws_iam_*`，一律呼叫這兩個 module；其他 13 個 module 都不建 IAM，只收 ARN。IAM 集中在兩個 stack，原因：權限審查只要看兩個地方；客戶自管 IAM 時只要接這兩個 stack，而且在客戶的部署 role 不能改 IAM 的環境（例如 project-a prod b2c 的 deploy role 明確 Deny `iam:Put*`），module 自建 role 根本 apply 不過。
 
-拆成兩個是因為依賴方向：RDS Proxy 建立時要給 role ARN（role 要在 `data` 之前存在），但 role 讀 secret 的權限要指到 master secret 的 ARN（secret 要等 `data` 建好才有）。一個 stack 做不到，只好拆開：
+拆成兩個是因為依賴方向：RDS Proxy 建立時要給 role ARN（role 要在 `data` 之前存在），但 role 讀 secret 的權限要指到 master secret 的 ARN（secret 要等 `data` 建好才有）。
 
-| stack | 時間點 | 建什麼 |
-|---|---|---|
-| `iam-base` | `data` 之前 | ECS execution role、RDS Proxy role（**只有 trust，沒有 policy**）、Enhanced Monitoring role |
-| `iam-app` | `data` 之後 | 對 Proxy role 附加讀 secret 的 inline policy；各服務 task role；ECS Exec 開關 |
+| stack | 時間點 | 建什麼 | 用哪個 module |
+|---|---|---|---|
+| `iam-base` | `data` 之前 | ECS execution role、RDS Proxy role（**只有 trust，沒有 policy**）、Enhanced Monitoring role | `iam-role` ×3 |
+| `iam-app` | `data` 之後 | 對 Proxy role 附加讀 secret 的 policy；各服務的 task role；ECS Exec 開關 | `iam-role-policy`、`iam-role`（`for_each` 服務） |
 
-**`iam-base`**
+**policy 一律用 `jsonencode()` 產生字串**，傳進 `iam-role` 的 `inline_policies` 或 `iam-role-policy` 的 `policies`。不用 `data "aws_iam_policy_document"`：mock provider 會把它的 `json` 填成隨機字串，測試就斷言不到 policy 內容。
 
-- **execution role**（一個專案一個）：ECR 拉映像限定 `containerimage` 發布的 repo ARN（`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、`ecr:BatchCheckLayerAvailability`）；`ecr:GetAuthorizationToken` 只支援 `Resource = "*"`，是例外並寫註解；`logs:CreateLogStream`、`logs:PutLogEvents` 限定 `arn:aws:logs:<region>:<account>:log-group:/ecs/<name_prefix>-*:*`；`secretsmanager:GetSecretValue` 限定 `foundation` 發布的 `app_secret_arn`；有 CMK 時加 `kms:Decrypt` 限定該 key。**不掛 `AmazonECSTaskExecutionRolePolicy`**（它的 Resource 是 `*`）。log group 在 `application` 才建，所以 log 權限用命名規則限定，這要求 log group 名稱照 `ecs-service` 的預設（`/ecs/<name>`）。
-- **RDS Proxy role**：trust `rds.amazonaws.com`，加 `aws:SourceAccount` 條件；**沒有任何 policy**，policy 由 `iam-app` 附加。
-- **Enhanced Monitoring role**：trust `monitoring.rds.amazonaws.com`；inline policy 只給 `logs:CreateLogGroup`、`logs:PutRetentionPolicy`、`logs:CreateLogStream`、`logs:PutLogEvents`、`logs:DescribeLogStreams`、`logs:GetLogEvents`，Resource 限定 `RDSOSMetrics` log group（`arn:aws:logs:<region>:<account>:log-group:RDSOSMetrics` 與其 `:log-stream:*`）。**不掛 AWS managed policy**：project-a 掛的是 `AmazonRDSEnhancedMonitoringRole`（`project-a/infra-v2/terraform/database/rds.tf`），範本改寫成等價的 inline policy，讓測試斷言得到內容。這份 action 清單是照 AWS managed policy 的內容整理的，**實際權限是否足夠未驗證**（§7.3）。
+#### `iam-base`
+
+- **execution role**（一個專案一個）：
+  - ECR 拉映像限定 `containerimage` 發布的 `ecr_<service>_arn`（`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、`ecr:BatchCheckLayerAvailability`）；`ecr:GetAuthorizationToken` 只支援 `Resource = "*"`，是例外並寫註解。
+  - `logs:CreateLogStream`、`logs:PutLogEvents` 限定 `arn:aws:logs:<region>:<account>:log-group:/ecs/<name_prefix>-*:*`。log group 在 `application` 才建，所以用命名規則限定，這要求 log group 名稱照 `ecs-service` 的預設（`/ecs/<name>`）。
+  - `secretsmanager:GetSecretValue` 限定 `foundation` 發布的 `app_secret_arn`；`kms:Decrypt` 限定 `foundation` 的 key。
+  - **沒有 DB secret 的權限**（DB secret 由 task role 讀，§8.2）。
+- **RDS Proxy role**：`iam-role` 只給 `trust`（`rds.amazonaws.com`，`source_account` 設本帳號），`inline_policies = {}`。
+- **Enhanced Monitoring role**：trust `monitoring.rds.amazonaws.com`；inline policy 只給 `logs:CreateLogGroup`、`logs:PutRetentionPolicy`、`logs:CreateLogStream`、`logs:PutLogEvents`、`logs:DescribeLogStreams`、`logs:GetLogEvents`，Resource 限定 `RDSOSMetrics` log group 與其 log stream。project-a 掛的是 AWS managed policy `AmazonRDSEnhancedMonitoringRole`（`project-a/infra-v2/terraform/database/rds.tf`），這裡改成等價的 inline policy；**是否足夠未驗證**（§7.3）。
 - 發布 `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn`。
 
-**`data`** 從 SSM 讀 `role_rds_proxy_arn` 與 `role_rds_monitoring_arn`，傳進 `rds` 的 `proxy.role_arn` 與 `monitoring.role_arn`。module 本身不碰 IAM。
+**`data`** 從 SSM 讀 `role_rds_proxy_arn` 與 `role_rds_monitoring_arn`，傳進 `rds` 的 `proxy.role_arn` 與 `monitoring.role_arn`。
 
-**`iam-app`**
+#### `iam-app`
 
-- **Proxy role 的 policy**：讀 `data/database` 的 `secret_arn`，對 `iam-base` 建的 Proxy role 附加 inline policy：`secretsmanager:GetSecretValue`，Resource 恰為該 secret ARN；master secret 用 CMK 加密時（範本用 `foundation` 的 `kms_key_arn`），另加 `kms:Decrypt`，Resource 為該 key，條件 `kms:ViaService = secretsmanager.<region>.amazonaws.com`。project-a 的寫法 `kms:Decrypt` 的 Resource 是 `*`（`project-a/infra-v2/terraform/database/rds-proxy.tf`），範本收窄到單一 key。role 名稱從 ARN 最後一段取得，所以 `iam-base` 的 role 不加 path。`database` 是 `{"enabled":false}` 時不附加。
-- **task role**（一個服務一個，服務清單讀 `containerimage/services`）：預設沒有任何權限。`network/data_access` 名單上的服務加 `secretsmanager:GetSecretValue`（Resource 恰為 DB secret ARN）與上述 `kms:Decrypt`。應用程式用 `DB_SECRET_ARN` 自己讀 secret（project-a 的做法），不經 execution role 的 `valueFrom`，理由見 §8.2。
-- **ECS Exec**：`var.ecs_exec_services`（`list(string)`，預設 `[]`）決定哪些服務的 task role 加上 `ssmmessages:CreateControlChannel` 等 4 個 action（只支援 `Resource = "*"`，是另一個例外），同時對每個服務發布 `ecs_exec_<service>`，值是 `{"enabled":true}` 或 `{"enabled":false}`。`application` 讀同一個 key 傳給 `ecs-service` 的 `enable_execute_command`，自己沒有這個變數，兩邊永遠一致。
-- trust policy 的 principal 只有 `ecs-tasks.amazonaws.com`，加 `aws:SourceAccount` 條件。
+- **Proxy role 的 policy**（`iam-role-policy`）：`role_arn` 是 `iam-base/role_rds_proxy_arn`；policy 是 `secretsmanager:GetSecretValue`，**Resource 恰為 `data/database` 的 `secret_arn`**；master secret 用 CMK 加密時（範本用 `foundation` 的 `kms_key_arn`），另加 `kms:Decrypt`，Resource 為該 key，條件 `kms:ViaService = secretsmanager.<region>.amazonaws.com`。project-a 的 `kms:Decrypt` 是 `Resource = "*"`（`project-a/infra-v2/terraform/database/rds-proxy.tf`），範本收窄到單一 key。`database` 是 `{"enabled":false}` 時不呼叫。不管 Proxy 有沒有開都附加（Proxy role 一定存在），這樣之後打開 Proxy 不用再跑 `iam-app`。
+- **task role**（一個服務一個，服務清單讀 `containerimage/services`，`iam-role` 加 `for_each`）：預設沒有任何權限。
+  - `network/data_access` 名單上的服務加 `secretsmanager:GetSecretValue`（Resource 恰為 DB secret ARN）與上述 `kms:Decrypt`。應用程式用 `DB_SECRET_ARN` 自己讀 secret（project-a 的做法），理由見 §8.2。
+  - **ECS Exec**：`var.ecs_exec_services`（`list(string)`，預設 `[]`）裡的服務加 `ssmmessages:CreateControlChannel` 等 4 個 action（只支援 `Resource = "*"`，是另一個例外），同時對每個服務發布 `ecs_exec_<service>`，值是 `{"enabled":true}` 或 `{"enabled":false}`。`application` 讀同一個 key 傳給 `ecs-service` 的 `enable_execute_command`，自己沒有這個變數。
 - 發布 `role_<service>_task_arn`、`ecs_exec_<service>`。
 
-**Proxy 建立時的權限：未驗證**
+#### Proxy 建立時的權限：未驗證
 
 建立 RDS Proxy 時，如果它的 role 還沒有讀 secret 的權限，AWS 是讓建立失敗，還是建立成功、等 `iam-app` apply 之後才能連線，**目前沒有實測**，列在 §7.3。兩種結果的對策：
 
 | 實測結果 | 對策 |
 |---|---|
 | 建立成功，`iam-app` apply 之後才連得上 | 照正常順序 apply。第一次部署時，`data` apply 完到 `iam-app` apply 完之間 Proxy 連不上，這段時間應用程式還沒部署，沒有影響 |
-| 建立失敗 | 第一次部署先在 `network` 設 `data_stores.db.proxy = false`，照順序跑到 `iam-app`；再改成 `true`，依序 apply `network`、`data`。`iam-app` 的 policy 在第一輪就已經附加到 Proxy role 上（不管 Proxy 開不開都附加），所以第二輪不用再跑 `iam-app`。這個兩段式步驟要寫進 `infra/README.md` |
+| 建立失敗 | 第一次部署先在 `network` 設 `data_stores.db.proxy = false`，照順序跑到 `iam-app`；再改成 `true`，依序 apply `network`、`data`。`iam-app` 的 policy 在第一輪就已經附加到 Proxy role 上，所以第二輪不用再跑 `iam-app`。這個兩段式步驟要寫進 `infra/README.md` |
 
-**policy 一律用 `jsonencode()` 寫，不用 `data "aws_iam_policy_document"`。** mock provider 會把 data source 的 `json` 填成隨機字串，測試就斷言不到 policy 內容。
+#### 最小權限的測試分兩層
 
-最小權限測試（`iam-base/tests/`、`iam-app/tests/`，`mock_provider "aws"`）至少要有：
+| 層 | 測試放哪裡 | 鎖住什麼 |
+|---|---|---|
+| module | `modules/iam-role/tests/`、`modules/iam-role-policy/tests/` | Allow statement 沒有 `*` 或 `service:*` 動作（validation 加 `expect_failures`）；沒有 managed policy；`iam-role` 的 trust 只給服務主體、`source_account` 有給時帶 `aws:SourceAccount` |
+| 範本 | `iam-base/tests/`、`iam-app/tests/`（`mock_provider "aws"`，`ssm-read` 的 data source 用 `override_data`） | 見下表 |
 
 | stack | run | 斷言 |
 |---|---|---|
-| 兩者 | 沒有萬用 action | 每份 policy 的 Action 都不是 `*`、不以 `:*` 結尾 |
 | 兩者 | `Resource = "*"` 只出現在允許清單 | 只有 `ecr:GetAuthorizationToken` 與 ECS Exec 的 4 個 `ssmmessages` action 可以搭配 `*`；用反向驗證證明這條測得到（暫時加一個 `s3:GetObject` on `*`，測試要紅） |
-| 兩者 | 沒有 AWS managed policy | 沒有任何 `aws_iam_role_policy_attachment` 指到 `arn:aws:iam::aws:policy/` |
 | `iam-base` | trust 各自正確 | execution role 只信任 `ecs-tasks.amazonaws.com`、Proxy role 只信任 `rds.amazonaws.com`、monitoring role 只信任 `monitoring.rds.amazonaws.com` |
-| `iam-base` | Proxy role 沒有 policy | 沒有任何 `aws_iam_role_policy` 掛在 Proxy role 上 |
+| `iam-base` | Proxy role 只有 trust | Proxy role 的 `inline_policies` 是空的 |
+| `iam-base` | execution role 沒有 DB secret 權限 | execution role 的 policy 裡沒有任何指向 DB secret 的 Resource |
 | `iam-base` | monitoring 只到 `RDSOSMetrics` | Resource 全部是 `RDSOSMetrics` 的 log group／stream |
-| `iam-app` | Proxy 只讀那一個 secret | Resource 恰為 `override_data` 餵進來的 secret ARN；`kms:Decrypt` 帶 `kms:ViaService` 條件 |
+| `iam-app` | Proxy 只讀那一個 secret | `iam-role-policy` 的 `role_arn` 等於 `role_rds_proxy_arn`；`secretsmanager:GetSecretValue` 的 Resource 恰為 `override_data` 餵進來的 `secret_arn`；`kms:Decrypt` 帶 `kms:ViaService` |
 | `iam-app` | 只有 `data_access` 名單上的服務能讀 DB secret | 不在名單上的服務，task role 沒有 `secretsmanager` 權限 |
-| `iam-app` | 沒有 DB 時不附加 | `database = {"enabled":false}` 時 Proxy policy 與 task role 的 secret 權限都是 0 個 |
+| `iam-app` | 沒有 DB 時不附加 | `database = {"enabled":false}` 時沒有 `iam-role-policy` 呼叫，任何 task role 都沒有 secret 權限 |
 | `iam-app` | ECS Exec 一致 | `ecs_exec_services` 裡的服務有 `ssmmessages` 權限，且發布 `{"enabled":true}`；其他服務兩者都沒有 |
 
 ### 5.5 state 的 bucket 與 key
@@ -1883,7 +2537,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | 單一決定點 | 兩個 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀，不在兩邊各放一個變數。例：`network/alb_https`、`network/db_proxy`、`network/data_access`、`containerimage/services`、`iam-app/ecs_exec_<service>` |
 | secret | **不進 SSM**。SSM 只放 secret 的 ARN，值在 Secrets Manager |
 | 寫入 | 只能透過 `ssm-publish`；其他地方不得宣告 `aws_ssm_parameter` |
-| 讀取 | `data "aws_ssm_parameter"` 加 `for_each`，讀 `insecure_value`；key 清單寫在 `ssm-inputs.tf` |
+| 讀取 | 只能透過 `ssm-read`（裡面是 `data "aws_ssm_parameter"` 加 `for_each`、只讀 `insecure_value`）；key 清單寫在 `ssm-inputs.tf` 的 module 呼叫裡 |
 | 方向 | 只能讀 apply 順序更早的 stack 發布的 key |
 
 **合約表**（範本 `infra/README.md` 放同一張表，客戶自管時照這張表發布）
@@ -1947,38 +2601,49 @@ JSON 欄位的增減照 module 的 semver 想：新增欄位是相容的；刪�
 | 改既有 tier 的 CIDR 大小 | 清單內容變，subnet 會重建 | 不用改程式碼，但這是**會重建 subnet 的變更**，上面的 ENI 要先清空；實務上用新增 tier 再遷移，不直接改 |
 | 改 tier 名稱 | — | **不允許**。`public`、`app`、`data` 寫進合約，改名等於改合約 |
 
-讀取寫法：
+讀取寫法（`ssm-inputs.tf`，一律呼叫 `ssm-read`，§4.13）：
 
 ```hcl
-locals {
-  ssm_inputs = {
-    strings = ["foundation/alarm_topic_arn", "network/vpc_id", "iam-base/role_ecs_execution_arn", "data/database"]
-    lists   = ["network/subnet_ids_app"]
+module "in" {
+  source     = "../../../../../modules/ssm-read" # 複製出去後改成 git::...?ref=ssm-read-v<semver>
+  ssm_prefix = local.ssm_prefix
+
+  strings = {
+    alarm_topic_arn        = "foundation/alarm_topic_arn"
+    vpc_id                 = "network/vpc_id"
+    role_ecs_execution_arn = "iam-base/role_ecs_execution_arn"
+    database               = "data/database"
+  }
+  lists = {
+    subnet_ids_app = "network/subnet_ids_app"
   }
 }
 
-data "aws_ssm_parameter" "in" {
-  for_each = toset(concat(local.ssm_inputs.strings, local.ssm_inputs.lists))
-  name     = "${local.ssm_prefix}/${each.key}"
-}
-
 locals {
-  in       = { for k in local.ssm_inputs.strings : basename(k) => data.aws_ssm_parameter.in[k].insecure_value }
-  in_lists = { for k in local.ssm_inputs.lists : basename(k) => split(",", data.aws_ssm_parameter.in[k].insecure_value) }
-  database = jsondecode(local.in["database"]) # 條件值
+  database = jsondecode(module.in.strings["database"]) # 條件值
 }
 ```
 
+下游引用 `module.in.strings["vpc_id"]`、`module.in.lists["subnet_ids_app"]`。本地名稱（map 的 key）通常跟 SSM key 同名；同一個 key 名稱在兩個 stack 都有時，本地名稱可以加前綴區分。測試時用 `override_data { target = module.in.data.aws_ssm_parameter.this["network/vpc_id"] ... }` 餵值。
+
 為什麼用 SSM 不用 `terraform_remote_state`：客戶自管的資源不在我們的 state 裡，`remote_state` 讀不到；SSM 是我們跟客戶都能接的介面。project-a 沒有為這個決定寫 ADR，這個 repo 補 `docs/adr/0003-cross-stack-values-via-ssm-only.md`。
 
-`scripts/validate.sh` 第一版只靜態檢查其中兩條，並接進 CI：
+`scripts/validate.sh` 的靜態規則（編號沿用 implement-process，S3、S4 依這次的 module 改寫，S8 是新增），全部接進 CI：
 
-1. 只有 `modules/ssm-publish/` 可以宣告 `resource "aws_ssm_parameter"`。
-2. 讀取端（`ssm-inputs.tf`）不得讀 `.value`，只能讀 `insecure_value`。
+| # | 規則 | 說明 |
+|---|---|---|
+| S1 | 每個 `*.tftest.hcl` 都宣告 `mock_provider "aws"` | 測試不得需要 AWS 憑證 |
+| S2 | `resource "aws_ssm_parameter"` 只能出現在 `modules/ssm-publish/` | 只能透過 `ssm-publish` 寫入；範圍含 `modules/` 與 `templates/` |
+| S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 只讀 `insecure_value`，不得出現 `.value` | 範本 stack 改用 `ssm-read`，原本「`ssm-inputs.tf` 不讀 `.value`」改由這條涵蓋 |
+| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`），範本的 stack 也不例外；`resource "aws_security_group"`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc/`（endpoint SG），範本的 stack 不得出現 | 「只有兩個 IAM module 建 IAM」「SG 一律透過 module」的程式檢查 |
+| S5 | 範本 8 個 stack 的 `common.tf` 雜湊相同 | 修掉 project-a「common.tf 多版本漂移」 |
+| S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend | 修掉 project-a「key 寫錯讀到別的環境」 |
+| S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` | 密碼一律由 RDS 管理 |
+| S8 | 範本 stack 裡的 `resource "<type>"` 只能是 §5.3 例外清單上的型別與 stack（目前只有 `foundation` 的 `aws_secretsmanager_secret`） | 「stack 只呼叫 module」的程式檢查 |
 
 project-a 的 `project-a/infra-v2/terraform/check-ssm-contract.sh` 還有第三條「讀的 key 必須是 apply 順序更早的 stack 有發布的」。**這條第一版不做，列為之後要補的檢查。** 理由：第一版範圍要小；而且這條要解析每個 stack 的 HCL（`ssm-outputs.tf` 的 `strings`／`lists` 與 `ssm-inputs.tf` 的 key 清單）再做跨 stack 比對，project-a 用 awk 硬解，格式一變就會誤判。第一版靠兩件事補位：各 stack 的測試鎖住它讀取的 key 清單；`infra/README.md` 的合約表寫明每個 key 誰寫誰讀，PR 審查時對照。上表「方向」那一條仍然是規則，只是還沒有自動檢查。
 
-project-a 那支腳本沒有接進 CI，也沒列入 `bridge` 與 `postdeploy`，等於沒在跑；這裡做的兩條一定要接進 CI。
+project-a 那支腳本沒有接進 CI，也沒列入 `bridge` 與 `postdeploy`，等於沒在跑；這裡的規則一定要接進 CI。
 
 ### 5.7 環境切換
 
@@ -2053,7 +2718,7 @@ locals {
 2. 客戶自管的 stack 在那個環境**不放** `envs/<env>.tfbackend` 與 `envs/<env>.tfvars`。沒有檔案就無法 init，誤跑的機會從根本消失。
 3. 建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter`／`ssm:DeleteParameter` 於客戶擁有的路徑，作為第二道防線。
 4. 跨帳號部署用 `providers.tf` 的可選 `assume_role`（`deploy_role_arn`，空字串代表用呼叫者身分），跟 project-a 相同。
-5. 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。這也是「module 不建 IAM」的原因：module 一旦自己建 role，這種環境就 apply 不過。
+5. 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。這也是「只有 `iam-role` 建 IAM、而且只在兩個 IAM stack 呼叫」的原因：其他 module 一旦自己建 role，這種環境就 apply 不過。
 6. 客戶環境連不到我們的 GitHub 時，FDE 用 `scripts/vendor-modules.sh` 把專案 repo 裡已釘 tag 的 `git::` source 換成 vendored 相對路徑，provider 用 `terraform providers mirror` 鏡像（§8.7、`docs/guides/delivering-to-customer.md`）。
 
 跟 project-a 的差別：project-a 有兩棵樹（`/project-a/<env_label>/<stack>/<key>` 與 `/shared/infra/<key>`），再用 `bridge` stack 在自管環境把樹 A 轉寫成樹 B。新專案從一開始就只有一棵樹，客戶發布的就是同一棵樹的 key，不需要 bridge。
@@ -2213,7 +2878,7 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | lint | `tflint`，第一版只用內建的 terraform ruleset（`recommended` preset） | 未使用的變數、缺型別、命名慣例之類 | 否（內建 ruleset 不用下載 plugin） | 否 |
 | 語法與型別 | `terraform init -backend=false`、`terraform validate` | HCL 語法、型別、引用、validation 的寫法本身 | 下載 provider | 否 |
 | 行為 | `terraform test`，全部 `mock_provider "aws"` | 資源有沒有建、數量、命名、條件建立、validation 會不會擋下錯誤輸入（`expect_failures`） | 下載 provider | 否 |
-| 靜態規則 | `scripts/validate.sh` | `common.tf` 一致、SSM 合約兩條規則（§5.6）、tfbackend key 格式、每個 test 都用 `mock_provider`、`modules/rds/variables.tf` 沒有名稱含 `password` 的變數、整個 `modules/` 沒有 `random_password` | 否 | 否 |
+| 靜態規則 | `scripts/validate.sh` | §5.6 的 S1–S8：每個 test 都用 `mock_provider`、SSM 寫入只在 `ssm-publish`、SSM 讀取只在 `ssm-read`、IAM 只在 `iam-role`、`common.tf` 一致、tfbackend key 格式、`rds` 沒有 password 變數、範本 stack 只有例外清單上的原生 resource | 否 | 否 |
 
 每個 module 的 `tests/` 至少要有：
 
@@ -2221,7 +2886,7 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 - 每個條件建立的開與關（例如 `load_balancer = null` 時 target group 數量為 0）。
 - 每條 validation 一個 `expect_failures`，而且要有一個「合法邊界值會通過」的對照 run（只測會失敗的一邊，validation 寫錯成永遠失敗也會通過）。
 
-三個新 module 的測試清單：
+`vpc`、`alb`、`rds` 的測試清單：
 
 | module | run（plan，除非另註） | `expect_failures` |
 |---|---|---|
@@ -2231,9 +2896,21 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 
 `rds` 的 mock 要用 `mock_resource` 給 `aws_db_instance` 與 `aws_rds_cluster` 的 `master_user_secret = [{ secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!db-x", kms_key_id = "k", secret_status = "active" }]`，以及 `address`、`endpoint`、`reader_endpoint`、`port` 的預設值。不給的話 nested list 是空的，取 `[0]` 會失敗。
 
-範本 stack 的測試要用 `override_data` 餵 `aws_ssm_parameter` 的 `insecure_value`，否則 mock 產生的隨機字串會被下游的 ARN validation 擋掉。IAM 的最小權限測試放在範本的 `iam-base`、`iam-app` stack（§5.4），module 不建 IAM 所以沒有這類測試；「module 不建 IAM」本身由 `validate.sh` 的靜態檢查保證（`modules/` 底下不得宣告 `aws_iam_*`），因為 `terraform test` 無法列舉資源型別。範本另外要測：`network` 在 `alb_ingress.https = false` 且 `cidrs` 含 `0.0.0.0/0` 時被擋；`vpc` 與 `existing` 同時給時被擋；`loadbalancer` 在 `alb_https` 與 `certificate_arn` 不一致時被擋；`data` 在 `db_proxy` 為 false 時不傳 `proxy`。
+`kms-key`、`ecr-repository`、`s3-bucket`、`ssm-read`、`iam-role`、`iam-role-policy`、`security-group` 的測試清單：
 
-範例 tfvars 的驗證方式：`scripts/validate.sh` 對有 `envs/examples/` 的 stack（`network`、`data`、`loadbalancer`），除了一般的 `terraform test`，再對每個範例檔各跑一次 `terraform test -var-file=envs/examples/<x>.tfvars`。這類測試放在 `tests/examples/`（dev、prod 的 tfvars 放在 `tests/tfvars/`），用 `-test-directory` 指定，一般的 `terraform test` 不會跑到它們（子目錄不被預設掃描這點未驗證，Phase 6 先實測）。測試直接吃範例檔的值，不在 `tests/*.tftest.hcl` 裡再複製一份 `variables {}`：複製一份的話，範例檔改了測試不會跟著變，等於沒驗到範例。這要求這幾個 stack 的測試檔不在 `variables {}` 寫死會蓋掉範例值的變數（`-var-file` 的值會被測試檔的 `variables {}` 覆蓋），斷言也要寫成對任何合法輸入都成立的形式（例如「`nat_mode = per_az` 時 NAT 數等於 AZ 數」，而不是「NAT 數等於 2」）。
+| module | run（plan，除非另註） | `expect_failures` |
+|---|---|---|
+| `kms-key` | `enable_key_rotation = true`；alias 是 `alias/<name>`；key policy 第一段是帳號 root；每個 `service_principals` 一段 statement、條件照輸入；`administrator_arns` 有給時多一段 | `deletion_window_in_days` 6 或 31；`name` 以 `aws/` 開頭；service principal 是 `*` 或不以 `.amazonaws.com` 結尾；service 動作給 `*` 或 `kms:*`；`administrator_arns` 含 `*` |
+| `ecr-repository` | `IMMUTABLE`、`scan_on_push = true`、`force_delete = false`；`kms_key_arn = null` 時 `AES256`、有給時 `KMS`；lifecycle policy 的兩條規則與預設值（7 天、50 個）；覆寫後的值 | 名稱含大寫或空白；`untagged_expire_days = 0`；`keep_count = 0` |
+| `s3-bucket` | 封鎖公開存取四項全開；`BucketOwnerEnforced`；bucket policy 一定有 `aws:SecureTransport = false` 的 Deny；`log_delivery = []` 時只有那一段 Deny；`alb_access_logs` 有 ELB 服務帳號與服務主體兩段（`data.aws_elb_service_account` 用 `override_data`）；`vpc_flow_logs` 有 PutObject 與 GetBucketAcl，帶 `aws:SourceAccount`；`kms_key_arn` 有給時是 `aws:kms` | 名稱含 `.` 或大寫；`expiration_days = 0`；`log_delivery` 給 `cloudtrail`；**`alb_access_logs` 搭配 `kms_key_arn`** |
+| `ssm-read` | `strings` 的輸出等於 `override_data` 給的 `insecure_value`；`lists` 以逗號切開；同一個 `<stack>/<key>` 出現在兩個本地名稱時只讀一次；兩個 map 都空時沒有 data source | `ssm_prefix` 缺開頭斜線或多結尾斜線；值不是 `<stack>/<key>`（例如 `network/VPC_ID`、`/network/vpc_id`） |
+| `iam-role` | trust 只有給的服務主體；`source_account` 有給時帶 `aws:SourceAccount`；每個 `inline_policies` 一個 `aws_iam_role_policy`；`permissions_boundary` 照輸入 | trust 為空或給 `*`；`source_account` 不是 12 位數；inline policy 不是 JSON；Allow statement 的 Action 是 `*` 或 `s3:*`（字串與清單兩種寫法都要測）；Deny statement 用 `*` 要**通過**（反向） |
+| `iam-role-policy` | 每個 `policies` 一個 `aws_iam_role_policy`；`role` 等於從 `role_arn` 取出的名稱 | `role_arn` 帶 path 或不是 role ARN；`policies` 為空；policy 不是 JSON；Allow statement 的 Action 是 `*` 或 `secretsmanager:*`；Deny statement 用 `*` 要**通過**（反向） |
+| `security-group` | 每個 `security_groups` 一個 SG；規則依 `type` 分到 ingress／egress 兩種資源；`peer_group` 轉成同一次呼叫裡 SG 的 id（`referenced_security_group_id`）；`to_port` 預設等於 `from_port`；`ip_protocol = "-1"` 時沒有 port；沒有 inline 規則 | 規則指向不存在的 SG key；同一條規則給了兩個 peer 或沒有 peer；`type = "both"`；tcp 規則沒有 `from_port`；**ingress 對 `0.0.0.0/0` 沒寫 `allow_internet = true`**；egress 對 `0.0.0.0/0` 不需要 `allow_internet` 要**通過**（反向） |
+
+範本 stack 的測試要用 `override_data` 餵 `ssm-read` 裡的 `data.aws_ssm_parameter`（target 寫成 `module.in.data.aws_ssm_parameter.this["<stack>/<key>"]`），否則 mock 產生的隨機字串會被下游的 ARN validation 擋掉。IAM 的最小權限測試分兩層：`iam-role`、`iam-role-policy` module 鎖「沒有萬用動作、沒有 managed policy」；範本的 `iam-base`、`iam-app` 鎖「Resource 恰為該給的 ARN、execution role 沒有 DB secret 權限」（§5.4）。「只有兩個 IAM module 建 IAM」「SG 只在 `security-group` 與 `vpc`」由 S4 保證，因為 `terraform test` 無法列舉資源型別。範本另外要測：`network` 在 `alb_ingress.https = false` 且 `cidrs` 含 `0.0.0.0/0` 時被擋；`vpc` 與 `existing` 同時給時被擋；`loadbalancer` 在 `alb_https` 與 `certificate_arn` 不一致時被擋；`data` 在 `db_proxy` 為 false 時不傳 `proxy`。
+
+範例 tfvars 的驗證方式：`scripts/validate.sh` 對有 `envs/examples/` 的 stack（`network`、`data`、`loadbalancer`），除了一般的 `terraform test`，再對每個範例檔各跑一次 `terraform test -var-file=envs/examples/<x>.tfvars`。這類測試放在 `tests/examples/`（dev、prod 的 tfvars 放在 `tests/tfvars/`），用 `-test-directory` 指定，一般的 `terraform test` 不會跑到它們（Phase 0 已實測：子目錄不會被預設的 `terraform test` 掃到）。測試直接吃範例檔的值，不在 `tests/*.tftest.hcl` 裡再複製一份 `variables {}`：複製一份的話，範例檔改了測試不會跟著變，等於沒驗到範例。這要求這幾個 stack 的測試檔不在 `variables {}` 寫死會蓋掉範例值的變數（`-var-file` 的值會被測試檔的 `variables {}` 覆蓋），斷言也要寫成對任何合法輸入都成立的形式（例如「`nat_mode = per_az` 時 NAT 數等於 AZ 數」，而不是「NAT 數等於 2」）。
 
 `run` 的 `command`：預設用 `plan`。**只有在宣告了 `mock_provider "aws"` 的測試檔裡，才可以用 `command = apply`**（mock 下的 apply 不碰 AWS，用來讓 `arn`、`id` 這類 computed 值有假值可以斷言）。`scripts/validate.sh` 已經檢查每個測試檔都有 `mock_provider "aws"`，所以這條由同一個檢查保證。
 
@@ -2254,6 +2931,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | `ignore_changes` 與 autoscaling 的互動 | 要真的擴縮 | — |
 | RDS 型態互換 | mock 不模擬 replace 的實際行為 | `aurora` ↔ `aurora_serverless` 預期就地修改、`rds` ↔ Aurora 預期 destroy＋create，都要實測 |
 | Proxy 建立時的權限 | mock 不呼叫 RDS API | 建立失敗或建立成功但連不上（§5.4） |
+| KMS key policy 的服務條件 | mock 不評估 key policy | 某個服務不支援範本給的條件 key，加密或解密失敗 |
 | VPC endpoint 的 private DNS、NAT 路由 | 要真的有網路流量 | task 拉不到映像、呼叫不到 Secrets Manager |
 
 ### 7.3 之後有 AWS 環境時要補的
@@ -2269,7 +2947,8 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 9. 確認 `ecs-service-alarms`、`alb`、`rds` 每個告警在 CloudWatch 上有資料點（不是 INSUFFICIENT_DATA）。
 10. 改 `container_port` 跑一次，確認 target group 的 `create_before_destroy` 換得過去。
 11. AZ 從 2 個加到 3 個，確認下游 stack 只要重新 apply、程式碼不用改（§5.6）。
-12. 把 module 版本從 v0.x 升到 v1.0.0（見 §3.5）。
+12. **KMS key policy**：CloudWatch Logs、CloudWatch 告警發布到加密的 SNS、ECR、Secrets Manager 用 `kms-key` 建的 key 都正常；`s3-bucket` 的 ALB access log 在舊 region（`ap-northeast-1`）寫得進去。
+13. 把 module 版本從 v0.x 升到 v1.0.0（見 §3.5）。
 
 ## 8. 安全考量
 
@@ -2277,7 +2956,9 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 
 - execution role 與 task role 分開，而且每個服務一個 task role。
 - 不掛 `AmazonECSTaskExecutionRolePolicy` 這類 Resource 是 `*` 的 managed policy。只有 AWS 不支援 resource-level 的 action 例外（`ecr:GetAuthorizationToken`、ECS Exec 的 `ssmmessages:*`），寫在 policy 旁邊的註解。
-- module 不建 IAM，沒有例外；權限集中在 `iam-base`、`iam-app` 兩個 stack 審查（§5.4）。RDS Proxy role 的讀 secret 權限只到單一 secret ARN，`kms:Decrypt` 收窄到單一 key 並帶 `kms:ViaService`；Enhanced Monitoring role 用 inline policy，只到 `RDSOSMetrics`。
+- 只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM，兩者都不收 AWS managed policy、都會擋掉 Allow statement 裡的 `*` 與 `service:*` 動作；範本只在 `iam-base`、`iam-app` 兩個 stack 呼叫它們，權限集中審查（§5.4）。
+- RDS Proxy role 在 `iam-base` 只有 trust；讀 secret 的權限由 `iam-app` 用 `iam-role-policy` 附加，Resource 恰為那一個 secret ARN，`kms:Decrypt` 收窄到單一 key 並帶 `kms:ViaService`；Enhanced Monitoring role 用 inline policy，只到 `RDSOSMetrics`。
+- KMS key policy 不能對 `*` principal 開放（`kms-key` 的 validation 擋）；帳號 root 那一段是 AWS 的預設寫法，讓 IAM policy 可以授權這把 key。
 - ECS Exec 預設關閉。project-c 一律開（`project-c-app/modules/app-service/ecs-standard.tf`），等於每個服務都能被有權限的人進 shell。
 
 ### 8.2 secret
@@ -2358,7 +3039,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J14 | 應用程式的 DB 帳號 | 第一版用 master secret，風險寫在 §8.2，之後補應用程式專用帳號或 Proxy IAM 認證 | 先讓三層架構跑起來；另建帳號需要在資料庫裡執行 SQL，Terraform 的 AWS provider 做不到，要另一套機制 |
 | J15 | WAF | 只收 `web_acl_arn` 做關聯，Web ACL 由專案自己建 | 規則每個專案不同 |
 | J16 | log bucket | ALB access log 與 flow log 各一個 bucket，都建在 `foundation`；ALB 那個只能 SSE-S3 | 兩者的 bucket policy 不同；ALB 不支援 CMK，用了 log 會無聲遺失（project-a `loadbalancer/access-logs.tf`） |
-| J17 | SG 放在哪裡、怎麼寫 | 留在 `network` stack，用原生資源，不做 `security-group` module；規則由 `services`、`data_stores` 清單在 locals 展開；一律獨立規則資源、來源用 `referenced_security_group_id`；ALB egress 只到各服務的 port；DB 與 Proxy 的 SG 都在 `network`（app → proxy → db，沒開 Proxy 時 app → db）；VPC endpoint 的 SG 由 `vpc` module 建、只對 VPC CIDR 開 443 | inline 規則會洗掉客戶加的規則（project-a 客戶自管網路報告）；SG 跟服務拓樸綁在一起，通用 module 反而難讀 |
+| J17 | SG 的規則怎麼寫 | 規則由 `services`、`data_stores`、`alb_ingress` 在 network stack 的 locals 展開，交給 `security-group` module（決策 29）；一律獨立規則資源、來源用同一次呼叫裡的 SG、CIDR 或 prefix list；ALB egress 只到各服務的 port；DB 與 Proxy 的 SG 都在 `network`（app → proxy → db，沒開 Proxy 時 app → db）；VPC endpoint 的 SG 由 `vpc` module 建、只對 VPC CIDR 開 443 | inline 規則會洗掉客戶加的規則（project-a 客戶自管網路報告）；SG 跟服務拓樸綁在一起，所以展開邏輯留在 stack、建立交給 module |
 | J18 | 客戶自管模式 | 模式 A（客戶管 VPC、我們管 SG，`existing` 與 `vpc` 二選一）與模式 B（`network` 整個由客戶管，照合約發布全部 key）（§5.8） | 兩種情況都遇過；下游不用改 |
 | J19 | 網路第一版不做的 | IPv6、private NAT、Transit Gateway、VPC peering | 範圍控制 |
 | J20 | 補一條靜態檢查 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；整個 `modules/` 不得出現 `random_password` | 讓「密碼不進 Terraform」由程式擋，不靠審查 |
@@ -2368,17 +3049,27 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J24 | Proxy 的 SG 與兩個 log bucket | 一律建立、一律發布 key，即使沒用到 | SSM 不收空字串，「有時存在的 key」會讓下游的讀取清單變成條件式；這三樣資源沒有費用 |
 | J25 | `vpc` 的 route table | 一個 subnet 一張表；default SG 清空規則 | `per_az` NAT 需要每個 AZ 有自己的表，統一一 subnet 一表最單純；清空 default SG 避免誤用 |
 | J26 | Enhanced Monitoring role 的 policy | inline policy，action 照 AWS managed policy `AmazonRDSEnhancedMonitoringRole` 的內容整理，Resource 限 `RDSOSMetrics` | 不掛 AWS managed policy 的原則；**是否足夠未驗證**（§7.3） |
+| J27 | 範本 stack 只呼叫 module 的例外 | 只留一個：`foundation` 的 secret 容器（決策 30）；data source 不算例外（`aws_ssm_parameter` 除外）；新增靜態規則 S8 依例外清單檢查 | 例外要是程式擋得住的清單，不然「只呼叫 module」會慢慢失守（§5.3、§5.6） |
+| J28 | `kms-key` 的 key policy | 第一段固定給帳號 root `kms:*`；服務 principal 由 `service_principals` 給動作與條件；`administrator_arns` 可選 | 少了 root 那段，IAM policy 無法授權這把 key，可能變成沒人管得了（AWS 預設寫法，project-c 也是）。每個服務支援的條件 key 不同，交給呼叫端給，**範本的條件清單未驗證** |
+| J29 | `s3-bucket` 的 log delivery 介面 | `log_delivery = set(string)`，值只有 `alb_access_logs`、`vpc_flow_logs`；`alb_access_logs` 同時給 ELB 服務帳號與服務主體；搭配 `kms_key_arn` 時 validation 擋 | 舊 region 只給服務主體會 Access Denied（project-a `loadbalancer/access-logs.tf`）；把「ALB log bucket 只能 SSE-S3」變成程式擋 |
+| J30 | `s3-bucket` 另外固定的兩項 | `BucketOwnerEnforced`、拒絕非 TLS 的 Deny statement | log bucket 不需要 ACL；Deny 不違反「不對 `*` 開放」（那條指 Allow） |
+| J31 | `ecr-repository` 的 lifecycle | 規則 1 刪未加 tag 的舊映像，規則 2 用 `tagStatus = "any"` 保留最近 N 個 | ECR 的 `tagged` 規則必須搭配 tag 前綴或樣式，用 `any` 加優先序最單純 |
+| J32 | `ssm-read` 的介面 | 輸入是「本地名稱 → `<stack>/<key>`」，輸出 `strings`、`lists`；不幫忙 `jsondecode`；缺 key 直接讓 plan 失敗 | module 不猜哪些值是 JSON；缺 key 代表上游沒 apply 或客戶沒發布，應該停 |
+| J33 | `iam-role` 的 `arn` 輸出 | `depends_on` inline policy | 下游拿到 ARN 時權限已經附加（範例 `core` module 的寫法） |
+| J35 | `security-group` 一次呼叫管一組 SG | 不做成「一次一個 SG」；整組 SG 與規則在同一次呼叫，規則用 SG 的 key 互相指 | 規則鏈是雙向引用（ALB egress → app、app ingress ← ALB），一次一個的話 stack 只能對同一個 module block 用 `for_each`，引數引用自己會形成自我引用（§4.16） |
+| J36 | 「沒有憑證時 ALB SG 不准對 0.0.0.0/0 開 80」放哪裡 | 放在 network stack 的 `alb_ingress` validation；`security-group` module 只負責通用底線「ingress 對 `0.0.0.0/0` 必須明寫 `allow_internet = true`」 | 這條要知道「哪個 SG 是 ALB」與「有沒有憑證」，兩者都是專案語意；通用 module 不該知道，放進去就得加一個專屬旗標（§4.16） |
+| J37 | `iam-role-policy` 收 `role_arn` 而不是 `role_name` | 從 ARN 最後一段取名稱；validation 不准帶 path | SSM 合約發布的是 ARN，下游不用多一個 key；範本的 role 都不加 path |
 
 ### 9.2 已拍板決策
 
 | # | 決策 | 理由 | 影響的章節 |
 |---|---|---|---|
-| 1 | module 一律不建 IAM；`ecs-service` 只收 `execution_role_arn` 與 `task_role_arn`；role 在範本的 IAM stack 建好，ARN 經 SSM 傳到使用端（決策 20 之後拆成 `iam-base`、`iam-app`） | 集中審查；客戶自管 IAM 時接得上（例如 project-a prod b2c 的 deploy role 不能改 IAM）。最小權限測試放在範本的 IAM stack，policy 用 `jsonencode()` 寫，mock 下測得到內容 | §4.1、§4.2、§4.3、§5.4、§7.1、§8.1 |
-| 2 | 範本在本 repo 內用相對路徑引用 module（`../../../../../modules/<name>`）；複製到專案 repo 時改成 `git::...?ref=<module>-v<semver>`，改法寫在 `consuming-modules.md`；`vendor-modules.sh` 只負責 `git::` → vendored 相對路徑 | 本 repo 在 tag 不存在、repo 未上 GitHub 時也要能跑 `init -backend=false`、`validate`、`test`（與 implement-process U3 一致） | §1.1、§4.10、§5.1、§5.8、§8.7 |
+| 1 | ~~module 一律不建 IAM~~ → 由決策 25、28 修改：**只有 `iam-role` 與 `iam-role-policy` 建 IAM**。`ecs-service`、`rds` 等其他 module 只收 role ARN；role 在範本的 `iam-base`／`iam-app` 透過這兩個 module 建好，ARN 經 SSM 傳到使用端 | 集中審查；客戶自管 IAM 時接得上（例如 project-a prod b2c 的 deploy role 不能改 IAM）。policy 用 `jsonencode()` 寫，mock 下測得到內容 | §4.1、§4.2、§4.3、§4.14、§4.15、§5.4、§7.1、§8.1 |
+| 2 | 範本在本 repo 內用相對路徑引用 module（`../../../../../modules/<name>`）；複製到專案 repo 時改成 `git::...?ref=<module>-v<semver>`，改法寫在 `consuming-modules.md`；`vendor-modules.sh` 只負責 `git::` → vendored 相對路徑 | 本 repo 在 tag 不存在、repo 未上 GitHub 時也要能跑 `init -backend=false`、`validate`、`test`（與 implement-process U3 一致） | §1.1、§4.17、§5.1、§5.8、§8.7 |
 | 3 | 新增 `containerimage` stack（ECR），排在 `foundation` 之後 | ECR 的擁有者與變動頻率跟 SNS／KMS 不同，客戶自管時也常分開；execution role 要用 ECR 的 ARN 限縮權限 | §5.1、§5.3、§5.4、§5.8 |
 | 4 | 每個 Phase 一個 commit；含多個 module 的 Phase 改成一個 module 一個 commit；直接 commit 在 `main`，不 push；author `<author-email>`；Conventional Commits | 使用者決定。一個 commit 只動一個 module 目錄，release-please 依路徑歸屬才不會互相污染 CHANGELOG | 實作流程見 `implement-process.md` |
 | 5 | 起始版本 `v0.1.0` | 還沒在真實 AWS apply 過；§7.3 驗完再升 `v1.0.0` | §3.5 |
-| 6 | 服務告警放在 `application` stack | 告警直接吃 service 與 target group 的輸出，避免 project-a `postdeploy` 在 tfvars 寫死 id；代價是調門檻也要動高頻變動的 stack | §4.10、§5.3 |
+| 6 | 服務告警放在 `application` stack | 告警直接吃 service 與 target group 的輸出，避免 project-a `postdeploy` 在 tfvars 寫死 id；代價是調門檻也要動高頻變動的 stack | §4.17、§5.3 |
 | 7 | ~~SG 由 `network` stack 建；`network` 不建 VPC，只登記既有 VPC／subnet 的 id~~ | **已作廢，由決策 18 取代。** SG 仍由 `network` 建；VPC 改成預設建立 | — |
 | 8 | 資料層 stack 命名為 `data` | 涵蓋資料庫與快取 | §5.3 |
 | 9 | 不提供 `stacks.sh` | project-a 的那支已經失效；八個 stack 照 `infra/README.md` 的順序手動跑，比一支沒人維護的腳本可靠 | §5.10 |
@@ -2386,23 +3077,29 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 11 | module 不提交 `.terraform.lock.hcl`，範本 stack 提交 | Terraform 只採用 root module 的 lock；module 的 lock 對消費端沒有作用 | §4.1、§5.1 |
 | 12 | tflint 第一版只用內建 terraform ruleset | 不用下載 plugin、CI 不用帶 token；aws ruleset 列為下一版 | §7.1 |
 | 13 | `terraform test` 的 run 只有在有 `mock_provider "aws"` 的測試檔裡才可以用 `command = apply` | mock 下的 apply 不碰 AWS，讓 computed 值可以斷言（與 implement-process U5 一致） | §7.1 |
-| 14 | SSM 合約的靜態檢查第一版只做兩條（只有 `ssm-publish` 可宣告 `aws_ssm_parameter`、讀取端不讀 `.value`）；「讀的 key 必須是更早的 stack 發布的」之後再補 | 第一版範圍要小；第三條要解析 HCL 做跨 stack 比對 | §5.6、§7.1 |
+| 14 | SSM 合約的靜態檢查第一版只做兩條（只有 `ssm-publish` 可宣告 `aws_ssm_parameter`；`data "aws_ssm_parameter"` 只能出現在 `ssm-read`，且只讀 `insecure_value`）；「讀的 key 必須是更早的 stack 發布的」之後再補 | 第一版範圍要小；第三條要解析 HCL 做跨 stack 比對 | §5.6、§7.1 |
 | 15 | ECR 預設 `IMMUTABLE`、`scan_on_push = true`、`force_delete = false` | 同一個 tag 不能被覆蓋，部署才可追溯；推上去就掃描；有映像時 destroy 會失敗，不會誤刪 | §5.3 |
 | 16 | ECS Exec 的開關由 IAM stack（現在是 `iam-app`）發布到 SSM，`application` 讀同一個 key | 只有一個地方決定，不會出現 exec 開了卻沒有權限 | §5.4、§5.6 |
-| 17 | 第一版 module 從 5 個變成 8 個，新增 `vpc`、`rds`、`alb`，做出最小三層架構（ALB 在 public，AP 與 DB 在 private） | 使用者決定：沒有網路與資料庫，範本示範不了完整的專案 | §1、§4.7–§4.10 |
+| 17 | 第一版 module 從 5 個變成 8 個，新增 `vpc`、`rds`、`alb`，做出最小三層架構（ALB 在 public，AP 與 DB 在 private） | 使用者決定：沒有網路與資料庫，範本示範不了完整的專案 | §1、§4.7–§4.17 |
 | 18 | `network` stack 預設用 `vpc` module 建立 VPC；客戶自管時改為登記既有 VPC（模式 A）或整個交給客戶（模式 B）。取代決策 7 | 使用者決定；subnet 調整時 SSM key 名稱不變（§5.6） | §5.3、§5.6、§5.8 |
 | 19 | `rds` 支援一般 RDS、Aurora、Aurora Serverless v2 三種型態，由一個變數選擇；RDS Proxy 是 module 內的選項 | 使用者決定 | §4.9 |
-| 20 | `iam` 拆成 `iam-base` 與 `iam-app`，範本從 7 個 stack 變 8 個，順序 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `iam-app` → `loadbalancer` → `application`。`iam-base` 建 execution role、Proxy role（只有 trust）、Enhanced Monitoring role（trust 加 inline policy，只到 `RDSOSMetrics`）；`data` 把 role ARN 傳進 `rds`；`iam-app` 讀 `database.secret_arn`，對 Proxy role 附加讀 secret 的 policy（有 CMK 時加 `kms:Decrypt` 搭配 `kms:ViaService`），並建 task role | Proxy 建立時要 role，role 的權限又要等 secret 存在；module 不建 IAM 的原則沒有例外。Proxy 在 role 尚無權限時能不能建立**未驗證**，兩種結果的對策見 §5.4 | §5.3、§5.4、§7.3 |
+| 20 | `iam` 拆成 `iam-base` 與 `iam-app`，範本從 7 個 stack 變 8 個，順序 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `iam-app` → `loadbalancer` → `application`。`iam-base` 建 execution role、Proxy role（只有 trust）、Enhanced Monitoring role；`data` 把 role ARN 傳進 `rds`；`iam-app` 讀 `database.secret_arn`，用 `iam-role-policy` 對 Proxy role 附加讀 secret 的 policy（決策 28），並建 task role | Proxy 建立時要 role，role 的權限又要等 secret 存在。Proxy 在 role 尚無權限時能不能建立**未驗證**，兩種結果的對策見 §5.4 | §5.3、§5.4、§7.3 |
 | 21 | flow log 送 S3，bucket 建在 `foundation`，不需要 IAM role；範本範例只在正式環境開啟 | 使用者決定 | §4.7、§5.3、§5.11 |
 | 22 | NAT 支援 `none`、`single`、`per_az`；範本範例正式環境 `per_az`、PoC `single` | 使用者決定；project-c uat 關 NAT、prod 每個 AZ 一顆（§5.11 依據） | §4.7、§5.11 |
 | 23 | ALB 沒有憑證時允許只開 HTTP，但 `network` 的 validation 不准 ALB SG 對 `0.0.0.0/0` 開 80，只能開給 CloudFront managed prefix list 或指定 CIDR；有憑證時開 443、80 一律 301、TLS policy 固定 `ELBSecurityPolicy-TLS13-1-2-2021-06` | 使用者決定；明文 HTTP 不能對全網開放 | §4.8、§5.3、§8.4 |
-| 24 | 第一個版本 tag `<module>-v0.1.0` 由人手動打（8 個），manifest 維持登記 `0.1.0`；之後的版本交給 release-please | 使用者決定 | §3.5、`docs/guides/releasing-modules.md` |
+| 24 | 第一版再加 5 個 module，從 8 個變 13 個（決策 28、29 之後再加 2 個，共 15 個）：`kms-key`（CMK、key policy、alias、自動輪替，`foundation` 呼叫）、`ecr-repository`（一個 repository 一次呼叫，`containerimage` 用 `for_each`）、`s3-bucket`（log bucket，`foundation` 建 flow log 與 ALB access log 兩個）、`ssm-read`（跟 `ssm-publish` 配對，`ssm-inputs.tf` 改呼叫它）、`iam-role`（trust 加 inline policy） | 使用者決定：每個 AWS 服務一個 module，stack 只負責呼叫 module | §1、§4.10–§4.14、§5.3、§5.6 |
+| 25 | 「module 不建任何 IAM」改成「只有 `iam-role` module 建 IAM」（決策 28 再放寬為 `iam-role` 與 `iam-role-policy`）；其他 module 仍不建 IAM，範本 stack 也一律透過 IAM module | 使用者決定 | §4.1、§4.14、§5.4、§5.6 S4、§8.1 |
+| 26 | `modules/` 底下的 `.tf` 與 `.tftest.hcl`，所有註解、`description`、`error_message` 一律只用英文，不可中英混雜，禁止任何 icon／emoji；註解只寫程式碼看不出來的原因。`README.md`、`CHANGELOG.md` 不受限制 | 使用者決定 | §4.1、§4.10–§4.14 的介面範例 |
+| 27 | 第一個版本 tag `<module>-v0.1.0` 由人手動打（15 個），manifest 維持登記 `0.1.0`；之後的版本交給 release-please | 使用者決定 | §3.5、`docs/guides/releasing-modules.md` |
+| 28 | 新增 `iam-role-policy` module（只建 `aws_iam_role_policy`，附加到既有 role），維持 RDS Proxy 的兩段式：`iam-base` 用 `iam-role` 建只有 trust 的 Proxy role，`iam-app` 在 secret 存在後用 `iam-role-policy` 附加讀 secret 的 policy，Resource 恰為那個 secret ARN。IAM 規則改成「只有 `iam-role` 與 `iam-role-policy` 建 IAM」；`iam-role-policy` 同樣擋掉 `*` 與 `:*` 動作。不採用命名樣式加 tag 條件的寫法（原 P1 選項 c） | 使用者決定（原待拍板 P1）。Resource 是確切的 ARN，權限最精確；代價是恢復「role 沒權限時能否建立 Proxy」這個未驗證項目，對策見 §5.4 | §4.14、§4.15、§5.4、§5.6 S4、§5.11、§7.3、§8.1 |
+| 29 | SG 做成 `security-group` module，一次呼叫建一組互相引用的 SG 與規則；`network` stack 改成呼叫它，例外清單拿掉 SG。規則一律用獨立的 `aws_vpc_security_group_*_rule` 加 `for_each`，不准 inline。「沒有憑證時 ALB SG 不准對 0.0.0.0/0 開 80」放在 network stack，module 只負責通用的「ingress 對全網開放必須明寫 `allow_internet`」 | 使用者決定（原待拍板 P2）。放置位置的理由見 §4.16 | §4.16、§5.3、§5.6 S4、§8.4 |
+| 30 | `foundation` 的 secret 容器不做成 module，留在例外清單 | 使用者採納建議（原待拍板 P3）：只有一個 resource，包成 module 省不到東西 | §5.3 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 
 | 項目 | 目前的佔位符 | 出現在 |
 |---|---|---|
-| GitHub org | `<org>` | §3.3、§3.6、§4.10、§5.1、§8.7 的 source 範例 |
+| GitHub org | `<org>` | §3.3、§3.6、§4.17、§5.1、§8.7 的 source 範例 |
 | repo 名稱 | `<repo>` | 同上 |
 | CODEOWNERS 的 team slug | `@<org>/platform-team`、`@<org>/core-app-team`、`@<org>/project-app-reps`、`@<org>/fde-team` | §6.3 |
 | state bucket 命名，以及由誰建立 | `<state-bucket>` | §5.5 |
@@ -2427,4 +3124,4 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D14 | 三層架構增補文件：project-c VPC 大小與 NAT 的來源 | VPC CIDR、subnet、NAT 設定在 `project-c-infra/environments/{uat,prod}/network/terraform.tfvars`；CE-1149 的註解在同一份檔與 `uat/network/routes.tf`。interface endpoint 清單確實在 `uat/platform/terraform.tfvars` | 只影響引用路徑 |
 | D15 | 三層架構增補文件：「9,000 RPM 約需 12.2 個 task」 | 報告寫的是「目標 150 則／秒對應 12.2 個 task，落在已驗證的區間之外」，是外推值（`project-a/docs/reports/2026-09-19-first-turn-ttft-cold-provisioning/README.md`） | §5.11 依據表標明是推算 |
 | D16 | 三層架構增補文件：「J7 是 ELB 5xx 那條」 | 本文件原本的編號就是 J4，增補文件寫 J7 是筆誤 | 本次改寫 J4 |
-
+| D17 | （第二輪增補）8 個 module 實作與 design 的差異 | 已回寫到各 module 章節：vpc 移除中間 AZ 時 CIDR 位移、多兩條檢查；rds 的 `[0]` 位址、`<name>-writer`／`<name>-reader-N`、random provider、`pending-reboot` 只用在 `shared_preload_libraries`、validation 較多、`sns_topic_arns` 的 regex 結尾 `.+` 較寬；ecs-service 的 `step[...]`／`scaling[...]` 位址與 key、`service_arn` 取 `.id`、region 從 `cluster_arn` 拆、log driver 多兩個固定選項；ecs-service-alarms 告警集中在 `this[<key>]`；alb ELB 5xx 用 `GreaterThanOrEqualToThreshold`、404 本文 `Not Found`。另外：examples 目錄不是 `basic`（alb 是 `http-only`、`https`，rds 是 `rds`、`aurora-serverless-proxy`），測試依主題拆多檔，§4.1 已放寬；alb 的 listener 與告警、ecs-service-alarms 的告警只帶 `var.tags`、沒有加 `Name`，rds 的告警有加，**各 module 不一致** | 以程式碼為準。兩項列為**待統一**，這次不改程式碼：(1) 會建告警與 listener 的 module 一律在 tags 加 `Name`；(2) `sns_topic_arns` 的 ARN regex 統一成同一條（建議 alb／ecs-service-alarms 的 `[A-Za-z0-9_-]+$` 結尾）。之後一起以 PATCH 版發布 |
