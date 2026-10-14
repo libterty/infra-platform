@@ -1,0 +1,9 @@
+docs/slides/
+.terraform/
+.terraform-*/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.cache/
+modules/**/.terraform.lock.hcl

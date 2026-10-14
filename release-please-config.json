@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "bump-minor-pre-major": true,
+  "separate-pull-requests": true,
+  "packages": {
+    "modules/alb": { "release-type": "terraform-module", "component": "alb" },
+    "modules/ecs-cluster": { "release-type": "terraform-module", "component": "ecs-cluster" },
+    "modules/ecs-service": { "release-type": "terraform-module", "component": "ecs-service" },
+    "modules/ecs-service-alarms": { "release-type": "terraform-module", "component": "ecs-service-alarms" },
+    "modules/rds": { "release-type": "terraform-module", "component": "rds" },
+    "modules/sns-alarm-topic": { "release-type": "terraform-module", "component": "sns-alarm-topic" },
+    "modules/ssm-publish": { "release-type": "terraform-module", "component": "ssm-publish" },
+    "modules/vpc": { "release-type": "terraform-module", "component": "vpc" }
+  }
+}

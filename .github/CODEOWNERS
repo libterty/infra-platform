@@ -1,0 +1,25 @@
+# 團隊與 org 都是佔位符，團隊成立後填入。
+# 同一路徑取最後一條符合的規則，具體路徑寫在後面。
+# 要搭配分支保護的 Require review from Code Owners 才有效。
+
+# 預設：platform team
+*                                         @<org>/platform-team
+
+/modules/                                 @<org>/platform-team
+/.github/                                 @<org>/platform-team
+/scripts/                                 @<org>/platform-team
+/docs/adr/                                @<org>/platform-team
+/release-please-config.json               @<org>/platform-team
+/.release-please-manifest.json            @<org>/platform-team
+
+# 範本：platform team 加專案代表
+/templates/                               @<org>/platform-team @<org>/project-app-reps
+/docs/guides/project-infra-standard.md    @<org>/platform-team @<org>/project-app-reps
+/docs/guides/consuming-modules.md         @<org>/platform-team @<org>/project-app-reps
+
+# 交付：platform team 加 FDE
+/scripts/vendor-modules.sh                @<org>/platform-team @<org>/fde-team
+/docs/guides/delivering-to-customer.md    @<org>/platform-team @<org>/fde-team
+
+# 團隊分工：四方都要看
+/docs/guides/team-roles.md                @<org>/platform-team @<org>/core-app-team @<org>/project-app-reps @<org>/fde-team
