@@ -1,4 +1,9 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  override_data {
+    target = data.aws_caller_identity.current
+    values = { account_id = "111111111111" }
+  }
+}
 
 variables {
   name_prefix = "alpha-dev"
@@ -38,7 +43,7 @@ run "one_profile_per_entry" {
   }
 }
 
-run "tags_reach_every_profile" {
+run "tags_reach_every_profile_with_name" {
   command = plan
 
   variables {
@@ -47,10 +52,10 @@ run "tags_reach_every_profile" {
 
   assert {
     condition = (
-      aws_bedrock_inference_profile.this["chat"].tags == tomap({ Project = "alpha", CostCenter = "llm" }) &&
-      aws_bedrock_inference_profile.this["judge"].tags == tomap({ Project = "alpha", CostCenter = "llm" })
+      aws_bedrock_inference_profile.this["chat"].tags == tomap({ Project = "alpha", CostCenter = "llm", Name = "alpha-dev-chat" }) &&
+      aws_bedrock_inference_profile.this["judge"].tags == tomap({ Project = "alpha", CostCenter = "llm", Name = "alpha-dev-judge" })
     )
-    error_message = "tags must be applied to every profile"
+    error_message = "tags must be applied to every profile, plus Name set to the profile name"
   }
 }
 
@@ -218,4 +223,53 @@ run "name_double_hyphen_rejected" {
   }
 
   expect_failures = [var.profiles]
+}
+
+run "name_tag_without_input_tags" {
+  command = plan
+
+  assert {
+    condition     = aws_bedrock_inference_profile.this["chat"].tags == tomap({ Name = "alpha-dev-chat" })
+    error_message = "Name must be added even when tags is empty"
+  }
+}
+
+run "copy_from_foundation_model_wildcard_rejected" {
+  command = plan
+
+  variables {
+    profiles = { a = { copy_from = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.*" } }
+  }
+
+  expect_failures = [var.profiles]
+}
+
+run "copy_from_inference_profile_wildcard_rejected" {
+  command = plan
+
+  variables {
+    profiles = { a = { copy_from = "arn:aws:bedrock:us-east-1:111111111111:inference-profile/apac.*" } }
+  }
+
+  expect_failures = [var.profiles]
+}
+
+run "copy_from_inference_profile_other_account_rejected" {
+  command = plan
+
+  variables {
+    profiles = { a = { copy_from = "arn:aws:bedrock:us-east-1:222222222222:inference-profile/global.anthropic.claude-sonnet-4-20250514-v1:0" } }
+  }
+
+  expect_failures = [aws_bedrock_inference_profile.this]
+}
+
+run "copy_from_inference_profile_empty_account_rejected" {
+  command = plan
+
+  variables {
+    profiles = { a = { copy_from = "arn:aws:bedrock:us-east-1::inference-profile/global.anthropic.claude-sonnet-4-20250514-v1:0" } }
+  }
+
+  expect_failures = [aws_bedrock_inference_profile.this]
 }

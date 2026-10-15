@@ -30,7 +30,8 @@ module "inference_profile" {
 
 ## 容易出錯的地方
 
-- **`copy_from` 要給完整 ARN，不是 model id。** 只給 `anthropic.claude-...` 或 `apac.anthropic.claude-...` 這種 id 會在 apply 才失敗。module 在 plan 階段只放行 `foundation-model` 與 `inference-profile`（system inference profile）兩種 ARN；`provisioned-model` 與 `application-inference-profile` 都擋。
+- **`copy_from` 要給完整 ARN，不是 model id。** 只給 `anthropic.claude-...` 或 `apac.anthropic.claude-...` 這種 id 會在 apply 才失敗。module 在 plan 階段只放行 `foundation-model` 與 `inference-profile`（system inference profile）兩種 ARN；`provisioned-model` 與 `application-inference-profile` 都擋。ARN 最後一段只收 `[A-Za-z0-9._:-]`，含 `*` 的 ARN 會被擋。
+- **system inference profile 的 ARN 帶的是呼叫端自己的帳號。** `inference-profile/` 的 ARN 帳號欄必須等於目前的帳號（module 用 `aws_caller_identity` 比對，不符時 profile resource 的 precondition 擋下），帳號欄空白也擋；foundation-model ARN 的帳號欄本來就是空的，不受影響。
 - **名稱上限 64 字。** 名稱是 `<name_prefix>-<key>`，超過會在 plan 階段被擋，不用等到 apply。
 - **profile 是 `ACTIVE` 不代表能呼叫。** 模型使用權（Marketplace 訂閱、use case 申請）是逐帳號的設定，這個 module 不管；沒開通的模型，profile 一樣建得起來，要到第一次真實呼叫才失敗。
 
@@ -38,7 +39,7 @@ module "inference_profile" {
 
 - 名稱字元規則照 AWS 文件（`^([0-9a-zA-Z:.][ _-]?)+$`：字母、數字、`:`、`.`，中間可以夾一個空白、`_` 或 `-`，不能連續兩個），**未實測**。
 - system inference profile（例如 `apac.`、`global.` 前綴）會把請求路由到其他 region。呼叫端的 IAM 除了 application inference profile 本身的 ARN，還要允許來源 profile 與 foundation model 的 ARN（foundation model 的 region 欄要用 `*`）。這些權限由範本的 `iam-app` 組，這個 module 不建 IAM。
-- `tags` 套用到每個 profile；拆成本靠的是 tag，要在 Billing 啟用成 cost allocation tag 才會出現在 Cost Explorer。
+- `tags` 套用到每個 profile，另外自動加 `Name`（值是 profile 名稱 `<name_prefix>-<key>`，跟其他 module 一致）；拆成本靠的是 tag，要在 Billing 啟用成 cost allocation tag 才會出現在 Cost Explorer。
 
 ## 刻意不做
 
@@ -53,8 +54,8 @@ module "inference_profile" {
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
 | `name_prefix` | `string` | 無 | 是 | profile 名稱前綴，名稱為 `<name_prefix>-<key>`，總長不得超過 64 字 |
-| `profiles` | `map(object)` | 無 | 是（可以是 `{}`） | key 為 profile 短名。欄位：`copy_from`（必填，foundation model 或 system inference profile 的完整 ARN）、`description`（預設 `null`） |
-| `tags` | `map(string)` | `{}` | 否 | 套用到每個 profile 的 tag，Cost Explorer 依這些 tag 拆模型費用 |
+| `profiles` | `map(object)` | 無 | 是（可以是 `{}`） | key 為 profile 短名。欄位：`copy_from`（必填，foundation model 或 system inference profile 的完整 ARN，不能含 `*`；system inference profile 必須在目前的帳號）、`description`（預設 `null`） |
+| `tags` | `map(string)` | `{}` | 否 | 套用到每個 profile 的 tag，Cost Explorer 依這些 tag 拆模型費用；另外自動加 `Name`（profile 名稱） |
 
 ## 輸出
 
