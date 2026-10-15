@@ -122,17 +122,17 @@ git pull --ff-only
 commit="$(git rev-parse --verify 'HEAD^{commit}')"
 git log -1 --format='%h %s' "$commit"     # 確認是驗收通過的那個 commit
 
-# 2. 要打的 module 從 manifest 讀，不手寫；預期 9 個
+# 2. 要打的 module 從 manifest 讀，不手寫；預期 9 個（變數不叫 modules：zsh 的 modules 是唯讀的內建變數）
 VERSION="0.1.1"
-modules="$(jq -r --arg v "$VERSION" 'to_entries[] | select(.value == $v) | .key | sub("^modules/"; "")' .release-please-manifest.json)"
-echo "$modules" | wc -l                    # 預期 9
+mods="$(jq -r --arg v "$VERSION" 'to_entries[] | select(.value == $v) | .key | sub("^modules/"; "")' .release-please-manifest.json)"
+echo "$mods" | wc -l                       # 預期 9
 
 # 3. 確認舊 tag 還在、新 tag 都還沒有
 git tag --points-at 28a8647 | wc -l        # 預期 19
 git tag -l "*-v${VERSION}"                 # 預期沒有輸出
 
 # 4. 打 tag
-for m in $modules; do
+for m in $(echo "$mods"); do
   test -d "modules/${m}" || { echo "no such module: $m"; continue; }
   git tag -a "${m}-v${VERSION}" -m "${m} v${VERSION}" "$commit"
 done
