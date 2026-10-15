@@ -10,7 +10,7 @@ module 只負責接線，並在 plan 時擋掉名稱與欄位對應寫錯的輸�
 
 ```hcl
 module "knowledge_base" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-knowledge-base?ref=bedrock-knowledge-base-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-knowledge-base?ref=bedrock-knowledge-base-v0.1.1"
 
   name                 = "alpha-dev-docs"
   role_arn             = var.kb_role_arn
