@@ -17,8 +17,9 @@ variable "trust" {
   type = object({
     service_principals = set(string)
     source_account     = optional(string)
+    source_arn         = optional(string)
   })
-  description = "Trust policy. service_principals are AWS service principals such as ecs-tasks.amazonaws.com; source_account adds an aws:SourceAccount condition when set."
+  description = "Trust policy. service_principals are AWS service principals such as ecs-tasks.amazonaws.com; source_account adds an aws:SourceAccount condition when set; source_arn adds an ArnLike aws:SourceArn condition when set (wildcards allowed)."
   validation {
     condition = (
       length(var.trust.service_principals) > 0 &&
@@ -26,6 +27,10 @@ variable "trust" {
       (var.trust.source_account == null ? true : can(regex("^[0-9]{12}$", var.trust.source_account)))
     )
     error_message = "trust needs at least one AWS service principal (no wildcards); source_account must be a 12-digit account ID."
+  }
+  validation {
+    condition     = var.trust.source_arn == null ? true : can(regex("^arn:\\S+$", var.trust.source_arn))
+    error_message = "trust.source_arn must be an ARN starting with arn: and contain no whitespace."
   }
 }
 
