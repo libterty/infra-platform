@@ -1,3 +1,10 @@
+locals {
+  trust_condition = merge(
+    var.trust.source_account == null ? {} : { StringEquals = { "aws:SourceAccount" = var.trust.source_account } },
+    var.trust.source_arn == null ? {} : { ArnLike = { "aws:SourceArn" = var.trust.source_arn } },
+  )
+}
+
 resource "aws_iam_role" "this" {
   name                 = var.name
   description          = var.description
@@ -11,9 +18,7 @@ resource "aws_iam_role" "this" {
         Action    = "sts:AssumeRole"
         Principal = { Service = sort(tolist(var.trust.service_principals)) }
       },
-      var.trust.source_account == null ? {} : {
-        Condition = { StringEquals = { "aws:SourceAccount" = var.trust.source_account } }
-      },
+      length(local.trust_condition) == 0 ? {} : { Condition = local.trust_condition },
     )]
   })
 

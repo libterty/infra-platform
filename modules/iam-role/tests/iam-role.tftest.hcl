@@ -48,6 +48,64 @@ run "source_account_condition" {
   }
 }
 
+run "source_arn_condition" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["bedrock.amazonaws.com"]
+      source_arn         = "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Condition == { ArnLike = { "aws:SourceArn" = "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*" } }
+    error_message = "source_arn must add an ArnLike aws:SourceArn condition"
+  }
+}
+
+run "source_account_and_source_arn_in_one_statement" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["bedrock.amazonaws.com"]
+      source_account     = "111111111111"
+      source_arn         = "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*"
+    }
+  }
+
+  assert {
+    condition = jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Condition == {
+      StringEquals = { "aws:SourceAccount" = "111111111111" }
+      ArnLike      = { "aws:SourceArn" = "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*" }
+    }
+    error_message = "source_account and source_arn must both be conditions of the single trust statement"
+  }
+
+  assert {
+    condition     = length(jsondecode(aws_iam_role.this.assume_role_policy).Statement) == 1
+    error_message = "Trust policy must keep a single statement"
+  }
+}
+
+# Existing callers must get a byte-identical trust policy.
+run "source_account_only_policy_unchanged" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["ecs-tasks.amazonaws.com"]
+      source_account     = "111111111111"
+    }
+  }
+
+  assert {
+    condition     = aws_iam_role.this.assume_role_policy == "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"111111111111\"}},\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"ecs-tasks.amazonaws.com\"]}}],\"Version\":\"2012-10-17\"}"
+    error_message = "Trust policy JSON must not change for callers that only set source_account"
+  }
+}
+
 run "no_condition_without_source_account" {
   command = plan
 
@@ -230,6 +288,32 @@ run "source_account_format_rejected" {
     trust = {
       service_principals = ["ecs-tasks.amazonaws.com"]
       source_account     = "1234"
+    }
+  }
+
+  expect_failures = [var.trust]
+}
+
+run "source_arn_without_arn_prefix_rejected" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["bedrock.amazonaws.com"]
+      source_arn         = "bedrock:ap-northeast-1:111111111111:knowledge-base/*"
+    }
+  }
+
+  expect_failures = [var.trust]
+}
+
+run "source_arn_bare_prefix_rejected" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["bedrock.amazonaws.com"]
+      source_arn         = "arn:"
     }
   }
 
