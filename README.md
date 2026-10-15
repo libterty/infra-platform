@@ -2,9 +2,9 @@
 
 Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，各專案用 `?ref=<module>-v<semver>` 釘版本引用，不再每個專案各寫一套。
 
-第一版做出最小三層架構：ALB 在 public subnet，ECS 服務與資料庫在 private subnet。內容是 15 個 module、1 份 8 個 stack 的專案 infra 範本，以及使用與發版文件。全部只做離線驗證，不做 `plan`／`apply`，也不碰任何 AWS 帳號。
+第一版做出最小三層架構：ALB 在 public subnet，ECS 服務與資料庫在 private subnet。內容是 18 個 module、1 份 8 個 stack 的專案 infra 範本，以及使用與發版文件。全部只做離線驗證，不做 `plan`／`apply`，也不碰任何 AWS 帳號。
 
-目前進度：8 個 module 已完成；另外 7 個 module、專案範本與使用文件依 `docs/design/v1/implement-process.md` 的 Phase 7–10 進行。
+目前進度：15 個 module 已完成；觀測性 3 個 module 與 ecs-service 的 sidecar、專案範本、使用文件依 `docs/design/v1/implement-process.md` 的 Phase 7–10 進行。
 
 ## module
 
@@ -16,8 +16,11 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 | 網路與入口 | `alb` | ALB、listener、ELB 5xx 告警 |
 | 資料 | `rds` | 一般 RDS、Aurora、Aurora Serverless v2，可選 RDS Proxy |
 | 運算 | `ecs-cluster` | Fargate cluster |
-| 運算 | `ecs-service` | Fargate service、autoscaling、Service Connect |
+| 運算 | `ecs-service` | Fargate service、autoscaling、Service Connect、可選 sidecar |
 | 運算 | `ecs-service-alarms` | 服務告警 |
+| 觀測性 | `log-group` | CloudWatch log group：保留天數、KMS、可選 subscription filter |
+| 觀測性 | `log-metric-alarm` | 從 log 產生指標並接告警 |
+| 觀測性 | `xray` | X-Ray sampling rule 與 group |
 | 共用基礎 | `kms-key` | 對稱式 KMS key、key policy、alias |
 | 共用基礎 | `ecr-repository` | ECR repository 與 lifecycle policy |
 | 共用基礎 | `s3-bucket` | log 用的 S3 bucket：封鎖公開存取、加密、生命週期、只允許 TLS |
