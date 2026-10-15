@@ -88,14 +88,16 @@ locals {
     }
   }
 
+  # Without a NAT, 443 can only reach the interface endpoints in the VPC, so the rule says so. Mode none exists only
+  # for a VPC this stack creates, which has a single CIDR. Mode A reports external and keeps 0.0.0.0/0.
   agent_egress_rules = {
     for r, k in local.agent_key : "${k}_out_https" => {
       security_group = k
       type           = "egress"
-      description    = "AWS APIs"
+      description    = local.nat.mode == "none" ? "VPC interface endpoints" : "AWS APIs"
       from_port      = 443
       peer_group     = null
-      cidr_ipv4      = "0.0.0.0/0"
+      cidr_ipv4      = local.nat.mode == "none" ? local.vpc_cidr : "0.0.0.0/0"
       prefix_list_id = null
       allow_internet = false
     }

@@ -1810,6 +1810,134 @@ run "agent_data_access_through_proxy" {
   }
 }
 
+run "agent_egress_vpc_only_without_nat" {
+  command = plan
+
+  variables {
+    vpc            = merge(var.vpc, { nat_mode = "none" })
+    agent_runtimes = { assistant = {} }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  assert {
+    condition = (
+      local.sg_rules["agent_assistant_out_https"].type == "egress" && local.sg_rules["agent_assistant_out_https"].from_port == 443 &&
+      local.sg_rules["agent_assistant_out_https"].cidr_ipv4 == "10.20.0.0/20" && local.sg_rules["agent_assistant_out_https"].allow_internet == false
+    )
+    error_message = "Without a NAT the Runtime 443 egress must be limited to the VPC CIDR, where the interface endpoints are"
+  }
+
+  assert {
+    condition     = alltrue([for k in ["api", "worker"] : local.sg_rules["${k}_out_https"].cidr_ipv4 == "0.0.0.0/0"])
+    error_message = "The NAT mode must not change the service 443 egress"
+  }
+}
+
+run "agent_egress_internet_in_existing_mode" {
+  command = plan
+
+  variables {
+    vpc            = null
+    agent_runtimes = { assistant = {} }
+    existing = {
+      vpc_id = "vpc-0aaaaaaaaaaaaaaaa"
+      subnet_ids = {
+        public = ["subnet-0pub1", "subnet-0pub2"]
+        app    = ["subnet-0app1", "subnet-0app2"]
+        data   = ["subnet-0dat1", "subnet-0dat2"]
+      }
+    }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = data.aws_vpc.existing[0]
+    values = {
+      cidr_block           = "10.50.0.0/16"
+      enable_dns_support   = true
+      enable_dns_hostnames = true
+      cidr_block_associations = [
+        {
+          association_id = "vpc-cidr-assoc-1"
+          cidr_block     = "10.50.0.0/16"
+          state          = "associated"
+        },
+        {
+          association_id = "vpc-cidr-assoc-2"
+          cidr_block     = "100.64.0.0/16"
+          state          = "associated"
+        },
+        {
+          association_id = "vpc-cidr-assoc-3"
+          cidr_block     = "192.168.0.0/16"
+          state          = "disassociated"
+        },
+      ]
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0pub1"]
+    values = {
+      availability_zone = "ap-northeast-1a"
+      cidr_block        = "10.50.0.0/26"
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0pub2"]
+    values = {
+      availability_zone = "ap-northeast-1c"
+      cidr_block        = "10.50.0.64/26"
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0app1"]
+    values = {
+      availability_zone = "ap-northeast-1a"
+      cidr_block        = "10.50.1.0/24"
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0app2"]
+    values = {
+      availability_zone = "ap-northeast-1c"
+      cidr_block        = "10.50.2.0/24"
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0dat1"]
+    values = {
+      availability_zone = "ap-northeast-1a"
+      cidr_block        = "10.50.5.0/27"
+    }
+  }
+
+  override_data {
+    target = data.aws_subnet.existing["subnet-0dat2"]
+    values = {
+      availability_zone = "ap-northeast-1c"
+      cidr_block        = "10.50.5.32/27"
+    }
+  }
+
+  assert {
+    condition     = local.nat.mode == "external" && local.sg_rules["agent_assistant_out_https"].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "In mode A the NAT belongs to the customer, so the Runtime 443 egress must stay 0.0.0.0/0"
+  }
+}
+
 run "publishes_agent_data_access" {
   command = plan
 
