@@ -81,7 +81,7 @@ variable "kms_key_arn" {
   description = "Customer managed key ARN for the gateway. null uses an AWS owned key."
 
   validation {
-    condition     = var.kms_key_arn == null ? true : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-f-]{36}$", var.kms_key_arn))
+    condition     = var.kms_key_arn == null ? true : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
     error_message = "kms_key_arn must be a KMS key ARN (arn:...:kms:<region>:<account>:key/<key id>); aliases and bare key ids are not accepted."
   }
 }
