@@ -15,9 +15,9 @@ infra/
     ├── network/          # VPC（或登記既有 VPC）、interface endpoint、所有 security group
     ├── iam-base/         # ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role
     ├── data/             # 資料庫（可選 Proxy）
-    ├── iam-app/          # Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關
+    ├── iam-app/          # Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關、追蹤開關
     ├── loadbalancer/     # ALB、listener
-    └── application/      # ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣
+    └── application/      # ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣、ADOT collector sidecar
 ```
 
 每個 stack 都有同一組檔案：
@@ -42,12 +42,12 @@ infra/
 |---|---|---|---|
 | 1 | `foundation` | 無 | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
 | 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` |
-| 3 | `network` | foundation、containerimage | VPC、subnet、security group、`nat` 與三個決定點，見下表 |
+| 3 | `network` | foundation、containerimage | VPC、subnet、security group、`nat`、`interface_endpoints` 與三個決定點，見下表 |
 | 4 | `iam-base` | foundation、containerimage（含 `mirrored_images` 與各 mirror 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | foundation、network、iam-base | `database` |
-| 6 | `iam-app` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>` |
+| 6 | `iam-app` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing` |
 | 7 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
-| 8 | `application` | 前七個 | 不發布 |
+| 8 | `application` | 前七個（`iam-app/tracing` 一律讀；有服務被追蹤時才另讀 `network/nat`、`network/interface_endpoints`，映像用 mirror 時再讀 `containerimage/mirrored_images` 與 `ecr_mirror_adot_collector_url`） | 不發布 |
 
 destroy 前要先處理三件事，否則會失敗：把 ALB 與資料庫的 `deletion_protection` 改成 `false` 並 apply；清空 ECR repository（`force_delete = false`）；清空兩個 log bucket（`force_destroy = false`）。
 
@@ -98,6 +98,7 @@ terraform plan -var-file=envs/dev.tfvars
 | `network/db_proxy` | `network` 的 `data_stores.db.proxy` | `data` | `enabled` 為 true 才把 `proxy` 傳給 `rds` |
 | `network/data_access` | `network` 各服務的 `data_access` | `iam-app`、`application` | 名單上的服務，task role 才能讀資料庫 secret，也才拿得到 `DB_*` 環境變數 |
 | `iam-app/ecs_exec_<service>` | `iam-app` 的 `ecs_exec_services` | `application` | 直接當 `enable_execute_command`，`application` 自己沒有這個變數 |
+| `iam-app/tracing` | `iam-app` 的 `tracing` | `application` | 名單上的服務，task role 才有 X-Ray 的四個動作，也才會掛 ADOT collector sidecar 與 OTEL 環境變數；`application` 自己沒有追蹤開關，只有 collector 映像的 `adot_collector`。名單必須是 `containerimage/services` 的子集 |
 
 ## SSM 合約
 
@@ -116,6 +117,7 @@ terraform plan -var-file=envs/dev.tfvars
 | `network` | `subnet_ids_<tier>`、`subnet_cidrs_<tier>` | StringList | tier 至少有 `public`、`app`、`data`，名稱不可改 |
 | `network` | `sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id` | String | `sg_db_proxy_id` 一律發布，沒開 Proxy 時它沒有任何規則 |
 | `network` | `sg_vpce_id` | String | 有 interface endpoint 時才發布，下游目前不讀 |
+| `network` | `interface_endpoints` | String（JSON 陣列） | 已建的 interface endpoint 服務名稱（已排序），沒有時 `[]`。`application` 在有服務被追蹤、而且 `nat.mode` 是 `none` 時，檢查它含 `xray`、`ecr.api`、`ecr.dkr` |
 | `network` | `nat` | String（JSON） | `{"mode":"per_az","ids":["nat-..."]}`；`none` 時 `ids` 為 `[]`；登記既有 VPC（模式 A）時是 `{"mode":"external","ids":[]}` |
 | `network` | `alb_https`、`db_proxy` | String（JSON） | `{"enabled":true}` |
 | `network` | `data_access` | String（JSON） | `{"db":["api","worker"]}` |
@@ -123,6 +125,7 @@ terraform plan -var-file=envs/dev.tfvars
 | `data` | `database` | String（JSON） | 見下 |
 | `iam-app` | `role_<service>_task_arn` | String | task role ARN |
 | `iam-app` | `ecs_exec_<service>` | String（JSON） | `{"enabled":false}` |
+| `iam-app` | `tracing` | String（JSON 陣列） | 要追蹤的服務名稱（已排序），沒有時 `[]`。SSM 不收空的 StringList，所以用 JSON |
 | `loadbalancer` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` | String | 有憑證時 `listener_arn` 是 HTTPS listener，否則是 HTTP；`listener_protocol` 是 `HTTPS` 或 `HTTP` |
 
 `data/database` 有資料庫時：
@@ -144,6 +147,25 @@ terraform plan -var-file=envs/dev.tfvars
 ```
 
 沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個，有沒有開 Proxy 與資料庫型態由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
+
+## 開啟 X-Ray 追蹤
+
+範本預設不開追蹤：`iam-app` 的 `tracing` 是空集合，沒有服務被追蹤時，`application` 的 task definition 沒有 sidecar、沒有 OTEL 環境變數，task role 沒有任何 `xray:` 動作。開法分三步，順序就是 apply 順序。
+
+1. **`iam-app`：決定哪些服務要追蹤。** 在 `envs/<env>.tfvars` 寫 `tracing = ["api"]`（必須是 `containerimage/services` 裡的名稱，寫錯 plan 會停）。被列的服務，task role 拿到 `xray:PutTraceSegments`、`xray:PutTelemetryRecords`、`xray:GetSamplingRules`、`xray:GetSamplingTargets`（X-Ray 只支援 `Resource = "*"`），沒列的服務一個都沒有。apply 後發布 `iam-app/tracing`。
+2. **`application`：指定 collector 映像。** 在 `envs/<env>.tfvars` 加 `adot_collector = { tag = "v0.43.1", source = "public" }`。`tag` 必須明確，不接受 `latest`；有服務被追蹤時這個變數必填，沒有被追蹤時可以不寫。apply 後，被追蹤的服務多一個 `adot-collector` sidecar（`essential = false`，掛了不會讓 task 重啟），主 container 多 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` 與 `OTEL_SERVICE_NAME=<project>-<env>-<service>`；應用程式的 OTel SDK 讀這兩個變數即可。collector 設定在 `application/adot-collector.yaml`，要改就改這個檔。
+3. **沒有 NAT 時，改用 mirror 加 endpoint。** `network/nat` 的 `mode` 是 `none` 時，task 拉不到 ECR Public，也送不出 trace，所以 `application` 要求同時滿足：
+   - `adot_collector.source = "mirror"`，而且 `containerimage` 的 `mirrored_images` 含 `adot-collector`。先 apply `containerimage` 與 `iam-base`，把映像複製進 `<project>-<env>-mirror-adot-collector`（用同一個 `tag`），步驟見 [`docs/guides/observability.md`](../../../docs/guides/observability.md)。
+   - `network` 的 `interface_endpoints.services` 含 `xray`、`ecr.api`、`ecr.dkr`，apply `network` 之後才會發布到 `interface_endpoints`。
+   - 不符合時 `application` 的 plan 會停，錯誤訊息會列出缺哪一項。
+
+注意事項：
+
+- 客戶自管 VPC（模式 A，`nat.mode` 是 `external`）：NAT 由客戶負責，範本不檢查。客戶 VPC 沒有 NAT 時，要自己準備 mirror 映像、三個 interface endpoint，並且 **VPC 要有 S3 gateway endpoint**（ECR 映像的 layer 存在 S3，範本不管客戶 VPC 的 gateway endpoint）。自建 VPC 的 `modules/vpc` 預設就有 S3 gateway endpoint，不用另外處理。
+- 服務的 security group 本來就開 443 對外，endpoint 的 security group 對 VPC CIDR 開 443，追蹤不需要新的 security group 規則。
+- 抽樣規則（`application` 的 `xray_sampling_rules`、`xray_groups`）跟追蹤開關無關，維持原樣；規則的 `service_name` 要寫 `<project>-<env>-<service>`，跟 `OTEL_SERVICE_NAME` 一致。sampling rule 只對向 X-Ray 拉規則的 SDK 或 collector 生效，條件見 observability 指南。
+- 示範：`application/envs/examples/high.tfvars` 示範了 `adot_collector` 與抽樣規則。
+- 整套接線都沒有在真實帳號驗證過，見下面〈驗證〉的清單。
 
 ## 依流量調整規格
 
@@ -209,6 +231,8 @@ mock 驗不到的事（IAM 實際權限、AWS API 的參數檢查、資源配額
 - `kms-key` 給 CloudWatch Logs、CloudWatch、SNS 的 key policy 條件。
 - Enhanced Monitoring 的 inline policy 是否足夠（`RDSOSMetrics` 有沒有資料）。
 - X-Ray sampling rule 是否被 SDK 或 collector 的 remote sampling 採用。
+- 範本接好的 ADOT collector（`application/adot-collector.yaml`）在真實 task 裡是否 healthy、X-Ray console 是否看得到 trace；`v0.43.1` 這個 tag 在 ECR Public 上是否存在。
+- 沒有 NAT 時，mirror 映像加 `ecr.api`、`ecr.dkr`、`xray` endpoint 與 S3 gateway endpoint 是否真的拉得到映像、送得出 trace。
 - 範本的 prefix list ID（`pl-58a04531`，CloudFront origin-facing，ap-northeast-1）請以你的 region 實際查到的值為準。
 
 ## 已知風險

@@ -36,7 +36,8 @@ locals {
         security_group_ids = [module.in_services.strings["sg_${local.service_key[s]}_id"]]
       }
 
-      environment = contains(local.db_readers, s) ? local.db_environment : {}
+      environment = merge(contains(local.db_readers, s) ? local.db_environment : {}, local.tracing_environment[s])
+      sidecars    = local.tracing_sidecars[s]
       secrets     = { APP_SECRET = module.in.strings["app_secret_arn"] }
 
       # The flag comes from iam-app, the same source as the task role permissions.
@@ -82,6 +83,7 @@ module "service" {
   task_role_arn          = each.value.task_role_arn
   network                = each.value.network
   environment            = each.value.environment
+  sidecars               = each.value.sidecars
   secrets                = each.value.secrets
   enable_execute_command = each.value.enable_execute_command
   load_balancer          = each.value.load_balancer

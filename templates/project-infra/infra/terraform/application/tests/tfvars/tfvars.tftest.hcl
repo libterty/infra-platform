@@ -48,6 +48,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/subnet_ids_app"]
   values = { insecure_value = "subnet-0app1,subnet-0app2" }
 }
@@ -112,5 +117,14 @@ run "tfvars_scale_in_production" {
   assert {
     condition     = var.env != "prod" || alltrue([for s in values(var.services) : s.max_capacity != null && s.desired_count >= 2])
     error_message = "Production services must autoscale and run at least two tasks"
+  }
+}
+
+run "tfvars_collector_setting_is_valid_when_given" {
+  command = plan
+
+  assert {
+    condition     = var.adot_collector == null || (var.adot_collector.tag != "latest" && contains(["public", "mirror"], var.adot_collector.source))
+    error_message = "A tfvars file that sets adot_collector must use an explicit tag and a known source"
   }
 }

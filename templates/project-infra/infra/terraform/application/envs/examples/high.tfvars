@@ -1,4 +1,4 @@
-# High traffic: wider autoscaling range, 1% sampling, health checks dropped. Copy to envs/<env>.tfvars and adjust;
+# High traffic: wider autoscaling range, 1% sampling, health checks dropped, collector image for tracing. Copy to envs/<env>.tfvars and adjust;
 # not applied by itself. The sampling rate has no measured basis (design section 5.11).
 project             = "alpha"
 env                 = "prod"
@@ -25,6 +25,10 @@ services = {
     max_capacity   = 12
   }
 }
+
+# Tracing is switched on in iam-app (its tracing list), not here; this only says which collector image the traced
+# services run. The tag is explicit, never latest. Use source = "mirror" when network has no NAT.
+adot_collector = { tag = "v0.43.1", source = "public" }
 
 xray_sampling_rules = {
   health = { priority = 100, fixed_rate = 0, reservoir_size = 0, url_path = "/health" }

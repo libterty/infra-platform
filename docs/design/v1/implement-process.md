@@ -8,7 +8,7 @@
 
 第一版是 19 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc-interface-endpoints` 建，`vpc` 只建 `aws_default_security_group`（design §1、§4.1、§5.6 S4）。
 
-分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 41 個 commit，剩下 1 個（Phase 9；Phase 10 有修正才多一個），合計 42 個。全量 `scripts/validate.sh`：52 個目錄通過（19 個 module、它們的 example、8 個 stack，約 9 分鐘）。
+分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 46 個 commit，剩下 Phase 10（有修正才多一個）。全量 `scripts/validate.sh`：52 個目錄通過（19 個 module、它們的 example、8 個 stack，約 9 分鐘）。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
@@ -29,7 +29,8 @@
 | — | 兩個 IAM module 加上「Allow 不准搭配 `NotResource`」 | 已完成（計畫外） | 2：`e6655ec`、`b51b79e` |
 | — | 記錄 Phase 7 完成、更新 Phase 8 計畫 | 已完成（計畫外） | 1：`4d4865f` |
 | 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 已完成：8 個 stack 共 317 個測試，全量 52 個目錄全過（約 9 分鐘） | 1：`5858bf4` |
-| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 執行中 | 1 |
+| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`91bed0f` |
+| 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`89b5b71`、`0b3d431`、`a8c5c1d`、`feat(template): wire x-ray tracing into the template` |
 | 10 | 整體驗收 | 待執行 | 有修正才 1 |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
@@ -523,7 +524,7 @@ scripts/validate.sh                                                # 全量
 
 **完成定義**：design §7.1 表中 `log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` 每一項都有對應的 run 且通過；`ecs-service` 既有 67 個 run 不改一行仍全部通過；`every_alarm_notifies_both_ways` 與 `no_sidecars_keeps_single_container` 經反向驗證確認有效。主 agent 每驗完一個 module 就 commit 一次。
 
-**不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。
+**不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。其中 ADOT sidecar 與 X-Ray 權限後來被 design 決策 36 推翻，範本已接好（預設關閉），見「Phase 9 補充」。
 
 ### Phase 7F：拆出 `vpc-interface-endpoints`（已完成）
 
@@ -824,7 +825,7 @@ scripts/validate.sh
 | `docs/guides/consuming-modules.md` | 怎麼引用（`git::https://github.com/<org>/<repo>.git//modules/<name>?ref=<name>-v<semver>`）、私有 repo 的 git 認證、Git source 只能 `ref` 釘死、從範本複製出去時把相對路徑改成 git source（一個 module 一行的手改方式，加一次改完的指令）、升版、讀 CHANGELOG、升級到真 registry 時消費端改什麼 |
 | `docs/guides/project-infra-standard.md` | 8 個 stack 與 apply 順序、stack 只呼叫 module（例外清單）、iam 為什麼拆兩個、單一決定點、SSM 合約（含 tier 調整時 key 怎麼變）、流量規格對照表與 IP 規劃公式、環境切換四件事、客戶自管模式 A／B |
 | `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
-| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 發布 `tracing_<service>` 當單一決定點、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證），collector 照 example 寫 `essential = false` 並說明理由；interface endpoint 的 `xray` 服務由 network 的 `interface_endpoints` 加 |
+| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 的 `tracing` 當單一決定點（原規劃是 `tracing_<service>`，決策 36 之後改成範本已接好、單一個 `tracing` 清單）、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證），collector 照 example 寫 `essential = false` 並說明理由；interface endpoint 的 `xray` 服務由 network 的 `interface_endpoints` 加 |
 | `docs/guides/delivering-to-customer.md` | FDE：`vendor-modules.sh`、`terraform providers mirror`（給客戶環境用，不是本 repo 的驗證流程）、客戶自管資源的 SSM 合約、客戶環境差異怎麼回報 |
 | `docs/guides/team-roles.md` | 四個團隊的責任與交接點，對到 CODEOWNERS |
 | `scripts/vendor-modules.sh` | 只做 `git::...?ref=<tag>` → vendored 相對路徑（design §8.7）。tag 的 module 名稱清單從 `modules/` 目錄讀 |
@@ -854,6 +855,29 @@ git tag                                            # 預期沒有輸出：tag �
 **完成定義**：六份文件結論放最前面、指令可照抄；暫存演練輸出貼在回報裡。主 agent 驗證後 commit。
 
 **不在本次範圍**：core app team 的 repo；HCP Terraform；實際打 tag。
+
+### Phase 9 補充：客戶 repo 驗證、mirror repository、X-Ray 追蹤接進範本
+
+Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Phase 10 之前做完，共 4 個 commit。
+
+| commit | 內容 | 影響的測試 |
+|---|---|---|
+| `89b5b71` `docs(template): mark outputs as human-only and set D21 release levels` | 8 份 `outputs.tf` 檔頭註明下游不讀、跨 stack 只走 SSM；D21 依 §3.5 分級（`ecs-service` 是 PATCH，`rds` 與 `vpc-interface-endpoints` 是 MINOR） | 無 |
+| `0b3d431` `fix(scripts): validate vendored modules and stacks in customer repos` | `scripts/validate.sh` 能在客戶 repo 裡驗證 vendored 的 module 與 stack（路徑對照到本 repo 的規則），`delivering-to-customer.md` 對應補上 | 沒有改任何 module 或 stack 的測試 |
+| `a8c5c1d` `feat(template): add mirror repositories for external images` | `containerimage` 新增 `mirrored_images`（每個名稱一個 `<project>-<env>-mirror-<name>` repository，發布 `mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn`）；`iam-base` 讀它，execution role 的 ECR 拉取權限涵蓋 mirror；`observability.md` 補上沒有 NAT 時的做法 | `containerimage`、`iam-base` 的測試增加 |
+| `feat(template): wire x-ray tracing into the template` | X-Ray 追蹤完整接進範本，預設關閉，見下 | `iam-app` 30 到 37、`application` 48 到 70、`network` 90 到 97 |
+
+**本次的範圍**：使用者要求「第一版就讓 X-Ray 能完整用起來」。這推翻 design 決策 32 的後半句（ADOT、collector 設定、task role 的 X-Ray 權限由專案自己決定）與 §4.20「範本預設不開追蹤，放進範本會讓每個專案都背一個預設關閉的 sidecar」的理由；新增決策 36。`modules/` 一個檔案都沒動：`ecs-service` 的 `sidecars` 介面夠用。
+
+| stack | 變更 |
+|---|---|
+| `iam-app` | 新增 `var.tracing`（`set(string)`，預設 `[]`）、`terraform_data.tracing_services_are_known`（必須是 `containerimage/services` 的子集）、被追蹤服務的 task role 多一個 `tracing` policy（四個 `xray:` 動作，`Resource = "*"`）、發布 `tracing`（JSON 陣列的 String，已排序，沒有時 `[]`） |
+| `application` | 新增 `var.adot_collector = { tag, source }`（`tag` 不得 `latest`、`source` 只收 `public`、`mirror`）、`adot-collector.yaml`、`tracing.tf`（讀 `iam-app/tracing`，被追蹤的服務加 collector sidecar 與兩個 OTEL 環境變數；沒追蹤時第二個 `ssm-read` 的 key 清單是空的）、四個 precondition（有追蹤要有 `adot_collector`、mirror 模式 `containerimage` 要有 `adot-collector`、沒有 NAT 要用 mirror、沒有 NAT 要有 `xray`／`ecr.api`／`ecr.dkr` endpoint） |
+| `network` | 新增發布 `interface_endpoints`（JSON 陣列的 String，已排序，沒有時 `[]`）；不動 SG（服務 SG 本來就有 443 egress，endpoint SG 對 VPC CIDR 開 443）；不動 S3 gateway endpoint（`modules/vpc` 預設已有） |
+
+**驗證方式**：TDD。先寫會紅的測試再實作；實作改壞後測試確實轉紅（漏一個 X-Ray 動作、所有服務都加 policy、所有服務都掛 collector、放行 `latest`、不檢查 mirror、沒有 NAT 放行 public 映像、漏檢查 `xray` endpoint、`interface_endpoints` 永遠發布 `[]`）。每個有改的 stack 都更新了 `envs/*.tfvars`、`tests/tfvars`，有 examples 的 stack 更新 `tests/examples`；`application/envs/examples/high.tfvars` 示範 `adot_collector`。範本預設不開追蹤。
+
+**驗不到、留給 §7.3 第 13 項的**：collector 在真實 task 裡是否 healthy、trace 是否進 X-Ray、`v0.43.1` 在 ECR Public 是否存在、沒有 NAT 時 mirror 映像加 endpoint 是否拉得到映像與送得出 trace、remote sampling 是否生效。
 
 ### Phase 10：整體驗收
 

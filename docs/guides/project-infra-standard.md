@@ -91,7 +91,7 @@ Proxy role 在還沒有讀 secret 權限時，AWS 會讓 Proxy 建立失敗，�
 
 兩個以上的 stack 都要知道的開關，只由上游一個 stack 決定並發布到 SSM，下游讀同一個 key，並用 precondition 檢查自己的設定跟它一致。不一致時 plan 就停，不會 apply 出「SG 以為有 HTTPS、ALB 實際只開 HTTP」這種組合。
 
-範本有五個：`containerimage/services`、`network/alb_https`、`network/db_proxy`、`network/data_access`、`iam-app/ecs_exec_<service>`。各自誰決定、誰讀、怎麼檢查，見 `infra/README.md`〈單一決定點〉。
+範本目前有這些：`containerimage/services`、`containerimage/mirrored_images`、`network/alb_https`、`network/db_proxy`、`network/data_access`、`iam-app/ecs_exec_<service>`、`iam-app/tracing`。各自誰決定、誰讀、怎麼檢查，見 `infra/README.md`〈單一決定點〉。
 
 自己加開關時照同一個做法：
 
@@ -151,7 +151,7 @@ module "in_services" {
 | 調整 | 發布端的變化 | 下游要改什麼 |
 |---|---|---|
 | AZ 從 2 個加到 3 個 | `azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>` 清單變長，key 名稱不變 | 不用改程式碼，重新 apply（ECS service 會滾動部署；資料庫的 subnet group 應該是就地更新，未驗證） |
-| 改 NAT 模式 | `nat` 的 JSON 內容變 | 不用改，沒有 stack 依賴 NAT 的 id |
+| 改 NAT 模式 | `nat` 的 JSON 內容變 | 不用改 NAT 的 id（沒有 stack 讀它）；`application` 只在有服務被追蹤時讀 `mode`，改成 `none` 前要先確認 mirror 映像與 `xray`、`ecr.api`、`ecr.dkr` endpoint 已備好，否則 plan 會停 |
 | 新增一個 tier（例如 `batch`） | 多發布 `subnet_ids_batch`、`subnet_cidrs_batch` | 只有要用它的 stack 在 `ssm-inputs.tf` 加讀取 |
 | 改既有 tier 的 CIDR 大小 | 清單內容變，subnet 會重建 | 不用改程式碼，但上面的 ENI 要先清空；實務上用新增 tier 再遷移 |
 | 改 tier 名稱 | — | 不允許。`public`、`app`、`data` 寫進了合約 |
@@ -201,7 +201,7 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 |---|---|---|
 | 適用 | 客戶有既有 VPC 規範，但讓我們開 SG | 客戶的網路團隊連 SG 都要自己管 |
 | 我們怎麼做 | `network` 的 tfvars 不給 `vpc`，改給 `existing = { vpc_id, subnet_ids }`。stack 用 data source 確認 id 存在、檢查 VPC 開了 DNS support 與 DNS hostnames，SG 與 interface endpoint 仍由我們建；路由、IGW、NAT、gateway endpoint、default SG 一律不碰 | 該環境不放這個 stack 的 `envs/<env>.tfbackend` 與 `envs/<env>.tfvars`，沒有檔案就無法 init |
-| 誰發布 `network/*` | `network` stack（`nat` 發布 `{"mode":"external","ids":[]}`） | 客戶照 SSM 合約表發布全部 key，包含 `sg_*` 與三個 JSON 決定點 |
+| 誰發布 `network/*` | `network` stack（`nat` 發布 `{"mode":"external","ids":[]}`） | 客戶照 SSM 合約表發布全部 key，包含 `sg_*`、三個 JSON 決定點與 `interface_endpoints`（`application` 在追蹤且沒有 NAT 時才讀） |
 | 下游 | 不變 | 不變 |
 
 `foundation`、`containerimage`、`iam-base`、`data`、`iam-app` 也可以照模式 B 交給客戶。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶。

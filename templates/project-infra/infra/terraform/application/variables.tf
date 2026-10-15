@@ -71,3 +71,22 @@ variable "xray_groups" {
   }))
   default = {}
 }
+
+variable "adot_collector" {
+  description = "ADOT collector image, used only for the services that iam-app traces; there is no tracing switch in this stack. tag must be explicit (never latest). source public pulls from ECR Public and needs a NAT; mirror pulls from the mirror repository adot-collector of containerimage (mirrored_images) and is required when network has no NAT. Required once iam-app traces any service."
+  type = object({
+    tag    = string
+    source = string
+  })
+  default = null
+
+  validation {
+    condition     = var.adot_collector == null ? true : can(regex("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$", var.adot_collector.tag)) && lower(var.adot_collector.tag) != "latest"
+    error_message = "adot_collector.tag must be an explicit image tag, not latest."
+  }
+
+  validation {
+    condition     = var.adot_collector == null ? true : contains(["public", "mirror"], var.adot_collector.source)
+    error_message = "adot_collector.source must be public or mirror."
+  }
+}

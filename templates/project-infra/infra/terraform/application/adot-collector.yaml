@@ -1,0 +1,30 @@
+# OTLP in, X-Ray out. Mounted as AOT_CONFIG_CONTENT by tracing.tf; the config is not a secret.
+extensions:
+  health_check: {}
+  awsproxy: {}
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+    spike_limit_mib: 50
+  filter/health:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["url.path"] == "/health"'
+        - 'attributes["http.target"] == "/health"'
+  batch: {}
+exporters:
+  awsxray: {}
+service:
+  extensions: [health_check, awsproxy]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/health, batch]
+      exporters: [awsxray]

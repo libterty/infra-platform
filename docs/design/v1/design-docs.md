@@ -2288,7 +2288,7 @@ group 本身不省錢，它的用途是把錯誤與慢請求集中看、或開 I
 
 ### 4.20 `ecs-service` 的 `sidecars`（MINOR）
 
-**用途**：讓一個 task 裡除了主 container `app` 之外，再放 sidecar（例如 ADOT collector、log router）。介面通用，**不寫死 ADOT**；要不要用 ADOT、collector 怎麼設定、task role 給哪些權限，都由專案在 `application` 與 `iam-app` stack 自己決定。
+**用途**：讓一個 task 裡除了主 container `app` 之外，再放 sidecar（例如 ADOT collector、log router）。介面通用，**module 不寫死 ADOT**。範本的 `iam-app`、`application`、`network` 已經把 ADOT collector 接好（task role 的 X-Ray 權限、collector 設定與映像、沒有 NAT 時的檢查），預設關閉，只有 `iam-app` 的 `tracing` 列了服務才會建立（§5.3「追蹤」、決策 36）。
 
 **版本**：新增有預設值、預設維持原行為的變數，屬於 MINOR（§3.5）。`ecs-service` 還沒打過第一個 tag（第一個 tag 在整體驗收後手動打，§3.5），所以這項併進第一個版本 `v0.1.0`；如果在打 tag 之後才加，就是 `v0.2.0`。
 
@@ -2348,7 +2348,7 @@ variable "sidecars" {
 | 位置 | 內容 | 為什麼放這裡 |
 |---|---|---|
 | `modules/ecs-service/examples/adot-sidecar/` | 只示範 `sidecars` 怎麼填一個 ADOT collector：映像、`essential = false`（collector 掛掉不應該連帶讓整個 task 重啟、中斷服務；project-c 的寫法是 `true`，這裡刻意不同）、`AOT_CONFIG_CONTENT` 用 `environment` 帶入 collector 設定、health check、`app_depends_on = "START"`、主 container 的 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317` | module 的 example 會被 CI 跑 `init -backend=false` 與 `validate`，寫法壞了會被抓到 |
-| `docs/guides/observability.md`（新增） | 整套做法：collector 設定檔範例（參考 project-c 的 `otel-collector-config.yaml`：OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 要給 task role 的 X-Ray 與 CloudWatch 權限（`xray:PutTraceSegments`、`PutTelemetryRecords`、`GetSamplingRules`、`GetSamplingTargets`，只支援 `Resource = "*"`）、`iam-base` 要給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配、「要不要追蹤」用 `iam-app` 發布 `tracing_<service>` 當單一決定點 | 牽涉三個 stack，範本的 stack 預設不開追蹤；放進範本會讓每個專案都背一個預設關閉的 sidecar。guide 不會被 CI 驗證，所以 HCL 片段要跟 module example 對照 |
+| `docs/guides/observability.md`（新增） | 範本已接好之後怎麼開：`iam-app` 的 `tracing`、`application` 的 `adot_collector`、沒有 NAT 時的 mirror 與 endpoint；collector 設定檔（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter、`health_check` extension）、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、log 告警 | 牽涉三個 stack，但接線都在範本裡，預設關閉（決策 36；原本決策 32 把這些留給專案、範本不放，理由是預設關閉的 sidecar 每個專案都要背，使用者要第一版就能用，所以改成範本已接好、預設關閉）。guide 不會被 CI 驗證，所以 HCL 片段要跟 module example 與範本對照 |
 
 collector 設定用 `environment` 帶，不學 project-c 存成 SSM parameter 再用 `secrets` 讀：設定檔不是機密，而範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（§5.6 S2）。設定檔太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
 
@@ -2691,6 +2691,7 @@ infra/
         ├── ssm-inputs.tf           # 讀上游 stack 的 SSM key（清單寫死在這裡）
         ├── ssm-outputs.tf          # module "ssm_publish"，發布給下游的 key
         ├── <resource>.tf           # 例：ecs.tf、alarms.tf；一個主題一個檔
+        ├── adot-collector.yaml     # ADOT collector 設定，tracing.tf 用 file() 讀入；只有 iam-app 的 tracing 列了服務才會用到
         ├── outputs.tf              # 給人看的輸出（下游不讀 output，只讀 SSM）
         ├── tests/
         │   └── application.tftest.hcl   # mock_provider "aws" + override_data 餵 SSM 值
@@ -2748,12 +2749,12 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 |---|---|---|---|---|---|---|---|
 | 1 | `foundation` | 告警 SNS、專案共用 KMS key、Secrets Manager secret 容器（不含值）、flow log bucket、ALB access log bucket | `kms-key`、`sns-alarm-topic`、`s3-bucket` ×2、`ssm-publish`（另有一個原生 resource，見下） | 專案 app team；客戶自管時為客戶 | 低 | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
 | 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` |
-| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、interface endpoint、ALB／各服務／DB／Proxy 的 SG | `vpc`、`vpc-interface-endpoints`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
+| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、interface endpoint、ALB／各服務／DB／Proxy 的 SG | `vpc`、`vpc-interface-endpoints`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`interface_endpoints`、`alb_https`、`db_proxy`、`data_access` |
 | 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | `iam-role` ×3、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | `rds`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`network`、`iam-base` | `database`（JSON） |
-| 6 | `iam-app` | Proxy role 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低～中（新增服務、調權限時） | `foundation`、`containerimage`、`network`、`iam-base`、`data` | `role_<service>_task_arn`、`ecs_exec_<service>` |
+| 6 | `iam-app` | Proxy role 讀 secret 的 policy、各服務 task role、ECS Exec 開關、追蹤開關（X-Ray 權限） | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低～中（新增服務、調權限時） | `foundation`、`containerimage`、`network`、`iam-base`、`data` | `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing` |
 | 7 | `loadbalancer` | ALB、listener、ELB 5xx 告警、WAF 關聯 | `alb`、`ssm-read`、`ssm-publish` | 專案 app team | 低～中 | `foundation`、`network` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` |
-| 8 | `application` | ECS cluster、service、autoscaling、服務告警、dashboard、log 告警、X-Ray 抽樣 | `ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`log-metric-alarm`、`xray`、`ssm-read` | 專案 app team | 高 | 前七個 | —（不需要時不發布） |
+| 8 | `application` | ECS cluster、service、autoscaling、服務告警、dashboard、log 告警、X-Ray 抽樣、ADOT collector sidecar（照 `iam-app/tracing`） | `ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`log-metric-alarm`、`xray`、`ssm-read` | 專案 app team | 高 | 前七個 | —（不需要時不發布） |
 
 **`foundation` 的兩個 log bucket**：都用 `s3-bucket` module（§4.12）建，分成兩個是因為 bucket policy 不同。
 
@@ -2882,6 +2883,16 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 
 **觀測性 module 放在哪裡**：`log-metric-alarm` 與 `xray` 放在 `application`。告警的 log pattern、sampling rule 的 `service_name` 都跟服務綁在一起，跟服務同一個 stack 就不用跨 stack 傳名稱（跟服務告警放在 `application` 同一個理由）。範本的呼叫預設是空的：`var.log_alarms`（服務名稱 → `alarms` map）預設 `{}`、`var.xray_sampling_rules` 與 `var.xray_groups` 預設 `{}`，什麼都不建；範例值在 `application/envs/examples/`。`log-group` 範本預設不呼叫，留給專案加 Lambda 或自訂 log 時用。
 
+**追蹤（ADOT collector 與 X-Ray）：範本已接好，預設關閉**（決策 36）。單一決定點是 `iam-app` 的 `var.tracing`（`set(string)`，預設空集合，必須是 `containerimage/services` 的子集合，用 `terraform_data` precondition 檢查），其他地方都不再放開關：
+
+| stack | 做什麼 | 沒追蹤時 |
+|---|---|---|
+| `iam-app` | `tracing` 裡的服務，task role 加 `xray:PutTraceSegments`、`PutTelemetryRecords`、`GetSamplingRules`、`GetSamplingTargets` 四個動作（只支援 `Resource = "*"`）；發布 `tracing`（String，JSON 陣列，沒有時 `[]`，寫法比照 `mirrored_images`） | 沒有任何 `xray:` 動作，發布 `[]` |
+| `application` | 讀 `iam-app/tracing`；被追蹤的服務加 ADOT collector sidecar（欄位逐項對照 `modules/ecs-service/examples/adot-sidecar/`：`essential = false`、`app_depends_on = "START"`、`/healthcheck`、`AOT_CONFIG_CONTENT`），主 container 加 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317` 與 `OTEL_SERVICE_NAME = <project>-<env>-<service>`（跟 `xray_sampling_rules` 的 `service_name` 同一個名稱）。collector 設定在 `application/adot-collector.yaml`，用 `file()` 讀入。映像由 `var.adot_collector = { tag, source }` 決定：`tag` 必須明確、不得 `latest`；`source = "public"` 取 ECR Public，`"mirror"` 取 `containerimage/ecr_mirror_adot_collector_url`（precondition：`containerimage/mirrored_images` 必須含 `adot-collector`）。有追蹤時 `adot_collector` 必填（precondition） | `sidecars = []`、環境變數不變，task definition 跟加這個功能之前一致；`network` 與 `containerimage` 的 mirror 都不讀（`ssm-read` 第二次呼叫的 key 清單是空的） |
+| `network` | 新增發布 `interface_endpoints`（String，JSON 陣列，已排序，沒有時 `[]`） | 同左，永遠發布 |
+
+沒有 NAT 的安全網放在 `application` 的 precondition：有服務被追蹤，而且 `network/nat` 的 `mode` 是 `none` 時，必須同時 `source = "mirror"`、`network/interface_endpoints` 含 `xray`、`ecr.api`、`ecr.dkr`。`mode = "external"`（客戶自管 VPC，模式 A）的 NAT 是客戶的責任，不擋，README 寫明；`single`、`per_az` 不檢查。S3 gateway endpoint（拉 ECR 映像的 layer 需要）：`modules/vpc` 的 `gateway_endpoints` 預設 `["s3"]`，自建 VPC 已經有；客戶自管 VPC 要自己確認，只寫在文件，不檢查。服務 SG 到 interface endpoint 不需要新規則：服務 SG 本來就有 `0.0.0.0/0` 的 443 egress，endpoint SG 對 VPC CIDR 開 443。xray 的 sampling rule 與 group 維持 `application` 的 `xray_sampling_rules`、`xray_groups`，不受追蹤開關影響。
+
 #### stack 裡的原生資源（例外清單）
 
 範本的 stack 原則上只呼叫 module。下表是唯一允許的原生 resource（SG 已改由 `security-group` module 建，不在清單上），`scripts/validate.sh` 依這張表檢查（§5.6 S8）；要加新的例外，先改這張表並寫理由。
@@ -2939,7 +2950,8 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 - **task role**（一個服務一個，服務清單讀 `containerimage/services`，`iam-role` 加 `for_each`）：預設沒有任何權限。
   - `network/data_access` 名單上的服務加 `secretsmanager:GetSecretValue`（Resource 恰為 DB secret ARN）與上述 `kms:Decrypt`。應用程式用 `DB_SECRET_ARN` 自己讀 secret（project-a 的做法），理由見 §8.2。
   - **ECS Exec**：`var.ecs_exec_services`（`list(string)`，預設 `[]`）裡的服務加 `ssmmessages:CreateControlChannel` 等 4 個 action（只支援 `Resource = "*"`，是另一個例外），同時對每個服務發布 `ecs_exec_<service>`，值是 `{"enabled":true}` 或 `{"enabled":false}`。`application` 讀同一個 key 傳給 `ecs-service` 的 `enable_execute_command`，自己沒有這個變數。
-- 發布 `role_<service>_task_arn`、`ecs_exec_<service>`。
+  - **追蹤**：`var.tracing`（`set(string)`，預設 `[]`，必須是 `containerimage/services` 的子集合）裡的服務加上面的 4 個 `xray:` action（`Resource = "*"`，第三個例外），沒列的服務一個 `xray:` 動作都沒有。`application` 讀同一份發布值決定要不要掛 collector，自己沒有開關。
+- 發布 `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing`。
 
 #### Proxy 建立時的權限：未驗證
 
@@ -2968,6 +2980,7 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 | `iam-app` | 只有 `data_access` 名單上的服務能讀 DB secret | 不在名單上的服務，task role 沒有 `secretsmanager` 權限 |
 | `iam-app` | 沒有 DB 時不附加 | `database = {"enabled":false}` 時沒有 `iam-role-policy` 呼叫，任何 task role 都沒有 secret 權限 |
 | `iam-app` | ECS Exec 一致 | `ecs_exec_services` 裡的服務有 `ssmmessages` 權限，且發布 `{"enabled":true}`；其他服務兩者都沒有 |
+| `iam-app` | 追蹤一致 | `tracing` 裡的服務恰好有 4 個 `xray:` 動作且發布的 JSON 陣列含它；沒列的服務沒有任何 `xray:` 動作；預設發布 `[]`；`tracing` 含 `containerimage/services` 以外的名稱時 plan 失敗 |
 
 ### 5.5 state 的 bucket 與 key
 
@@ -2998,7 +3011,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | key 命名 | snake_case；ARN 結尾 `_arn`、id 結尾 `_id`、清單用複數或 `_ids`；服務名稱裡的 `-` 轉成 `_`（服務 `order-api` 的 SG key 是 `sg_order_api_id`） |
 | 型別 | 純量用 `String`；清單用 `StringList`（逗號串接，元素不得含逗號）；多欄位或條件值用 `String` 裝 JSON |
 | 條件值 | SSM 不收空字串，可有可無的值一律包 JSON：`{"enabled":false}`／`{"enabled":true,...}`，讀取端 `jsondecode()` |
-| 單一決定點 | 兩個 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀，不在兩邊各放一個變數。例：`network/alb_https`、`network/db_proxy`、`network/data_access`、`containerimage/services`、`iam-app/ecs_exec_<service>` |
+| 單一決定點 | 兩個 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀，不在兩邊各放一個變數。例：`network/alb_https`、`network/db_proxy`、`network/data_access`、`containerimage/services`、`containerimage/mirrored_images`、`iam-app/ecs_exec_<service>`、`iam-app/tracing` |
 | secret | **不進 SSM**。SSM 只放 secret 的 ARN，值在 Secrets Manager |
 | 寫入 | 只能透過 `ssm-publish`；其他地方不得宣告 `aws_ssm_parameter` |
 | 讀取 | 只能透過 `ssm-read`（裡面是 `data "aws_ssm_parameter"` 加 `for_each`、只讀 `insecure_value`）；key 清單寫在 `ssm-inputs.tf` 的 module 呼叫裡 |
@@ -3020,12 +3033,14 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `network` | `subnet_cidrs_<tier>` | StringList | 同上 |
 | `network` | `sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id` | String | `sg_vpce_id` 來自 `vpc-interface-endpoints` 的 `security_group_id`；沒有 interface endpoint 時不發布 |
 | `network` | `nat` | String（JSON） | `{"mode":"per_az","ids":["nat-...","nat-..."]}`；`none` 時 `ids` 為 `[]`；客戶自管模式 A（登記既有 VPC）時是 `{"mode":"external","ids":[]}`，客戶 VPC 的 NAT 不由我們回報 |
+| `network` | `interface_endpoints` | String（JSON 陣列） | 已建的 interface endpoint 服務名稱（已排序），沒有時 `[]`；`application` 在追蹤且沒有 NAT 時檢查它 |
 | `network` | `alb_https`、`db_proxy` | String（JSON） | `{"enabled":true}` |
 | `network` | `data_access` | String（JSON） | `{"db":["api"]}` |
 | `iam-base` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` | String | — |
 | `data` | `database` | String（JSON） | 見下 |
 | `iam-app` | `role_<service>_task_arn` | String | — |
 | `iam-app` | `ecs_exec_<service>` | String（JSON） | `{"enabled":false}` |
+| `iam-app` | `tracing` | String（JSON 陣列） | 要追蹤的服務名稱（已排序），沒有時 `[]`；`application` 照它掛 collector sidecar |
 | `loadbalancer` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` | String | `listener_arn` 有憑證時是 HTTPS listener，否則是 HTTP；`listener_protocol` 是 `HTTPS` 或 `HTTP` |
 
 **`database` 的 JSON**
@@ -3457,7 +3472,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 10. 改 `container_port` 跑一次，確認 target group 的 `create_before_destroy` 換得過去。
 11. AZ 從 2 個加到 3 個，確認下游 stack 只要重新 apply、程式碼不用改（§5.6）。
 12. **KMS key policy**：CloudWatch Logs、CloudWatch 告警發布到加密的 SNS、ECR、Secrets Manager 用 `kms-key` 建的 key 都正常；`s3-bucket` 的 ALB access log 在舊 region（`ap-northeast-1`）寫得進去。
-13. **X-Ray 抽樣**：用 ADOT sidecar（或 X-Ray SDK）的 remote sampling 確認 `xray` 建的 sampling rule 真的生效（health check 不再進 trace、`fixed_rate` 接近設定值）；確認 SDK 端固定比例抽樣（project-a 的做法）不受 rule 影響；確認 `log-metric-alarm` 的告警在印出事件後一分鐘內轉 ALARM、且 email 收得到。
+13. **X-Ray 抽樣**：用 ADOT sidecar（或 X-Ray SDK）的 remote sampling 確認 `xray` 建的 sampling rule 真的生效（health check 不再進 trace、`fixed_rate` 接近設定值）；確認 SDK 端固定比例抽樣（project-a 的做法）不受 rule 影響；確認 `log-metric-alarm` 的告警在印出事件後一分鐘內轉 ALARM、且 email 收得到；確認範本接好的 collector（`application/adot-collector.yaml`、`/healthcheck` 與 `health_check` extension、`essential = false`）在真實 task 裡 healthy 且 X-Ray console 看得到 trace；沒有 NAT 的 VPC 用 mirror 映像加 `ecr.api`、`ecr.dkr`、`xray` endpoint 與 S3 gateway endpoint 真的拉得到映像、送得出 trace；`v0.43.1` 這個 tag 在 ECR Public 上存在。
 14. 把 module 版本從 v0.x 升到 v1.0.0（見 §3.5）。
 
 ## 8. 安全考量
@@ -3574,7 +3589,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J40 | `log-metric-alarm` 用 `default_value = 0`，不支援 `dimensions` | 照 project-a | 兩者在 CloudWatch 不能同時用；有 `default_value` 時沒有事件的期間指標是 0，告警判斷比較穩定 |
 | J41 | 觀測性 module 放在哪個 stack | `log-metric-alarm`、`xray` 放 `application`；`log-group` 範本預設不呼叫 | 告警的 pattern 與 sampling rule 的 `service_name` 都跟服務綁在一起，跟服務同一個 stack 才不用跨 stack 傳名稱（跟決策 6 同一個理由）。sampling rule 雖然是帳號層級的資源，但名稱帶專案前綴，不會跟別的專案撞 |
 | J42 | `sidecars` 的欄位 | name、image、essential、command、cpu、memory_reservation、environment、secrets、port_mappings、health_check、`app_depends_on`、`log_stream_prefix`；log 走同一個 log group、只換 stream 前綴 | ADOT 需要 command／health check／資源保留，`app_depends_on` 讓主 container 等 collector；不收 volume、`dependsOn` 任意組合、`firelensConfiguration`，等真的有專案需要再加（MINOR） |
-| J43 | ADOT 範例放哪裡 | `modules/ecs-service/examples/adot-sidecar/`（CI 會驗）加 `docs/guides/observability.md`（整套做法）；範本 stack 預設不放 | 範本預設不開追蹤，放進範本會讓每個專案背一個關著的 sidecar；guide 才寫得下跨三個 stack 的做法。這會在 `docs/guides/` 多一份檔案（§1.1） |
+| J43 | ADOT 範例放哪裡 | `modules/ecs-service/examples/adot-sidecar/`（CI 會驗）加 `docs/guides/observability.md`（整套做法）；範本 stack 預設不放（**已被決策 36 推翻**：範本已接好，預設關閉） | 原本的理由：範本預設不開追蹤，放進範本會讓每個專案背一個關著的 sidecar；guide 才寫得下跨三個 stack 的做法。這會在 `docs/guides/` 多一份檔案（§1.1） |
 | J44 | ADOT collector 的設定怎麼帶 | 用 `environment` 的 `AOT_CONFIG_CONTENT`，不學 project-c 存成 SSM parameter | 設定不是機密；範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（S2） |
 | J45 | `vpc-interface-endpoints` 收 `allowed_cidrs` 還是 `vpc_cidr` | `allowed_cidrs = list(string)`，範本給 `[vpc_cidr]`；不准 `0.0.0.0/0` | 客戶 VPC 可能有 secondary CIDR、或要讓 peering 網段使用；收清單不增加呼叫端負擔，也不用之後改介面 |
 | J46 | `services` 為空時 | 不建任何資源，`security_group_id = null` | 範本預設的 PoC 規格沒有 interface endpoint，stack 不需要為了它加 `count` |
@@ -3621,6 +3636,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 33 | 這 3 個新 module 都不建 IAM；既有的 `ecs-service`、`rds`、`ecs-service-alarms` 不改成呼叫 `log-group` 或 `log-metric-alarm` | 主 agent 判斷，見 §9.1 J38 | §4.17、§4.18 |
 | 34 | interface endpoint 從 `vpc` 拆出來，成為 `vpc-interface-endpoints` module（interface endpoint 加 endpoint 專用的 SG，SG 只允許指定 CIDR 連 443，規則用獨立 rule 資源）；module 總數 19 個。`vpc` 移除 `interface_endpoints` 變數、endpoint SG 與 `vpce_security_group_id` 輸出；subnet、route table、IGW、NAT、gateway endpoint、flow log 留在 `vpc`。名稱用 `vpc-interface-endpoints` 不用 `vpc-endpoints`，避免誤會 gateway endpoint 也在裡面。`vpc` 還沒打過 tag，這項併進 `v0.1.0`，不算破壞性變更 | 使用者決定。IGW、NAT、gateway endpoint 都是路由，要跟 `vpc` 建的 route table 在一起，拆開的話 `per_az` NAT 對錯表不會報錯、加 AZ 要改兩個 module；客戶自管 VPC 時路由歸客戶，我們不該碰（project-a 2026-09-04 報告）。interface endpoint 不碰路由，拆出來之後 network stack 在自建與客戶既有 VPC 兩種模式都能呼叫 | §1、§4.7、§4.21、§5.3、§5.6 S4、§5.8、§5.11、§7.1 |
 | 35 | `iam-role` 與 `iam-role-policy` 新增第四條 validation：Allow statement 不准搭配 `NotResource`（沒寫 `Effect` 視為 Allow，Deny 搭配 `NotResource` 照樣放行），兩個 module 一字不差 | 使用者同意比照 `NotAction`：`Allow` 加 `NotResource` 的效果接近 `Resource = "*"`，原本三條都擋不到 | §4.14、§4.15、§7.1 |
+| 36 | 範本把 X-Ray 追蹤完整接好，預設關閉：`iam-app` 新增 `tracing`（單一決定點，task role 的 X-Ray 四個動作、發布 `tracing`），`application` 照它掛 ADOT collector sidecar 並設 OTEL 環境變數（映像由 `adot_collector = { tag, source }` 決定），`network` 新增發布 `interface_endpoints`，沒有 NAT 時 `application` 用 precondition 要求 mirror 映像與 `xray`、`ecr.api`、`ecr.dkr` endpoint。範本預設不開追蹤，只有 `tracing` 列了服務才會建立任何東西。**推翻決策 32 的後半句**（「ADOT、collector 設定、task role 的 X-Ray 權限由專案在 `application` 與 `iam-app` 自己決定」）以及 §4.20 原本「範本的 stack 預設不開追蹤；放進範本會讓每個專案都背一個預設關閉的 sidecar」的理由：`ecs-service` 的 `sidecars` 仍然通用、不寫死 ADOT，只是範本不再留空；單一決定點從 `iam-app/tracing_<service>` 改成一個 `iam-app/tracing` 清單 | 使用者決定：「第一版就讓 X-Ray 能完整用起來」 | §4.20、§5.3、§5.4、§5.6 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 

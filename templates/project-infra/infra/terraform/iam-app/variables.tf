@@ -3,3 +3,9 @@ variable "ecs_exec_services" {
   type        = list(string)
   default     = []
 }
+
+variable "tracing" {
+  description = "Services that send traces to X-Ray. This is the single decision point for tracing: each listed service gets the X-Ray permissions on its task role, and application reads the list published here and adds the ADOT collector sidecar. Must be a subset of containerimage/services. Empty by default."
+  type        = set(string)
+  default     = []
+}

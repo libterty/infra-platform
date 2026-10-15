@@ -59,8 +59,9 @@ run "publishes_under_stack_path" {
       role_worker_task_arn = "/alpha/dev/iam-app/role_worker_task_arn"
       ecs_exec_api         = "/alpha/dev/iam-app/ecs_exec_api"
       ecs_exec_worker      = "/alpha/dev/iam-app/ecs_exec_worker"
+      tracing              = "/alpha/dev/iam-app/tracing"
     }
-    error_message = "ssm-publish must write a task role ARN and an ECS Exec flag per service under the iam-app path"
+    error_message = "ssm-publish must write a task role ARN and an ECS Exec flag per service, and the tracing list, under the iam-app path"
   }
 }
 
@@ -244,12 +245,93 @@ run "ecs_exec_known_service_passes" {
   }
 }
 
+run "tracing_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = local.published_strings["tracing"] == "[]"
+    error_message = "Tracing must be off for every service by default and published as an empty JSON array"
+  }
+
+  assert {
+    condition     = !strcontains(jsonencode(local.task_policies), "xray:")
+    error_message = "Without tracing no task role may get an X-Ray permission"
+  }
+}
+
+run "tracing_permissions_and_flag" {
+  command = plan
+
+  variables {
+    tracing = ["api"]
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(local.task_policies["api"]["tracing"]).Statement : s.Action
+    ])) == toset(["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"])
+    error_message = "A traced service must get exactly the four X-Ray actions"
+  }
+
+  assert {
+    condition     = alltrue([for s in jsondecode(local.task_policies["api"]["tracing"]).Statement : s.Effect == "Allow" && s.Resource == "*"])
+    error_message = "The X-Ray actions only support Resource *"
+  }
+
+  assert {
+    condition     = !strcontains(jsonencode(local.task_policies["worker"]), "xray:") && !contains(keys(local.task_policies["worker"]), "tracing")
+    error_message = "A service that is not traced must not get any X-Ray action"
+  }
+
+  assert {
+    condition     = local.published_strings["tracing"] == "[\"api\"]"
+    error_message = "The published tracing list must name the traced services"
+  }
+}
+
+run "tracing_list_is_published_sorted" {
+  command = plan
+
+  variables {
+    tracing = ["worker", "api"]
+  }
+
+  assert {
+    condition     = local.published_strings["tracing"] == "[\"api\",\"worker\"]"
+    error_message = "The tracing list must be published as a sorted JSON array so the value does not depend on input order"
+  }
+}
+
+run "tracing_must_be_known_services" {
+  command = plan
+
+  variables {
+    tracing = ["ghost"]
+  }
+
+  expect_failures = [terraform_data.tracing_services_are_known]
+}
+
+run "tracing_known_services_pass" {
+  command = plan
+
+  variables {
+    tracing = ["api", "worker"]
+  }
+
+  assert {
+    condition     = alltrue([for s in ["api", "worker"] : contains(keys(local.task_policies[s]), "tracing")])
+    error_message = "Known services must pass the precondition and each get the tracing policy"
+  }
+}
+
 # Terraform cannot list the resources of a policy by type, so walk every statement of every role and policy.
 run "wildcard_resource_allowlist" {
   command = plan
 
   variables {
     ecs_exec_services = ["api", "worker"]
+    tracing           = ["api", "worker"]
   }
 
   assert {
@@ -309,7 +391,7 @@ run "keys_follow_the_service_list" {
   }
 
   assert {
-    condition     = toset(keys(local.published_strings)) == toset(["role_order_api_task_arn", "ecs_exec_order_api"])
+    condition     = toset(keys(local.published_strings)) == toset(["role_order_api_task_arn", "ecs_exec_order_api", "tracing"])
     error_message = "A hyphen in the service name must become an underscore in the SSM keys"
   }
 }
