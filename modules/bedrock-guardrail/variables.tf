@@ -121,6 +121,19 @@ variable "pii_entities" {
   }))
   default     = {}
   description = "PII entities keyed by entity type, e.g. EMAIL or PHONE. action is BLOCK or ANONYMIZE; ANONYMIZE still reports an intervention."
+  # Same list as the enum the aws provider 6.69.0 validates at plan time; checked here so the error points at this input.
+  validation {
+    condition = alltrue([for k in keys(var.pii_entities) : contains([
+      "ADDRESS", "AGE", "AWS_ACCESS_KEY", "AWS_SECRET_KEY", "CA_HEALTH_NUMBER", "CA_SOCIAL_INSURANCE_NUMBER",
+      "CREDIT_DEBIT_CARD_CVV", "CREDIT_DEBIT_CARD_EXPIRY", "CREDIT_DEBIT_CARD_NUMBER", "DRIVER_ID", "EMAIL",
+      "INTERNATIONAL_BANK_ACCOUNT_NUMBER", "IP_ADDRESS", "LICENSE_PLATE", "MAC_ADDRESS", "NAME", "PASSWORD", "PHONE",
+      "PIN", "SWIFT_CODE", "UK_NATIONAL_HEALTH_SERVICE_NUMBER", "UK_NATIONAL_INSURANCE_NUMBER",
+      "UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER", "URL", "USERNAME", "US_BANK_ACCOUNT_NUMBER", "US_BANK_ROUTING_NUMBER",
+      "US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER", "US_PASSPORT_NUMBER", "US_SOCIAL_SECURITY_NUMBER",
+      "VEHICLE_IDENTIFICATION_NUMBER",
+    ], k)])
+    error_message = "pii_entities keys must be Bedrock guardrail PII entity types, e.g. EMAIL, PHONE or CREDIT_DEBIT_CARD_NUMBER (uppercase)."
+  }
   validation {
     condition     = alltrue([for p in values(var.pii_entities) : contains(["BLOCK", "ANONYMIZE"], p.action)])
     error_message = "pii_entities action must be BLOCK or ANONYMIZE."
@@ -166,7 +179,11 @@ variable "contextual_grounding" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key for the guardrail. null uses an AWS owned key."
+  description = "Customer managed key ARN (key/<uuid>, not an alias) for the guardrail. null uses an AWS owned key."
+  validation {
+    condition     = var.kms_key_arn == null || can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
+    error_message = "kms_key_arn must be a KMS key ARN (arn:aws:kms:<region>:<account>:key/<uuid>), not an alias or a wildcard."
+  }
 }
 
 variable "tags" {
