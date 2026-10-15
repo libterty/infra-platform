@@ -97,3 +97,13 @@ output "alarm_arns" {
     { for a in aws_cloudwatch_metric_alarm.proxy_pinned_high : "proxy_pinned_high" => a.arn },
   )
 }
+
+output "deployment" {
+  description = "Deployment type as given: rds, aurora or aurora_serverless."
+  value       = var.deployment
+}
+
+output "database_name" {
+  description = "Name of the database created with the instance or cluster."
+  value       = var.database_name
+}
