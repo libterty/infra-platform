@@ -8,7 +8,7 @@ log group 本身不在這裡建，用 `log-group` module 建好再把 ARN 傳進
 
 ```hcl
 module "runtime_logs" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/log-delivery?ref=log-delivery-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/log-delivery?ref=log-delivery-v0.1.1"
 
   name_prefix = "alpha-dev"
 
