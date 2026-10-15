@@ -1181,12 +1181,13 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 - **commit 歷史**：`28a8647..HEAD` 的 author 都是 `<author-email>`；每個 module 的 commit 只動該 module 目錄。repo 已有 remote，沒有推送。
 - **Phase 14 的安全審查**：沒有 BLOCKER；兩個 HIGH（Gateway 讀不到 S3 工具定義、KB secret ARN 可用萬用字元）與 M3 已修並補雙向測試、做過突變驗證，其餘記在 design §8.8（D42–D46）。
 - **manifest 與 tag**：`81ac4d3` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。9 個 `<module>-v0.1.1` annotated tag 照 `releasing-modules.md` 的指令原樣在 zsh 執行打在 `81ac4d3`；跑的時候發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
+- **後續（Phase 17）**：~~9 個 `v0.1.1` 在 `81ac4d3`~~ 那 9 個 tag 從未推送，Phase 17 補強後刪掉，在 `54f2837` 重打 10 個（加 `iam-role`，design 決策 54 附註、決策 56）。下面的預期值已改成 Phase 17 之後的數字。
 
 由主 agent 自己做，不派 subagent。
 
 | 檢查 | 指令或做法 | 預期 |
 |---|---|---|
-| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠：26 個 module、它們的 example、9 個 stack 與各自的 `-var-file` 執行 |
+| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠：26 個 module、它們的 example、9 個 stack 與各自的 `-var-file` 執行（68 個目錄） |
 | 舊 tag 沒動 | 每支 Phase 前的 19 個 tag 跑 `git rev-parse "<tag>^{commit}"` | 全部是 `28a8647` |
 | module 只用英文 | 同 Phase 10 | 沒有輸出 |
 | 靜態規則 | S1–S9 | 通過 |
@@ -1194,16 +1195,60 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與 Phase 12–14 的回報一致 |
 | commit 歷史 | `git log --format='%ae %s' 28a8647..HEAD` | Phase 11–15 的 commit，每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote |
 
-驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 裡增補的 9 個 module（7 個新 module 加 `rds`、`s3-bucket`）改成 `0.1.1`（`chore(repo): record the llm addendum modules as 0.1.1`），理由同決策 27：release-please 把 manifest 的版本當成已發布。其他 17 個 module 維持 `0.1.0`。**tag 由人打**，在這個 commit 上手動打 9 個 `<module>-v0.1.1`（design 決策 54），7 個新 module 不打 `v0.1.0`；指令寫在 `docs/guides/releasing-modules.md`（Phase 12 加入，`db5dee9` 已照決策 54 改成從 manifest 讀出這 9 個、打 `v0.1.1`）。原則上主 agent 不打 tag；本 repo 這一輪由使用者指定版本後，主 agent 在本機打，不推送。
+驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 裡增補的 9 個 module（7 個新 module 加 `rds`、`s3-bucket`；Phase 17 起再加 `iam-role`，共 10 個，`54f2837`）改成 `0.1.1`（`chore(repo): record the llm addendum modules as 0.1.1`），理由同決策 27：release-please 把 manifest 的版本當成已發布。其他 17 個 module 維持 `0.1.0`。**tag 由人打**，在這個 commit 上手動打 9 個 `<module>-v0.1.1`（design 決策 54），7 個新 module 不打 `v0.1.0`；指令寫在 `docs/guides/releasing-modules.md`（Phase 12 加入，`db5dee9` 已照決策 54 改成從 manifest 讀出這 9 個、打 `v0.1.1`）。原則上主 agent 不打 tag；本 repo 這一輪由使用者指定版本後，主 agent 在本機打，不推送。
 
 ```bash
-jq -r 'to_entries[] | .value' .release-please-manifest.json | sort | uniq -c   # 17 個 0.1.0、9 個 0.1.1
+jq -r 'to_entries[] | .value' .release-please-manifest.json | sort | uniq -c   # 16 個 0.1.0、10 個 0.1.1（Phase 17 之後）
 git tag -l '*-v0.1.0' | wc -l      # 打完仍是 19
-git tag -l '*-v0.1.1' | wc -l      # 打完是 9
+git tag -l '*-v0.1.1' | wc -l      # 打完是 10（Phase 17 之後；原本 9）
+git tag --points-at 54f2837 | wc -l   # 10
 git tag -l '*-v0.2.0'              # 沒有輸出
 git tag -l 'rds-v*'                # rds-v0.1.0、rds-v0.1.1
 git tag -l 's3-bucket-v*'          # s3-bucket-v0.1.0、s3-bucket-v0.1.1
+git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 ```
+
+#### Phase 17：補強（模組安全審查與 Phase 14 審查的待辦，design 決策 55、56）
+
+**範圍**：§8.8〈已知風險，這一輪不修〉的 M1、M4、L1–L5，加上之後對 module 做的安全審查找到的項目，以及 design §9.5 Q1 的定案（決策 55：KB 的 secret 由 `agent` 建、兩段式 `database_user_ready`）。使用者決定 `iam-role` 一起進 `v0.1.1`；Phase 16 打在 `81ac4d3` 的 9 個 tag 從未推送，刪掉重打。
+
+**commit**（`git log --format='%h %s' 81ac4d3..54f2837`，module 一個 commit，只動該 module 目錄）
+
+| commit | 對象 | 內容 |
+|---|---|---|
+| `16eb2aa` | docs | Phase 16 紀錄；tag 迴圈改用 `mods`（zsh） |
+| `59f647b` | `iam-role` | `trust.source_arn` |
+| `484cdb9` | `s3-bucket` | `never_expire` 不准配 `log_delivery` |
+| `f7420dd` | `agentcore-gateway` | Lambda target 同帳號、`role_arn` 允許 path、JWT 空白項目、KMS key ARN |
+| `0ed7943` | `agentcore-runtime` | ECR 同帳號、請求標頭黑名單、名稱像 secret 的環境變數、`role_arn` 允許 path |
+| `8edede6` | `log-delivery` | source 與 CWL 目的地同帳號 |
+| `8d46a8d` | `bedrock-knowledge-base` | cluster／secret 同帳號同 region、secret 確切 ARN、`bucket_owner_account_id` 必填、`allowed_account_ids` |
+| `e39b772` | `bedrock-inference-profile` | `Name` tag、`copy_from` 不准萬用字元、inference profile 同帳號 |
+| `de5499a` | `bedrock-guardrail` | PII 類型白名單、KMS key ARN、README 的 `UpdateGuardrail` 限制建議 |
+| `648383b` | `agentcore-memory` | KMS key ARN |
+| `8ab4b91` | `agentcore-gateway` | KMS key ARN 收多區域 `mrk-` key |
+| `c6bb164` | 範本 `iam-base` | 三種 agent 服務角色加 `aws:SourceArn`（M1） |
+| `7a7593d` | 範本 `network` | 沒有 NAT 時 Runtime egress 只到 VPC CIDR（L4） |
+| `0641431` | 範本 `iam-app` | KB 的 `kms:EncryptionContext:SecretARN`、S3 的 `aws:ResourceAccount`（M4）；Runtime metrics 與 workload identity（L5） |
+| `22191ed` | 範本 `agent`、`validate.sh` | KB secret 由 `agent` 建、`database_user_ready`、`bucket_owner_account_id`、`workload_identity`；S8 加 `agent:aws_secretsmanager_secret` |
+| `8b840ea` | 範本 `iam-app` | `agent_access` 不准列還沒 ready 的 KB |
+| `4797f0f` | `iam-role` | README 的用法範例指向 `v0.1.1` |
+| `54f2837` | repo | manifest 把 `iam-role` 登記成 `0.1.1`（共 10 個） |
+
+**結果（2026-10-16）**：
+
+- **驗證由主 agent 重跑**：每個改到的 module 與 stack 都由主 agent 自己跑過 `scripts/validate.sh`，不憑 subagent 的回報；全部改完後完整跑一次，68 個目錄全綠，`common.tf` 一致。
+- **反向驗證**：MEDIUM 以上的修正都做過突變驗證（暫時拿掉檢查，對應 run 要紅）；LOW 的項目照使用者決定不做。
+- **測試數量**：module 這一輪新增 111 個 run；範本的變動見 design §7.1〈決策 55、56 的測試〉（`agent` 仍是 86 個）。
+- **未實測**：服務角色的 `aws:SourceArn` 形狀、`PutMetricData` 的 namespace、`GetWorkloadAccessToken*`、沒有 NAT 時只到 VPC CIDR 的 egress、KB 建立時會不會檢查資料庫帳號，都列在 design §7.3 第 21、26–28 項。
+- **tag**：`81ac4d3` 上的 9 個本機 `v0.1.1` tag（從未推送）已刪除；主 agent 照 `releasing-modules.md` 的補打迴圈（從 manifest 讀版本）在 `54f2837` 打 10 個 annotated `<module>-v0.1.1`。19 個 `v0.1.0` 仍在 `28a8647`。沒有推送。
+
+| 檢查 | 指令 | 預期 |
+|---|---|---|
+| manifest | `jq -r 'to_entries[] \| .value' .release-please-manifest.json \| sort \| uniq -c` | 16 個 `0.1.0`、10 個 `0.1.1` |
+| 新 tag | `git tag --points-at 54f2837 \| wc -l` | 10 |
+| 舊 tag | `git tag -l '*-v0.1.0' \| wc -l`；每個 `git rev-parse "<tag>^{commit}"` | 19，全部是 `28a8647` |
+| 舊的 `v0.1.1` 不在 `81ac4d3` | `git tag --points-at 81ac4d3` | 沒有輸出 |
 
 ## 驗證指令的具體寫法
 
@@ -1330,7 +1375,7 @@ git tag -l 's3-bucket-v*'          # s3-bucket-v0.1.0、s3-bucket-v0.1.1
 | P9 | Phase 7E：先一個 docs commit（設計文件）、一個 chore commit（release-please 加 3 個 module、README 改成 18 個），再 3 個新 module 與 `feat(ecs-service)` 的 sidecars 各一個 commit；`ecs-service` 既有測試檔一行都不改（design 決策 31–33） |
 | P10 | 增補 Phase 11–16 沿用 P1–P6；19 個既有 tag 留在 `28a8647`，不得移動（design 決策 37） |
 | P11 | Phase 12 的 `feat(rds)` 是單獨一個 commit，既有 5 個測試檔一行不改；`rds` 發 `0.1.1`，內容是 `data_api` 加 `deployment`、`database_name` 兩個輸出（照 semver 表是 MINOR，這一次照 design 決策 54 用 `0.1.1`；決策 39、52、§4.31） |
-| P12 | Phase 16 驗收後，manifest 裡增補的 9 個 module 由主 agent 改成 `0.1.1`；9 個 `<module>-v0.1.1` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27、54） |
+| P12 | Phase 16 驗收後，manifest 裡增補的 9 個 module 由主 agent 改成 `0.1.1`；9 個 `<module>-v0.1.1` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27、54）。後續：這一輪由使用者指定版本後主 agent 在本機打；Phase 17 加 `iam-role`，10 個 tag 重打在 `54f2837`（design 決策 56） |
 | P13 | Phase 14 的 `agent` lock 檔照 Phase 8 原文產生，是硬性限制第 9 條例外的延伸（design J65） |
 | P14 | Phase 12 的 `feat(s3-bucket)` 是單獨一個 commit，既有 `tests/s3-bucket.tftest.hcl` 一行不改；`s3-bucket` 發 `0.1.1`（照 semver 表是 MINOR，這一次照 design 決策 54 用 `0.1.1`；決策 51、§4.32）。KB 用專用資料庫帳號、secret 由專案在範本外建（design 決策 53）；範本不建 secret 容器，除非使用者對 design §9.5 Q1 改變決定 |
 
