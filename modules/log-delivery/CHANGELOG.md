@@ -9,6 +9,8 @@
 - 目的地 `type` 只收 `CWL`、`XRAY`、`S3`：`XRAY` 只設 `delivery_destination_type`，不給 `resource_arn`；`CWL` 必須是 log group ARN、`S3` 必須是 bucket ARN，只送 `destination_resource_arn`。
 - 每個 delivery 的 `source`、`destination` 必須是存在的 key，同一組 source 與 destination 不能接兩次。
 - source 的 `resource_arn` 變了（例如 Runtime 重建），delivery 會跟著替換，避免刪 source 時撞 `ConflictException`；只改 tag 不會連帶替換。
+- source 的 `resource_arn` 必須是帶 12 位數帳號的 ARN。
+- 新增 `allowed_account_ids`（預設 `[]`）：source 與 `CWL` 目的地的帳號必須是目前帳號或在這份清單裡，否則 plan 被 precondition 擋下。目前帳號的呼叫端不用改設定。`S3` 的 bucket ARN 不帶帳號，不檢查。
 - 輸出 `source_names`、`destination_arns`、`delivery_ids`。
 - 不建 log group、不建 IAM、不做跨帳號的 destination policy、不開放 `record_fields`、`field_delimiter`、`s3_delivery_configuration`。
 - aws provider 需要 `>= 6.69, < 7.0`。
