@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 # The image is not ignored on purpose: Terraform owns the tag, so an image swapped outside Terraform is rolled back on the next apply.
 resource "aws_bedrockagentcore_agent_runtime" "this" {
   agent_runtime_name = var.name
@@ -53,4 +55,12 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
   }
 
   tags = merge(var.tags, { Name = var.name })
+
+  lifecycle {
+    # Variable validation cannot read data sources, so the registry account check lives here.
+    precondition {
+      condition     = contains(setunion([data.aws_caller_identity.current.account_id], var.allowed_account_ids), split(".", var.container_uri)[0])
+      error_message = "container_uri is in the ECR registry of account ${split(".", var.container_uri)[0]}, which is neither the current account nor listed in allowed_account_ids."
+    }
+  }
 }

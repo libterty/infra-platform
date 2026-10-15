@@ -1,5 +1,10 @@
 mock_provider "aws" {}
 
+override_data {
+  target = data.aws_caller_identity.current
+  values = { account_id = "111111111111" }
+}
+
 variables {
   name          = "alpha_dev_agent"
   role_arn      = "arn:aws:iam::111111111111:role/alpha-dev-agent-runtime"
@@ -56,11 +61,42 @@ run "name_rejects_leading_digit" {
   expect_failures = [var.name]
 }
 
-run "role_arn_rejects_path" {
+run "role_arn_accepts_path" {
   command = plan
 
   variables {
     role_arn = "arn:aws:iam::111111111111:role/service-role/alpha-dev-agent-runtime"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_agent_runtime.this.role_arn == "arn:aws:iam::111111111111:role/service-role/alpha-dev-agent-runtime"
+    error_message = "A role ARN with a path must pass"
+  }
+}
+
+run "role_arn_accepts_nested_path" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role/team/agents/alpha-dev-agent-runtime"
+  }
+}
+
+run "role_arn_rejects_trailing_slash" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role/service-role/"
+  }
+
+  expect_failures = [var.role_arn]
+}
+
+run "role_arn_rejects_empty_path_segment" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role//alpha-dev-agent-runtime"
   }
 
   expect_failures = [var.role_arn]
