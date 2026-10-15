@@ -11,6 +11,15 @@ mock_provider "aws" {
       data_source_id = "DSID000001"
     }
   }
+
+  override_data {
+    target = data.aws_caller_identity.current
+    values = { account_id = "111111111111" }
+  }
+  override_data {
+    target = data.aws_region.current
+    values = { region = "ap-northeast-1" }
+  }
 }
 
 variables {
@@ -135,14 +144,16 @@ run "s3_data_sources" {
   command = plan
 
   variables {
+    allowed_account_ids = ["222222222222"]
     data_sources = {
       manuals = {
-        bucket_arn         = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
-        inclusion_prefixes = ["manuals/"]
-      }
-      faq = {
         bucket_arn              = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
         bucket_owner_account_id = "111111111111"
+        inclusion_prefixes      = ["manuals/"]
+      }
+      faq = {
+        bucket_arn              = "arn:aws:s3:::alpha-dev-kb-docs-222222222222"
+        bucket_owner_account_id = "222222222222"
         data_deletion_policy    = "DELETE"
         chunking                = { max_tokens = 512, overlap_percentage = 10 }
       }
@@ -174,7 +185,7 @@ run "s3_data_sources" {
     error_message = "inclusion_prefixes must not be sent when empty"
   }
   assert {
-    condition     = aws_bedrockagent_data_source.this["faq"].data_source_configuration[0].s3_configuration[0].bucket_owner_account_id == "111111111111" && aws_bedrockagent_data_source.this["manuals"].data_source_configuration[0].s3_configuration[0].bucket_owner_account_id == null
+    condition     = aws_bedrockagent_data_source.this["faq"].data_source_configuration[0].s3_configuration[0].bucket_owner_account_id == "222222222222" && aws_bedrockagent_data_source.this["manuals"].data_source_configuration[0].s3_configuration[0].bucket_owner_account_id == "111111111111"
     error_message = "bucket_owner_account_id must follow the input"
   }
   assert {
@@ -212,8 +223,9 @@ run "chunking_none_omits_fixed_size" {
   variables {
     data_sources = {
       prechunked = {
-        bucket_arn = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
-        chunking   = { strategy = "NONE" }
+        bucket_arn              = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
+        bucket_owner_account_id = "111111111111"
+        chunking                = { strategy = "NONE" }
       }
     }
   }
@@ -234,7 +246,7 @@ run "kms_key_on_data_sources" {
   variables {
     kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
     data_sources = {
-      manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-docs-111111111111" }
+      manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-docs-111111111111", bucket_owner_account_id = "111111111111" }
     }
   }
 
@@ -262,7 +274,7 @@ run "outputs" {
 
   variables {
     data_sources = {
-      manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-docs-111111111111" }
+      manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-docs-111111111111", bucket_owner_account_id = "111111111111" }
     }
   }
 

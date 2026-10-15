@@ -1,3 +1,12 @@
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.region
+}
+
 resource "aws_bedrockagent_knowledge_base" "this" {
   name        = var.name
   description = var.description
@@ -38,6 +47,24 @@ resource "aws_bedrockagent_knowledge_base" "this" {
   }
 
   tags = merge(var.tags, { Name = var.name })
+
+  lifecycle {
+    precondition {
+      condition = (
+        try(split(":", var.aurora.cluster_arn)[3], "") == local.region &&
+        try(split(":", var.aurora.cluster_arn)[4], "") == local.account_id
+      )
+      error_message = "aurora.cluster_arn must be in the current account and region."
+    }
+
+    precondition {
+      condition = (
+        try(split(":", var.aurora.credentials_secret_arn)[3], "") == local.region &&
+        try(split(":", var.aurora.credentials_secret_arn)[4], "") == local.account_id
+      )
+      error_message = "aurora.credentials_secret_arn must be in the current account and region."
+    }
+  }
 }
 
 resource "aws_bedrockagent_data_source" "this" {
@@ -75,6 +102,13 @@ resource "aws_bedrockagent_data_source" "this" {
     for_each = var.kms_key_arn == null ? [] : [var.kms_key_arn]
     content {
       kms_key_arn = server_side_encryption_configuration.value
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = each.value.bucket_owner_account_id == local.account_id || contains(var.allowed_account_ids, each.value.bucket_owner_account_id)
+      error_message = "data_sources[*].bucket_owner_account_id must be the current account or listed in allowed_account_ids."
     }
   }
 }

@@ -19,8 +19,8 @@ variable "role_arn" {
   description = "Bedrock knowledge base service role ARN. This module does not create IAM."
 
   validation {
-    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.role_arn))
-    error_message = "role_arn must be an IAM role ARN."
+    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role(/[A-Za-z0-9+=,.@_-]+)*/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
+    error_message = "role_arn must be an IAM role ARN; path segments must not be empty."
   }
 }
 
@@ -29,8 +29,8 @@ variable "embedding_model_arn" {
   description = "Embedding foundation model ARN."
 
   validation {
-    condition     = can(regex("^arn:aws[a-z-]*:bedrock:[a-z0-9-]+::foundation-model/.+$", var.embedding_model_arn))
-    error_message = "embedding_model_arn must be a foundation-model ARN."
+    condition     = can(regex("^arn:aws[a-z-]*:bedrock:[a-z0-9-]+::foundation-model/[A-Za-z0-9._:/-]+$", var.embedding_model_arn))
+    error_message = "embedding_model_arn must be a foundation-model ARN without wildcards."
   }
 }
 
@@ -58,7 +58,7 @@ variable "aurora" {
       custom_metadata_field = optional(string)
     }), {})
   })
-  description = "Aurora PostgreSQL vector store. credentials_secret_arn is the secret of a dedicated knowledge base database user, never the master user secret. The table and columns are created by the project's migration."
+  description = "Aurora PostgreSQL vector store. cluster_arn and credentials_secret_arn must be in the current account and region. credentials_secret_arn is the exact ARN of the secret of a dedicated knowledge base database user, never the master user secret. The table and columns are created by the project's migration."
 
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:rds:[a-z0-9-]+:[0-9]{12}:cluster:[A-Za-z][A-Za-z0-9-]*$", var.aurora.cluster_arn))
@@ -66,8 +66,8 @@ variable "aurora" {
   }
 
   validation {
-    condition     = can(regex("^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$", var.aurora.credentials_secret_arn))
-    error_message = "aurora.credentials_secret_arn must be a Secrets Manager secret ARN."
+    condition     = can(regex("^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+-[A-Za-z0-9]{6}$", var.aurora.credentials_secret_arn))
+    error_message = "aurora.credentials_secret_arn must be the exact Secrets Manager secret ARN, including the 6 character suffix and no wildcards."
   }
 
   validation {
@@ -115,7 +115,7 @@ variable "data_sources" {
   type = map(object({
     bucket_arn              = string
     inclusion_prefixes      = optional(set(string), [])
-    bucket_owner_account_id = optional(string)
+    bucket_owner_account_id = string
     data_deletion_policy    = optional(string, "RETAIN")
     chunking = optional(object({
       strategy           = optional(string, "FIXED_SIZE")
@@ -124,7 +124,7 @@ variable "data_sources" {
     }), {})
   }))
   default     = {}
-  description = "S3 data sources keyed by data source name. data_deletion_policy RETAIN keeps vectors when a data source is deleted."
+  description = "S3 data sources keyed by data source name. bucket_owner_account_id is required and must be the current account or listed in allowed_account_ids. data_deletion_policy RETAIN keeps vectors when a data source is deleted."
 
   validation {
     condition     = alltrue([for k in keys(var.data_sources) : can(regex("^[0-9A-Za-z]([0-9A-Za-z_-]{0,98}[0-9A-Za-z])?$", k))])
@@ -134,6 +134,11 @@ variable "data_sources" {
   validation {
     condition     = alltrue([for d in values(var.data_sources) : can(regex("^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", d.bucket_arn))])
     error_message = "data_sources[*].bucket_arn must be an S3 bucket ARN."
+  }
+
+  validation {
+    condition     = alltrue([for d in values(var.data_sources) : can(regex("^[0-9]{12}$", d.bucket_owner_account_id))])
+    error_message = "data_sources[*].bucket_owner_account_id must be a 12 digit account ID."
   }
 
   validation {
@@ -163,10 +168,27 @@ variable "data_sources" {
   }
 }
 
+variable "allowed_account_ids" {
+  type        = set(string)
+  default     = []
+  nullable    = false
+  description = "Accounts other than the current one that may own a data source bucket. Empty means only same-account buckets."
+
+  validation {
+    condition     = alltrue([for a in var.allowed_account_ids : can(regex("^[0-9]{12}$", a))])
+    error_message = "allowed_account_ids must contain 12 digit account IDs."
+  }
+}
+
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "KMS key for transient data during ingestion (data source server-side encryption)."
+  description = "KMS key ARN (key/<uuid>, not an alias) for transient data during ingestion (data source server-side encryption)."
+
+  validation {
+    condition     = var.kms_key_arn == null || can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
+    error_message = "kms_key_arn must be a KMS key ARN (arn:aws:kms:<region>:<account>:key/<uuid>), not an alias or a wildcard."
+  }
 }
 
 variable "tags" {
