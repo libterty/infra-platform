@@ -111,7 +111,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
   rule {
-    # The id stays expire-objects for existing buckets, so switching to v0.2.0 is not a change.
+    # The id stays expire-objects for existing buckets, so switching to v0.1.1 is not a change.
     id     = var.never_expire ? "abort-incomplete-uploads" : "expire-objects"
     status = "Enabled"
 
