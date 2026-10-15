@@ -5,12 +5,19 @@
   "separate-pull-requests": true,
   "packages": {
     "modules/alb": { "release-type": "terraform-module", "component": "alb" },
+    "modules/ecr-repository": { "release-type": "terraform-module", "component": "ecr-repository" },
     "modules/ecs-cluster": { "release-type": "terraform-module", "component": "ecs-cluster" },
     "modules/ecs-service": { "release-type": "terraform-module", "component": "ecs-service" },
     "modules/ecs-service-alarms": { "release-type": "terraform-module", "component": "ecs-service-alarms" },
+    "modules/iam-role": { "release-type": "terraform-module", "component": "iam-role" },
+    "modules/iam-role-policy": { "release-type": "terraform-module", "component": "iam-role-policy" },
+    "modules/kms-key": { "release-type": "terraform-module", "component": "kms-key" },
     "modules/rds": { "release-type": "terraform-module", "component": "rds" },
+    "modules/s3-bucket": { "release-type": "terraform-module", "component": "s3-bucket" },
+    "modules/security-group": { "release-type": "terraform-module", "component": "security-group" },
     "modules/sns-alarm-topic": { "release-type": "terraform-module", "component": "sns-alarm-topic" },
     "modules/ssm-publish": { "release-type": "terraform-module", "component": "ssm-publish" },
+    "modules/ssm-read": { "release-type": "terraform-module", "component": "ssm-read" },
     "modules/vpc": { "release-type": "terraform-module", "component": "vpc" }
   }
 }

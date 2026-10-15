@@ -1,10 +1,17 @@
 {
   "modules/alb": "0.1.0",
+  "modules/ecr-repository": "0.1.0",
   "modules/ecs-cluster": "0.1.0",
   "modules/ecs-service": "0.1.0",
   "modules/ecs-service-alarms": "0.1.0",
+  "modules/iam-role": "0.1.0",
+  "modules/iam-role-policy": "0.1.0",
+  "modules/kms-key": "0.1.0",
   "modules/rds": "0.1.0",
+  "modules/s3-bucket": "0.1.0",
+  "modules/security-group": "0.1.0",
   "modules/sns-alarm-topic": "0.1.0",
   "modules/ssm-publish": "0.1.0",
+  "modules/ssm-read": "0.1.0",
   "modules/vpc": "0.1.0"
 }

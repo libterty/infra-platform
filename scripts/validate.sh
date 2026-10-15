@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# 離線驗證：fmt、init -backend=false、validate、test（mock）、tflint 與靜態規則。不碰雲端。
-# 用法：scripts/validate.sh [目錄...]   沒給參數時掃 modules 與 templates。
+# Offline validation: fmt, static rules, init -backend=false, validate, test (mock), tflint. Never touches AWS.
+# Usage: scripts/validate.sh [dir...]   Without arguments, scans modules and templates.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cache_root="${repo_root}/.cache"
 export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-${cache_root}/plugins}"
 mkdir -p "${TF_PLUGIN_CACHE_DIR}"
-# module 沒有 lock 檔，不開這個旗標的話 terraform 不用快取、每個目錄重新下載 provider。
-# 範本 stack 仍以 -lockfile=readonly 核對 lock 檔的 checksum。
+# Modules have no lock file; without this flag terraform skips the cache and re-downloads providers per directory.
+# Template stacks are still checked against their lock file with -lockfile=readonly.
 export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true
 
-# 步驟 0：第二道防線。測試漏寫 mock_provider 時要失敗，而不是拿到本機的 aws-vault session。
+# Step 0: second line of defense. A test missing mock_provider must fail, not pick up a local aws-vault session.
 for v in $(env | sed -n 's/^\(AWS_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
@@ -19,9 +19,15 @@ export AWS_EC2_METADATA_DISABLED=true
 
 tf_stack_glob="templates/project-infra/infra/terraform"
 
+# S8 allow-list, one entry per row of the table in docs/design/v1/design-docs.md section 5.3
+# (native resources allowed in template stacks). Format: <stack>:<resource type>.
+s8_allowed=(
+  "foundation:aws_secretsmanager_secret"
+)
+
 command -v terraform >/dev/null || { echo "找不到 terraform" >&2; exit 1; }
 
-# 回傳相對 repo_root 的路徑；repo 外的路徑原樣回傳。
+# Print the path relative to repo_root; paths outside the repo are returned as is.
 rel() {
   case "$1" in
     "${repo_root}"/*) printf '%s\n' "${1#"${repo_root}"/}" ;;
@@ -33,7 +39,7 @@ sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-# 步驟 1：找目錄。不能從 repo 根目錄掃：docs/slides/ 有 .tf，本機存在、CI 不存在。
+# Step 1: find directories. Never scan from the repo root: docs/slides/ has .tf files that exist locally but not in CI.
 scan_roots=()
 dirs=()
 if [ "$#" -eq 0 ]; then
@@ -59,7 +65,7 @@ fi
 failed=()
 fail_static=0
 
-# 步驟 2：fmt。失敗不中斷，繼續跑靜態規則，一次列出全部問題。
+# Step 2: fmt. Does not abort, so the static rules still run and all problems are listed at once.
 if [ "${#scan_roots[@]}" -gt 0 ]; then
   echo "== fmt"
   if ! terraform fmt -check -recursive "${scan_roots[@]}"; then
@@ -68,8 +74,7 @@ if [ "${#scan_roots[@]}" -gt 0 ]; then
   fi
 fi
 
-# 步驟 3：靜態規則。
-# 每條規則印 "S<n> <相對路徑>[:行號]: 說明"。S5 一律掃整個 repo 的範本，其餘只掃 scan_roots。
+# Step 3: static rules. Each prints "S<n> <relative path>[:line]: message". S5 always scans the whole template set.
 echo "== 靜態規則"
 files_tf=()
 files_tftest=()
@@ -80,17 +85,42 @@ for r in ${scan_roots[@]+"${scan_roots[@]}"}; do
   while IFS= read -r f; do files_tfbackend+=("$f"); done < <(find "$r" -name '*.tfbackend' -not -path '*/.terraform*' | sort)
 done
 
-# 印出 awk 找到的違規行；有輸出就算失敗。$1=規則編號、$2=說明、$3=檔案、$4=awk 模式
+# Report non-comment lines matching an awk regex; any hit fails.
+# $1=rule id, $2=message, $3=file, $4=regex, $5=optional regex of lines to ignore
 scan_pattern() {
   local out
-  out="$(awk -v pat="$4" '/^[[:space:]]*(#|\/\/)/ { next } $0 ~ pat { print FNR ": " $0 }' "$3")"
+  out="$(awk -v pat="$4" -v ex="${5:-}" '/^[[:space:]]*(#|\/\/)/ { next } $0 ~ pat && (ex == "" || $0 !~ ex) { print FNR ": " $0 }' "$3")"
   if [ -n "$out" ]; then
     while IFS= read -r line; do echo "$1 $(rel "$3"):${line}  <- $2" >&2; done <<<"$out"
     fail_static=1
   fi
 }
 
-# S1：每個測試檔都要宣告 mock_provider "aws"
+# S8: true when "<stack>:<type>" is in s8_allowed.
+s8_is_allowed() {
+  local entry
+  for entry in "${s8_allowed[@]}"; do
+    [ "$entry" = "$1:$2" ] && return 0
+  done
+  return 1
+}
+
+# S8: report every resource "aws_*" in a stack file that is not in s8_allowed. $1=file, $2=stack
+scan_stack_resources() {
+  local ln type
+  while IFS=: read -r ln type; do
+    [ -n "$type" ] || continue
+    if ! s8_is_allowed "$2" "$type"; then
+      echo "S8 $(rel "$1"):${ln}: stack ${2} 不得宣告 ${type}（不在 design §5.3 例外清單）" >&2
+      fail_static=1
+    fi
+  done < <(awk '/^[[:space:]]*(#|\/\/)/ { next }
+    match($0, /^[[:space:]]*resource[[:space:]]+"aws_[^"]*"/) {
+      t = substr($0, RSTART, RLENGTH); sub(/^[^"]*"/, "", t); sub(/"$/, "", t); print FNR ":" t
+    }' "$1")
+}
+
+# S1: every test file declares mock_provider "aws"
 for f in ${files_tftest[@]+"${files_tftest[@]}"}; do
   if ! grep -Eq '^[[:space:]]*mock_provider[[:space:]]+"aws"' "$f"; then
     echo "S1 $(rel "$f"): 測試檔缺 mock_provider \"aws\"" >&2
@@ -100,34 +130,52 @@ done
 
 for f in ${files_tf[@]+"${files_tf[@]}"}; do
   r="$(rel "$f")"
-  # S2：aws_ssm_parameter 只能出現在 modules/ssm-publish/
+  # S2: aws_ssm_parameter resources only in modules/ssm-publish
   case "$r" in
     modules/ssm-publish/*) ;;
     *) scan_pattern S2 'aws_ssm_parameter 只能由 modules/ssm-publish 宣告' "$f" '^[[:space:]]*resource[[:space:]]+"aws_ssm_parameter"' ;;
   esac
-  # S3：範本的 ssm-inputs.tf 不得讀 .value
+  # S3: aws_ssm_parameter data sources only in modules/ssm-read, which must not read .value
   case "$r" in
-    templates/*/ssm-inputs.tf) scan_pattern S3 'ssm-inputs.tf 只能讀 insecure_value' "$f" '[.]value([^A-Za-z0-9_]|$)' ;;
+    # each.value is a for_each iterator, not the parameter value.
+    modules/ssm-read/*) scan_pattern S3 'modules/ssm-read 只能讀 insecure_value，不得出現 .value' "$f" '[.]value([^A-Za-z0-9_]|$)' '(^|[^A-Za-z0-9_])each[.]value([^A-Za-z0-9_]|$)' ;;
+    *) scan_pattern S3 'data "aws_ssm_parameter" 只能出現在 modules/ssm-read' "$f" '^[[:space:]]*data[[:space:]]+"aws_ssm_parameter"' ;;
+  esac
+  case "$r" in
+    modules/* | templates/*)
+      # S4: IAM only in iam-role (all types) and iam-role-policy (aws_iam_role_policy only)
+      case "$r" in
+        modules/iam-role/*) ;;
+        modules/iam-role-policy/*) scan_pattern S4 'modules/iam-role-policy 只允許 aws_iam_role_policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_role_policy"' ;;
+        *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role 與 modules/iam-role-policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
+      esac
+      # S4: security groups and their rules only in security-group and vpc
+      case "$r" in
+        modules/security-group/* | modules/vpc/*) ;;
+        *) scan_pattern S4 'aws_security_group* 與 aws_vpc_security_group_*_rule 只能出現在 modules/security-group 與 modules/vpc' "$f" '^[[:space:]]*resource[[:space:]]+"(aws_security_group|aws_vpc_security_group_(ingress|egress)_rule)' ;;
+      esac
+      ;;
   esac
   case "$r" in
     modules/*)
-      # S4：module 不建 IAM；security group 只有 vpc 可以
-      scan_pattern S4 'module 不得宣告 aws_iam_* 資源' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_'
-      case "$r" in
-        modules/vpc/*) ;;
-        *) scan_pattern S4 'aws_security_group* 只能出現在 modules/vpc' "$f" '^[[:space:]]*resource[[:space:]]+"aws_security_group' ;;
-      esac
-      # S7：module 不得出現 random_password
+      # S7: no random_password in modules
       scan_pattern S7 'modules 不得使用 random_password' "$f" 'random_password'
       ;;
   esac
-  # S7：rds 不得宣告含 password 的變數
+  # S7: rds must not declare a password variable
   if [ "$r" = "modules/rds/variables.tf" ]; then
     scan_pattern S7 'rds 不得宣告含 password 的變數' "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
   fi
+  # S8: template stacks only declare the aws_* resources listed in s8_allowed
+  case "$r" in
+    "${tf_stack_glob}"/*)
+      stack="${r#"${tf_stack_glob}"/}"
+      scan_stack_resources "$f" "${stack%%/*}"
+      ;;
+  esac
 done
 
-# S5：範本各 stack 的 common.tf 雜湊必須相同
+# S5: common.tf must be identical across template stacks
 first_common=""
 first_hash=""
 for f in "${repo_root}/${tf_stack_glob}"/*/common.tf; do
@@ -142,7 +190,7 @@ for f in "${repo_root}/${tf_stack_glob}"/*/common.tf; do
   fi
 done
 
-# S6：tfbackend 的 key 要等於 <project>-<env>/<stack>/terraform.tfstate；envs/examples/ 不得有 tfbackend
+# S6: tfbackend key must be <project>-<env>/<stack>/terraform.tfstate; envs/examples/ must not have tfbackend
 for f in ${files_tfbackend[@]+"${files_tfbackend[@]}"}; do
   r="$(rel "$f")"
   case "$r" in
@@ -173,7 +221,7 @@ fi
 
 command -v tflint >/dev/null || { echo "找不到 tflint" >&2; exit 1; }
 
-# 步驟 4-7：單一目錄的初始化、validate、test、tflint。
+# Steps 4-7: init, validate, test, tflint for one directory.
 validate_dir() {
   local dir="$1" r data_dir lock=()
   r="$(rel "$dir")"
@@ -191,7 +239,7 @@ validate_dir() {
     terraform -chdir="$dir" test || return 1
   fi
 
-  # 6a：範本 stack 對 tfvars 檔本身跑測試。
+  # Step 6a: template stacks run tests against the tfvars files themselves.
   case "$r" in
     "${tf_stack_glob}"/*)
       local e x
@@ -213,7 +261,7 @@ validate_dir() {
 for d in "${dirs[@]}"; do
   rc=0
   validate_dir "$d" || rc=1
-  # 步驟 8：module 不提交 lock 檔，初始化產生的要清掉。
+  # Step 8: modules do not commit lock files; remove the one init created.
   case "$(rel "$d")" in
     modules/*) rm -f "$d/.terraform.lock.hcl" ;;
   esac
@@ -222,7 +270,7 @@ for d in "${dirs[@]}"; do
   fi
 done
 
-# 步驟 9：彙整。
+# Step 9: summary.
 if [ "${#failed[@]}" -gt 0 ]; then
   echo "" >&2
   echo "FAIL 以下目錄未通過：" >&2
