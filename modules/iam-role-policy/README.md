@@ -33,13 +33,14 @@ module "proxy_secret_access" {
 - policy 一律傳 JSON 字串（用 `jsonencode()`）。
 - Allow statement 的 Action 不可是 `*` 或以 `:*` 結尾；Deny statement 不受限。這段檢查與 `iam-role` 逐字相同。
 - Allow statement 不可使用 `NotAction`（等於授權「列出的動作以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotAction` 不受限。
+- Allow statement 不可使用 `NotResource`（等於授權「列出的資源以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotResource` 不受限。
 
 ## 限制
 
 - 不建 role，不附加 AWS managed policy 或 customer managed policy。
 - 不支援帶 path 的 role（`role/service/x` 會被擋）。
 - 同一個 role 同時由 `iam-role` 與這個 module 附加 policy 時，policy 名稱不可重複。
-- 只檢查 Action，不檢查 `NotAction`、`Resource`。
+- 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`。
 - `Statement` 必須是清單（單一物件的寫法會被擋）。
 
 ## 輸入

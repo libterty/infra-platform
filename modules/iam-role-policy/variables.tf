@@ -32,4 +32,12 @@ variable "policies" {
     ]))
     error_message = "Allow statements must not use NotAction."
   }
+  validation {
+    condition = alltrue(flatten([
+      for p in values(var.policies) : [
+        for s in try(jsondecode(p).Statement, []) : !(try(s.Effect, "Allow") == "Allow" && try(s.NotResource, null) != null)
+      ]
+    ]))
+    error_message = "Allow statements must not use NotResource."
+  }
 }
