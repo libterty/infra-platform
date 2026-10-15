@@ -19,3 +19,17 @@ run "tfvars_create_one_repository_per_service" {
     error_message = "The service list in tfvars must be published as it is"
   }
 }
+
+run "tfvars_create_one_repository_per_mirror" {
+  command = plan
+
+  assert {
+    condition     = length(module.ecr_mirror) == length(var.mirrored_images)
+    error_message = "Every entry of mirrored_images in tfvars must get a repository"
+  }
+
+  assert {
+    condition     = length(jsondecode(local.published_strings["mirrored_images"])) == length(var.mirrored_images) && alltrue([for m in jsondecode(local.published_strings["mirrored_images"]) : contains(var.mirrored_images, m)])
+    error_message = "The mirror list in tfvars must be published as it is"
+  }
+}

@@ -2,6 +2,8 @@ locals {
   ssm_input_strings = {
     kms_key_arn    = "foundation/kms_key_arn"
     app_secret_arn = "foundation/app_secret_arn"
+    # JSON array of mirror names; "[]" when containerimage has no mirror.
+    mirrored_images = "containerimage/mirrored_images"
   }
   ssm_input_lists = {
     services = "containerimage/services"
@@ -16,10 +18,13 @@ module "in" {
   lists      = local.ssm_input_lists
 }
 
-# The repository ARNs are keyed by the service list, which is itself read from SSM, so they need a second read.
+# The repository ARNs are keyed by the service and mirror lists, which are themselves read from SSM, so they need a second read.
 locals {
   service_key         = { for s in module.in.lists["services"] : s => replace(s, "-", "_") }
   ssm_service_strings = { for s, k in local.service_key : "ecr_${k}_arn" => "containerimage/ecr_${k}_arn" }
+
+  mirror_key         = { for m in jsondecode(module.in.strings["mirrored_images"]) : m => replace(m, "-", "_") }
+  ssm_mirror_strings = { for m, k in local.mirror_key : "ecr_mirror_${k}_arn" => "containerimage/ecr_mirror_${k}_arn" }
 }
 
 module "in_services" {
@@ -27,4 +32,11 @@ module "in_services" {
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_service_strings
+}
+
+module "in_mirrors" {
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+
+  ssm_prefix = local.ssm_prefix
+  strings    = local.ssm_mirror_strings
 }
