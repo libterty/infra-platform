@@ -416,6 +416,11 @@ run "agent_runtime_execution_role" {
   }
 
   assert {
+    condition     = alltrue([for r in values(local.agent_runtime_roles) : r.trust.source_arn == "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:*"])
+    error_message = "A Runtime execution role trust must also be limited with aws:SourceArn to AgentCore resources of this region and account"
+  }
+
+  assert {
     condition = [
       for s in jsondecode(local.agent_runtime_roles["agent_order_bot_execution"].policies["pull-and-log"]).Statement : flatten([s.Resource])
       if contains(flatten([s.Action]), "ecr:BatchGetImage")
@@ -472,6 +477,14 @@ run "agent_service_roles_trust_only" {
   }
 
   assert {
+    condition = (
+      local.agent_service_roles["bedrock_kb"].trust.source_arn == "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*" &&
+      local.agent_service_roles["agentcore_gateway"].trust.source_arn == "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:*"
+    )
+    error_message = "The knowledge base role must be limited with aws:SourceArn to knowledge bases, the gateway role to AgentCore resources, both in this region and account"
+  }
+
+  assert {
     condition     = alltrue([for r in values(local.agent_service_roles) : length(r.policies) == 0])
     error_message = "The service roles must have no policy here; iam-app attaches their permissions after the agent stack"
   }
@@ -479,6 +492,39 @@ run "agent_service_roles_trust_only" {
   assert {
     condition     = local.published_strings["agent_service_roles"] == "[\"gateway\",\"knowledge_base\"]"
     error_message = "The service role list must be published as a sorted JSON array"
+  }
+}
+
+run "agent_role_source_arn_follows_region" {
+  command = plan
+
+  variables {
+    aws_region          = "us-west-2"
+    agent_service_roles = ["knowledge_base", "gateway"]
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_assistant_arn"]
+    values = { insecure_value = "arn:aws:ecr:us-west-2:111111111111:repository/alpha-dev-agent-assistant" }
+  }
+
+  assert {
+    condition = (
+      local.agent_runtime_roles["agent_assistant_execution"].trust.source_arn == "arn:aws:bedrock-agentcore:us-west-2:111111111111:*" &&
+      local.agent_service_roles["bedrock_kb"].trust.source_arn == "arn:aws:bedrock:us-west-2:111111111111:knowledge-base/*" &&
+      local.agent_service_roles["agentcore_gateway"].trust.source_arn == "arn:aws:bedrock-agentcore:us-west-2:111111111111:*"
+    )
+    error_message = "aws:SourceArn must be built from aws_region, not a fixed region"
+  }
+
+  assert {
+    condition     = alltrue([for r in values(local.roles) : try(r.trust.source_arn, null) == null])
+    error_message = "The three base roles must keep their trust unchanged, without aws:SourceArn"
   }
 }
 

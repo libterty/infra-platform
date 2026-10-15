@@ -4,6 +4,10 @@ locals {
   # The agent stack names the Runtime <project>_<env>_<name>; AgentCore writes the Runtime logs under that name.
   agent_runtime_names = { for r in keys(local.agent_key) : r => replace("${local.name_prefix}-${r}", "-", "_") }
 
+  # aws:SourceArn shapes, not yet verified against a real AssumeRole call.
+  agentcore_source_arn      = "arn:aws:bedrock-agentcore:${var.aws_region}:${var.expected_account_id}:*"
+  knowledge_base_source_arn = "arn:aws:bedrock:${var.aws_region}:${var.expected_account_id}:knowledge-base/*"
+
   agent_runtime_statements = {
     for r, k in local.agent_key : r => [
       {
@@ -37,7 +41,7 @@ locals {
   agent_runtime_roles = {
     for r, k in local.agent_key : "agent_${k}_execution" => {
       name     = "${local.name_prefix}-agent-${r}"
-      trust    = { service_principals = ["bedrock-agentcore.amazonaws.com"], source_account = var.expected_account_id }
+      trust    = { service_principals = ["bedrock-agentcore.amazonaws.com"], source_account = var.expected_account_id, source_arn = local.agentcore_source_arn }
       policies = { pull-and-log = jsonencode({ Version = "2012-10-17", Statement = local.agent_runtime_statements[r] }) }
     }
   }
@@ -47,12 +51,12 @@ locals {
     knowledge_base = {
       key   = "bedrock_kb"
       name  = "${local.name_prefix}-bedrock-kb"
-      trust = { service_principals = ["bedrock.amazonaws.com"], source_account = var.expected_account_id }
+      trust = { service_principals = ["bedrock.amazonaws.com"], source_account = var.expected_account_id, source_arn = local.knowledge_base_source_arn }
     }
     gateway = {
       key   = "agentcore_gateway"
       name  = "${local.name_prefix}-agentcore-gateway"
-      trust = { service_principals = ["bedrock-agentcore.amazonaws.com"], source_account = var.expected_account_id }
+      trust = { service_principals = ["bedrock-agentcore.amazonaws.com"], source_account = var.expected_account_id, source_arn = local.agentcore_source_arn }
     }
   }
 
