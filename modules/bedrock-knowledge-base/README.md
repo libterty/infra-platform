@@ -26,8 +26,9 @@ module "knowledge_base" {
 
   data_sources = {
     manuals = {
-      bucket_arn         = module.kb_corpus.arn
-      inclusion_prefixes = ["manuals/"]
+      bucket_arn              = module.kb_corpus.arn
+      bucket_owner_account_id = data.aws_caller_identity.current.account_id
+      inclusion_prefixes      = ["manuals/"]
     }
   }
 }
@@ -60,9 +61,14 @@ module "knowledge_base" {
 
 ## 注意
 
+- **`aurora.cluster_arn` 與 `aurora.credentials_secret_arn` 必須跟 provider 在同一個帳號、同一個 region。** module 用 `aws_caller_identity`、`aws_region` 比對 ARN 的帳號與 region 欄，不符時 plan 被 KB resource 的 precondition 擋下。
+- **`credentials_secret_arn` 要給完整的 secret ARN**，含 Secrets Manager 自動加上的 `-` 加 6 個字元尾碼，不收 `*` 或只到名稱為止的 ARN。
+- **每個 data source 都要寫 `bucket_owner_account_id`**（12 位數字）。它必須等於目前的帳號；bucket 在別的帳號時，要把那個帳號列進 `allowed_account_ids`，否則 plan 被 data source 的 precondition 擋下。Bedrock 用這個值確認 bucket 的擁有者，避免讀到別人同名的 bucket。
+- `role_arn` 允許帶 path，但 path 的每一段都不能是空的（`role//x`、結尾是 `/` 都會被擋）。規則跟 `agentcore-runtime`、`agentcore-gateway` 相同。
+- `kms_key_arn` 只收 `arn:aws:kms:<region>:<account>:key/<uuid>` 或 multi-region key 的 `key/mrk-<32 碼>`，alias 與 `*` 都擋。
 - **`aurora.cluster_arn` 必須是 Aurora cluster 的 ARN**（`:cluster:`），DB instance 的 ARN（`:db:`）會被擋：Bedrock 經 RDS Data API 連資料庫，Data API 只支援 Aurora cluster。用 `rds` module 時就是 `arn` 輸出（部署型態 `aurora` 或 `aurora_serverless`）。
 - **`embedding_dimensions` 必須等於 SQL 的 `vector(N)`。** module 驗不到資料庫，只能靠上面的對照表。
-- `embedding_model_arn` 只收 foundation-model ARN，inference profile 會被擋。
+- `embedding_model_arn` 只收 foundation-model ARN，inference profile 與含 `*` 的 ARN 會被擋。
 - `field_mapping` 的欄位名不能重複。重複時 KB 寫入會互相覆蓋（推論，**未實測**）。
 - data source 的名稱就是 `data_sources` 的 key，規則跟 KB 名稱相同。
 - chunking 只收 `FIXED_SIZE`（預設 300 token、重疊 20%）與 `NONE`。`NONE` 時不送 `fixed_size_chunking_configuration`。`overlap_percentage` 1–99、`max_tokens` 大於 0；provider 6.69.0 在 plan 時也擋 `overlap_percentage` 1–99 以外的值。
@@ -89,13 +95,14 @@ module "knowledge_base" {
 |---|---|---|---|---|
 | `name` | `string` | 無 | 是 | KB 的完整名稱。字母、數字、`-`、`_`，頭尾是字母或數字，最長 100 字 |
 | `description` | `string` | `null` | 否 | KB 的說明 |
-| `role_arn` | `string` | 無 | 是 | Bedrock KB service role 的 ARN（範本由 `iam-base` 建），module 不建 IAM |
-| `embedding_model_arn` | `string` | 無 | 是 | 嵌入模型的 foundation-model ARN |
+| `role_arn` | `string` | 無 | 是 | Bedrock KB service role 的 ARN（範本由 `iam-base` 建），可帶 path，每段不能是空的；module 不建 IAM |
+| `embedding_model_arn` | `string` | 無 | 是 | 嵌入模型的 foundation-model ARN，不能含 `*` |
 | `embedding_dimensions` | `number` | 無 | 是 | 向量維度，正整數，必須等於表的 `vector(N)` |
-| `aurora` | `object` | 無 | 是 | 欄位：`cluster_arn`（Aurora cluster ARN）、`credentials_secret_arn`（KB 專用帳號的 Secrets Manager secret，值是 `{"username","password"}`，**不要給 master secret**）、`database_name`（小寫識別字）、`table_name`（`<schema>.<table>` 或 `<table>`，每段小寫識別字）、`field_mapping`（選填，見下） |
+| `aurora` | `object` | 無 | 是 | 欄位：`cluster_arn`（Aurora cluster ARN，必須在目前的帳號與 region）、`credentials_secret_arn`（KB 專用帳號的 Secrets Manager secret 的完整 ARN，含 6 字元尾碼，必須在目前的帳號與 region，值是 `{"username","password"}`，**不要給 master secret**）、`database_name`（小寫識別字）、`table_name`（`<schema>.<table>` 或 `<table>`，每段小寫識別字）、`field_mapping`（選填，見下） |
 | `aurora.field_mapping` | `object` | `{}` | 否 | `primary_key_field`（預設 `id`）、`vector_field`（預設 `embedding`）、`text_field`（預設 `chunks`）、`metadata_field`（預設 `metadata`）、`custom_metadata_field`（預設 `null`，不送）。都是小寫識別字、彼此不重複 |
-| `data_sources` | `map(object)` | `{}` | 否 | key 為 data source 名稱。欄位：`bucket_arn`（S3 bucket ARN，必填）、`inclusion_prefixes`（預設空集合，不能以 `/` 開頭）、`bucket_owner_account_id`（選填）、`data_deletion_policy`（`RETAIN` 或 `DELETE`，預設 `RETAIN`）、`chunking`（`strategy` 為 `FIXED_SIZE` 或 `NONE`，預設 `FIXED_SIZE`；`max_tokens` 預設 300、大於 0；`overlap_percentage` 預設 20、1–99） |
-| `kms_key_arn` | `string` | `null` | 否 | data source ingestion 暫存資料的 KMS key；`null` 用 AWS 管的 key |
+| `data_sources` | `map(object)` | `{}` | 否 | key 為 data source 名稱。欄位：`bucket_arn`（S3 bucket ARN，必填）、`inclusion_prefixes`（預設空集合，不能以 `/` 開頭）、`bucket_owner_account_id`（必填，12 位數字，必須是目前的帳號或列在 `allowed_account_ids`）、`data_deletion_policy`（`RETAIN` 或 `DELETE`，預設 `RETAIN`）、`chunking`（`strategy` 為 `FIXED_SIZE` 或 `NONE`，預設 `FIXED_SIZE`；`max_tokens` 預設 300、大於 0；`overlap_percentage` 預設 20、1–99） |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、允許擁有 data source bucket 的帳號（12 位數字）。空集合表示只收同帳號的 bucket |
+| `kms_key_arn` | `string` | `null` | 否 | data source ingestion 暫存資料的 KMS key ARN（`key/<uuid>`，不收 alias 與 `*`）；`null` 用 AWS 管的 key |
 | `tags` | `map(string)` | `{}` | 否 | 套用到 KB 的 tag，另外自動加 `Name` |
 
 ## 輸出

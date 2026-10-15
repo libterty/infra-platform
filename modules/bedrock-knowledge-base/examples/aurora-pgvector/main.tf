@@ -33,8 +33,9 @@ module "knowledge_base" {
 
   data_sources = {
     manuals = {
-      bucket_arn         = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
-      inclusion_prefixes = ["manuals/"]
+      bucket_arn              = "arn:aws:s3:::alpha-dev-kb-docs-111111111111"
+      bucket_owner_account_id = "111111111111"
+      inclusion_prefixes      = ["manuals/"]
     }
   }
 
