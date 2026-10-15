@@ -7,11 +7,14 @@
   "modules/iam-role": "0.1.0",
   "modules/iam-role-policy": "0.1.0",
   "modules/kms-key": "0.1.0",
+  "modules/log-group": "0.1.0",
+  "modules/log-metric-alarm": "0.1.0",
   "modules/rds": "0.1.0",
   "modules/s3-bucket": "0.1.0",
   "modules/security-group": "0.1.0",
   "modules/sns-alarm-topic": "0.1.0",
   "modules/ssm-publish": "0.1.0",
   "modules/ssm-read": "0.1.0",
-  "modules/vpc": "0.1.0"
+  "modules/vpc": "0.1.0",
+  "modules/xray": "0.1.0"
 }
