@@ -1,6 +1,6 @@
 # vpc
 
-建一個 VPC 與它的 subnet、IGW、NAT、route table、VPC endpoint、flow log。tier 的數量與切法由呼叫端決定，module 不寫死「三層」。
+建一個 VPC 與它的 subnet、IGW、NAT、route table、gateway endpoint、flow log。interface endpoint 不在這裡，由 [`vpc-interface-endpoints`](../vpc-interface-endpoints/README.md) 負責。tier 的數量與切法由呼叫端決定，module 不寫死「三層」。
 
 ## 用法
 
@@ -22,7 +22,7 @@ module "vpc" {
 }
 ```
 
-範例：[`examples/basic/`](./examples/basic/main.tf)（自動切）、[`examples/explicit-cidrs/`](./examples/explicit-cidrs/main.tf)（明確指定 CIDR、`per_az` NAT、interface endpoint、flow log）。
+範例：[`examples/basic/`](./examples/basic/main.tf)（自動切）、[`examples/explicit-cidrs/`](./examples/explicit-cidrs/main.tf)（明確指定 CIDR、`per_az` NAT、gateway endpoint、flow log）。
 
 ## tier 命名合約
 
@@ -51,14 +51,12 @@ module "vpc" {
 - 用 `cidrs` 的 tier，key 必須恰好等於 `azs`。
 - 自動切時 `netnum_base + length(azs) <= 2^newbits`，且 subnet 不小於 `/28`。
 - `nat_mode != "none"` 時要有 public tier。
-- `interface_endpoints.subnet_tier` 必須存在，且不是 public。
 - 所有 subnet 都在 VPC CIDR 內。
 - 所有 subnet CIDR 兩兩不重疊：每個 CIDR 換成 `[起始整數, 結束整數]` 再比對，不管怎麼切都擋得住。例如用兩種 `newbits` 切同一個 `/16`、兩個 AZ 剛好填滿時，第三個 AZ 會靜默撞進別的 subnet，這裡會被擋下。
 
 ## 注意
 
-- 這是唯一會建 security group 的 module，而且只建 VPC endpoint 用的那一個（只對 VPC CIDR 開 443）。服務用的 SG 由 `network` stack 建。
-- default SG 的規則被清空：資源不得使用它。
+- 不建任何新的 security group。唯一碰到 SG 的是 `aws_default_security_group`：它接管 VPC 本來就有的 default SG 並清空規則，資源不得使用它。服務用的 SG 由 `security-group` module 建，interface endpoint 與它的 SG 由 `vpc-interface-endpoints` 建。
 - SG 規則與路由一律用獨立資源，客戶在 console 加的規則與路由不會在下一次 apply 被刪掉。
 - `single` 的 NAT 放在 `azs` 的第一個 AZ，其他 AZ 跨 AZ 出去；`per_az` 每個 AZ 走自己的 NAT。
 - gateway endpoint 只關聯 private 與 isolated 的路由表；public 的表不需要。
@@ -80,7 +78,6 @@ IPv6、private NAT、Transit Gateway 與 VPC peering 的路由、NACL、送 Clou
 | `subnets` | `map(object)` | 無 | 是 | tier 名稱 => `{ type, newbits, netnum_base, cidrs }`；`newbits` + `netnum_base` 與 `cidrs` 二選一 |
 | `nat_mode` | `string` | `"single"` | 否 | `none`、`single`、`per_az` |
 | `gateway_endpoints` | `set(string)` | `["s3"]` | 否 | `s3`、`dynamodb` |
-| `interface_endpoints` | `object` | `null` | 否 | `{ services, subnet_tier }`；服務名稱是 `com.amazonaws.<region>.` 之後的部分 |
 | `flow_log` | `object` | `null` | 否 | `{ destination_arn, traffic_type }`，S3 only；`traffic_type` 預設 `ALL` |
 | `tags` | `map(string)` | `{}` | 否 | 額外 tag；`Name` 由 module 加上 |
 
@@ -97,7 +94,6 @@ IPv6、private NAT、Transit Gateway 與 VPC peering 的路由、NACL、送 Clou
 | `subnet_cidrs` | `map(list(string))` | 同上，CIDR |
 | `route_table_ids` | `map(list(string))` | 同上，route table id |
 | `nat_gateway_ids` | `list(string)` | 依 `azs` 順序；`none` 時為 `[]`，`single` 時只有 1 個 |
-| `vpce_security_group_id` | `string` | 沒有 interface endpoint 時為 `null` |
 
 ## 測試
 

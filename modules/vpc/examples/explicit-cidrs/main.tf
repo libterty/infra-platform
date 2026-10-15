@@ -38,11 +38,6 @@ module "vpc" {
   nat_mode          = "per_az"
   gateway_endpoints = ["s3", "dynamodb"]
 
-  interface_endpoints = {
-    services    = ["ecr.api", "ecr.dkr", "logs", "secretsmanager"]
-    subnet_tier = "app"
-  }
-
   flow_log = {
     destination_arn = "arn:aws:s3:::alpha-prod-flow-logs/vpc"
   }
@@ -54,8 +49,4 @@ module "vpc" {
 
 output "vpc_id" {
   value = module.vpc.vpc_id
-}
-
-output "vpce_security_group_id" {
-  value = module.vpc.vpce_security_group_id
 }

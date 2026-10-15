@@ -80,19 +80,6 @@ variable "gateway_endpoints" {
   }
 }
 
-variable "interface_endpoints" {
-  description = "Interface endpoint services and the tier they are placed in; null creates none."
-  type = object({
-    services    = set(string) # e.g. ["ecr.api", "ecr.dkr", "logs", "secretsmanager", "kms"]
-    subnet_tier = string
-  })
-  default = null
-  validation {
-    condition     = var.interface_endpoints == null ? true : alltrue([for s in var.interface_endpoints.services : can(regex("^[a-z0-9][a-z0-9.-]*$", s)) && !startswith(s, "com.amazonaws.")])
-    error_message = "Service names are the part after com.amazonaws.<region>., e.g. ecr.api."
-  }
-}
-
 variable "flow_log" {
   description = "Flow log to S3; null creates none."
   type = object({
