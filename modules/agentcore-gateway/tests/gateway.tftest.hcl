@@ -1,5 +1,10 @@
 mock_provider "aws" {}
 
+override_data {
+  target = data.aws_caller_identity.current
+  values = { account_id = "111111111111" }
+}
+
 variables {
   name     = "alpha-dev-gateway"
   role_arn = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway"
