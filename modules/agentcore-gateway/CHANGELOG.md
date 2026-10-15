@@ -14,6 +14,6 @@
 - `role_arn` 可以帶 path（例如 `role/service-role/…`），規則與 `agentcore-runtime` 相同。
 - 新增 `allowed_account_ids`（預設 `[]`）：Lambda target 的 `lambda_arn` 必須在目前帳號或這份清單裡，否則 plan 被 precondition 擋下。目前帳號的呼叫端不用改設定。`tool_schema_s3_uri` 不帶帳號，不檢查。
 - 擋下 `allowed_audience`／`allowed_clients` 裡的空字串與只有空白的項目。
-- 擋下不是 KMS key ARN 的 `kms_key_arn`（alias ARN、單獨的 key id）。
+- 擋下不是 KMS key ARN 的 `kms_key_arn`（alias ARN、單獨的 key id）；multi-region key（`key/mrk-...`）可以。
 - 輸出 `gateway_id`、`gateway_arn`、`gateway_url`、`target_ids`。
 - 不建 IAM、credential provider；不支援 OpenAPI、Smithy、API Gateway 型 target、VPC Lattice、interceptor、policy engine。
