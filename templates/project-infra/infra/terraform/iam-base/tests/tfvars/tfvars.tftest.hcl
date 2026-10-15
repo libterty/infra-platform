@@ -22,6 +22,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in_services.data.aws_ssm_parameter.this["containerimage/ecr_api_arn"]
   values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-api" }
 }
@@ -42,5 +47,14 @@ run "tfvars_create_the_three_roles" {
   assert {
     condition     = alltrue([for r in values(local.roles) : startswith(r.name, "${var.project}-${var.env}-")])
     error_message = "Role names must carry the project and env"
+  }
+}
+
+run "tfvars_agent_service_roles_are_known" {
+  command = plan
+
+  assert {
+    condition     = local.published_strings["agent_service_roles"] == jsonencode(sort(tolist(var.agent_service_roles))) && length(module.agent_service_role) == length(var.agent_service_roles)
+    error_message = "Every service role listed in tfvars must be created and published"
   }
 }
