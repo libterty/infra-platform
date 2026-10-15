@@ -56,7 +56,7 @@ module "api" {
 
 ### Confirmation
 
-`scripts/validate.sh` 與 CI 檢查 tag 是否符合 `^(<module 清單>)-v[0-9]+\.[0-9]+\.[0-9]+$`；module 清單從 `modules/` 目錄讀，不手寫。release-please 以 `include-component-in-tag` 產生這個格式。
+tag 由 release-please 以 `include-component-in-tag` 產生（第一次發版前的 19 個 `v0.1.0` 由人手動打，見 `docs/guides/releasing-modules.md`）。`scripts/vendor-modules.sh` 會拒絕不符合 `^<module>-v[0-9]+\.[0-9]+\.[0-9]+$` 或前綴跟 module 對不上的 tag，module 清單從 `modules/` 目錄讀，不手寫。`scripts/validate.sh` 與 CI 不檢查 tag：它們驗的是程式碼，repo 裡的 tag 不經過它們。
 
 ## Pros and Cons of the Options
 

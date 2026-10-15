@@ -4,7 +4,7 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 
 第一版做出最小三層架構：ALB 在 public subnet，ECS 服務與資料庫在 private subnet。內容是 19 個 module、1 份 8 個 stack 的專案 infra 範本，以及使用與發版文件。全部只做離線驗證，不做 `plan`／`apply`，也不碰任何 AWS 帳號。
 
-目前進度：19 個 module、8 個 stack 的專案範本、六份使用指南與 `scripts/vendor-modules.sh` 已完成（Phase 0–9）；剩下 Phase 10 整體驗收，見下方文件地圖的實作步驟。還沒有打任何 tag，第一次發版的步驟見 [`releasing-modules.md`](./docs/guides/releasing-modules.md)。
+目前進度：19 個 module、8 個 stack 的專案範本、六份使用指南與 `scripts/vendor-modules.sh` 已完成，範本也接好了預設關閉的 X-Ray 追蹤；Phase 0–10 全部完成，驗收結果見下方文件地圖的實作步驟。還沒有打任何 tag，第一次發版的步驟見 [`releasing-modules.md`](./docs/guides/releasing-modules.md)。
 
 ## module
 
