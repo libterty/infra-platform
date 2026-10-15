@@ -6,7 +6,7 @@
 
 ```hcl
 module "memory" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-memory?ref=agentcore-memory-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-memory?ref=agentcore-memory-v0.1.1"
 
   name              = "alpha_dev_chat"
   event_expiry_days = 90
