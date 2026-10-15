@@ -1,3 +1,4 @@
+# For people running terraform output. Downstream stacks never read these; cross-stack values go through SSM only.
 output "vpc_id" {
   description = "VPC ID, created here or registered from the existing VPC."
   value       = local.vpc_id

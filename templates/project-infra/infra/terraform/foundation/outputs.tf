@@ -1,3 +1,4 @@
+# For people running terraform output. Downstream stacks never read these; cross-stack values go through SSM only.
 output "kms_key_arn" {
   description = "Shared KMS key."
   value       = module.kms.key_arn
