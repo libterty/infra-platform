@@ -264,6 +264,74 @@ variable "service_connect" {
   description = "Service Connect registration; null disables it."
 }
 
+variable "sidecars" {
+  type = list(object({
+    name               = string
+    image              = string
+    essential          = optional(bool, false)
+    command            = optional(list(string))
+    cpu                = optional(number) # CPU units reserved inside the task size
+    memory_reservation = optional(number) # MiB, soft limit inside the task size
+    environment        = optional(map(string), {})
+    secrets            = optional(map(string), {}) # env name => Secrets Manager or SSM ARN
+    port_mappings = optional(list(object({
+      container_port = number
+      protocol       = optional(string, "tcp")
+    })), [])
+    health_check = optional(object({
+      command      = list(string)
+      interval     = optional(number, 10)
+      timeout      = optional(number, 5)
+      retries      = optional(number, 3)
+      start_period = optional(number, 10)
+    }))
+    app_depends_on    = optional(string) # START | HEALTHY | COMPLETE | SUCCESS; null = app does not wait
+    log_stream_prefix = optional(string) # null uses the sidecar name
+  }))
+  default     = []
+  description = "Extra containers in the task. Empty keeps the task definition identical to a single-container task."
+
+  validation {
+    condition = alltrue([for s in var.sidecars : can(regex("^[a-z][a-z0-9-]{0,62}$", s.name))]) && (
+      length(distinct([for s in var.sidecars : s.name])) == length(var.sidecars)
+    ) && !contains([for s in var.sidecars : s.name], "app")
+    error_message = "Sidecar names must match ^[a-z][a-z0-9-]{0,62}$, be unique, and must not be app."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.sidecars : can(regex("^[^\\s:@]+(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$", s.image)) && !endswith(s.image, ":latest")])
+    error_message = "Every sidecar image must carry an explicit tag (not latest) or a sha256 digest."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.sidecars : alltrue([for v in values(s.secrets) : can(regex("^arn:aws[a-z-]*:(secretsmanager|ssm):", v))])])
+    error_message = "Every sidecar secret must be a Secrets Manager or SSM parameter ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for s in var.sidecars : s.app_depends_on == null ? true : (
+        contains(["START", "HEALTHY", "COMPLETE", "SUCCESS"], s.app_depends_on)
+      )
+    ])
+    error_message = "app_depends_on must be one of START, HEALTHY, COMPLETE or SUCCESS."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.sidecars : s.app_depends_on != "HEALTHY" || s.health_check != null])
+    error_message = "A sidecar with app_depends_on = HEALTHY must define health_check."
+  }
+
+  validation {
+    # awsvpc shares one network interface, so ports must be unique across all containers.
+    condition = (
+      length(distinct(flatten([for s in var.sidecars : [for p in s.port_mappings : p.container_port]]))) == length(flatten([for s in var.sidecars : [for p in s.port_mappings : p.container_port]]))
+      && !contains(flatten([for s in var.sidecars : [for p in s.port_mappings : p.container_port]]), coalesce(var.container_port, -1))
+    )
+    error_message = "Sidecar container_port values must not repeat or collide with the main container_port."
+  }
+}
+
 variable "enable_execute_command" {
   type        = bool
   default     = false
