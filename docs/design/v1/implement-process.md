@@ -1,6 +1,6 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–8 已完成（HEAD `5858bf4`），Phase 9 執行中。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
@@ -8,7 +8,7 @@
 
 第一版是 19 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc-interface-endpoints` 建，`vpc` 只建 `aws_default_security_group`（design §1、§4.1、§5.6 S4）。
 
-分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 46 個 commit，剩下 Phase 10（有修正才多一個）。全量 `scripts/validate.sh`：52 個目錄通過（19 個 module、它們的 example、8 個 stack，約 9 分鐘）。
+分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。全部完成，共 47 個 commit（含 Phase 10 的修正）。全量 `scripts/validate.sh`：52 個目錄通過（19 個 module、它們的 example、8 個 stack，約 9 分鐘）。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
@@ -31,7 +31,7 @@
 | 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 已完成：8 個 stack 共 317 個測試，全量 52 個目錄全過（約 9 分鐘） | 1：`5858bf4` |
 | 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`91bed0f` |
 | 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`89b5b71`、`0b3d431`、`a8c5c1d`、`feat(template): wire x-ray tracing into the template` |
-| 10 | 整體驗收 | 待執行 | 有修正才 1 |
+| 10 | 整體驗收 | 已完成：刪掉 `.cache/` 後全量 52 個目錄全過（583 秒，provider 重新下載），測試 1,037 個（module 671、範本 366）；修正 ADR 0001 對 tag 檢查的錯誤說明 | 1：`docs: record phase 10 acceptance` |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
 
@@ -895,7 +895,7 @@ Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Ph
 | stack 清單、SSM key、單一決定點 | 範本 README、`project-infra-standard.md`、ADR 0002、design §5.3、§5.6 | 一致 |
 | 介面與 design 一致 | 19 個 module 的變數名、預設值、輸出對照 design §4.2–§4.21 | 不一致要揭露，不自行改 design |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與各 Phase 回報一致 |
-| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 42 個 commit（Phase 10 有修正時 43 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
+| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 47 個 commit（含 Phase 9 補充 4 個與 Phase 10 的 1 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
 
 ## 驗證指令的具體寫法
 
