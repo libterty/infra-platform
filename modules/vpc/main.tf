@@ -23,13 +23,6 @@ resource "aws_vpc" "this" {
       error_message = "nat_mode ${var.nat_mode} needs a public tier to place the NAT gateway in."
     }
     precondition {
-      condition = var.interface_endpoints == null ? true : (
-        contains(keys(var.subnets), var.interface_endpoints.subnet_tier) &&
-        try(var.subnets[var.interface_endpoints.subnet_tier].type != "public", false)
-      )
-      error_message = "interface_endpoints.subnet_tier must be an existing tier that is not public."
-    }
-    precondition {
       condition     = length(local.outside_vpc) == 0
       error_message = "Subnets outside the VPC CIDR ${var.cidr}: ${join(", ", local.outside_vpc)}."
     }

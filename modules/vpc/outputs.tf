@@ -32,8 +32,3 @@ output "nat_gateway_ids" {
   description = "NAT gateway IDs in azs order; empty for none, one entry for single."
   value       = [for az in var.azs : aws_nat_gateway.this[az].id if contains(local.nat_azs, az)]
 }
-
-output "vpce_security_group_id" {
-  description = "Interface endpoint SG ID; null without interface endpoints."
-  value       = one(aws_security_group.vpce[*].id)
-}
