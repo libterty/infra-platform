@@ -10,6 +10,8 @@ locals {
     listener_arn           = "loadbalancer/listener_arn"
     # JSON array of the services iam-app traces; "[]" when none.
     tracing = "iam-app/tracing"
+    # JSON of what each service may call in the agent stack; "{}" when none.
+    agent_access = "iam-app/agent_access"
   }
   ssm_input_lists = {
     services       = "containerimage/services"

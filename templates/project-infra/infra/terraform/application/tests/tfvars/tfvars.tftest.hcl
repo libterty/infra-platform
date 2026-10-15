@@ -53,6 +53,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/subnet_ids_app"]
   values = { insecure_value = "subnet-0app1,subnet-0app2" }
 }
