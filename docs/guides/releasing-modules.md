@@ -105,4 +105,4 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 推完到 GitHub 的 tag 頁面確認 19 個都在。打錯了（例如打在錯的 commit）而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，照上面的規則發下一個 PATCH 版。
 
-本 repo 已照這個迴圈在 `3a15b26` 打好 19 個 `<module>-v0.1.0` annotated tag，但沒有做第 1 步的 `git pull` 與最後的 push：本 repo 是範例，只在本機：不建 git remote、不推送、不部署到 AWS（使用者 2026-10-15 決定）。上面的 pull、push 與 GitHub ruleset 是給實際上線的 platform repo 用的。
+本 repo 已照這個迴圈在 `28a8647` 打好 19 個 `<module>-v0.1.0` annotated tag。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。
