@@ -54,3 +54,32 @@ variable "mirrored_images" {
     error_message = "A mirror repository name must not be the same as a service repository name."
   }
 }
+
+variable "agent_runtimes" {
+  description = "AgentCore Runtime names. This is the single decision point for the Runtime list: network and agent check their own Runtime settings against it. One repository <project>-<env>-agent-<name> is created per name. Empty by default, which creates nothing."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for r in var.agent_runtimes : can(regex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$", r))])
+    error_message = "Runtime names must be kebab-case: lowercase letters and digits separated by single hyphens, starting with a letter."
+  }
+
+  validation {
+    # Runtime names share the SG key, role name and SSM key namespace with services and mirrors.
+    condition     = length(setintersection(var.agent_runtimes, setunion(toset(var.services), var.mirrored_images))) == 0
+    error_message = "A Runtime name must not be the same as a service or mirror name."
+  }
+
+  validation {
+    # A service called agent-<x> would otherwise get the same repository name as the Runtime <x>.
+    condition     = length(setintersection(toset([for r in var.agent_runtimes : "${local.name_prefix}-agent-${r}"]), toset([for s in var.services : "${local.name_prefix}-${s}"]))) == 0
+    error_message = "A Runtime repository name must not be the same as a service repository name."
+  }
+
+  validation {
+    # The agent stack names the Runtime <project>_<env>_<name>; AgentCore caps Runtime names at 48 characters.
+    condition     = alltrue([for r in var.agent_runtimes : length(replace("${local.name_prefix}-${r}", "-", "_")) <= 48])
+    error_message = "<project>_<env>_<runtime> must be at most 48 characters so it fits the AgentCore Runtime name limit."
+  }
+}

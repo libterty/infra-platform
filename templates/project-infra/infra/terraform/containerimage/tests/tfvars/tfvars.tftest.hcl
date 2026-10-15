@@ -33,3 +33,17 @@ run "tfvars_create_one_repository_per_mirror" {
     error_message = "The mirror list in tfvars must be published as it is"
   }
 }
+
+run "tfvars_create_one_repository_per_runtime" {
+  command = plan
+
+  assert {
+    condition     = length(module.ecr_agent) == length(var.agent_runtimes)
+    error_message = "Every entry of agent_runtimes in tfvars must get a repository"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_runtimes"] == jsonencode(sort(tolist(var.agent_runtimes)))
+    error_message = "The Runtime list in tfvars must be published as it is"
+  }
+}

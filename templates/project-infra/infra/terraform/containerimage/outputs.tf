@@ -8,3 +8,8 @@ output "mirror_repository_urls" {
   description = "Repository URL by mirror name; copy the external image here with the upstream version as the tag."
   value       = { for m, r in module.ecr_mirror : m => r.repository_url }
 }
+
+output "agent_repository_urls" {
+  description = "Repository URL by Runtime name; push the Runtime image here with a unique tag, never latest."
+  value       = { for r, m in module.ecr_agent : r => m.repository_url }
+}
