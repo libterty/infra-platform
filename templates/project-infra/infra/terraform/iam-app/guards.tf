@@ -36,6 +36,14 @@ resource "terraform_data" "agent_access_is_known" {
       ])
       error_message = "agent_access may only name Runtimes, models, guardrails and knowledge bases that the agent stack publishes."
     }
+
+    precondition {
+      # A knowledge base is published before it exists (database_user_ready = false); its id and ARN are null until then.
+      condition = alltrue([for a in values(var.agent_access) :
+        alltrue([for k in a.knowledge_bases : try(local.agent_knowledge_bases[k].ready, true)])
+      ])
+      error_message = "agent_access may only name knowledge bases that exist; set database_user_ready = true in the agent stack and apply it first."
+    }
   }
 }
 
