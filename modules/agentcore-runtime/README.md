@@ -8,7 +8,7 @@ execution role、ECR repository、security group、log 與 trace 的 delivery �
 
 ```hcl
 module "agent" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-runtime?ref=agentcore-runtime-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-runtime?ref=agentcore-runtime-v0.1.1"
 
   name          = "alpha_dev_agent"
   role_arn      = module.agent_role.role_arn
