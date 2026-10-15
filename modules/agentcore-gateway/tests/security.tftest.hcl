@@ -197,6 +197,19 @@ run "kms_key_arn_accepted" {
   }
 }
 
+run "kms_key_arn_multi_region_key_accepted" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/mrk-0123456789abcdef0123456789abcdef"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway.this.kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/mrk-0123456789abcdef0123456789abcdef"
+    error_message = "A KMS key ARN must pass"
+  }
+}
+
 run "kms_key_arn_alias_rejected" {
   command = plan
 
