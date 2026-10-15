@@ -5,6 +5,6 @@ output "vpc_id" {
 }
 
 output "security_group_ids" {
-  description = "Security group ID by key: alb, one per service, and <data store> and <data store>_proxy."
+  description = "Security group ID by key: alb, one per service, agent_<runtime> per AgentCore Runtime, and <data store> and <data store>_proxy."
   value       = module.sg.security_group_ids
 }

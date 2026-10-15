@@ -64,6 +64,12 @@ variable "interface_endpoints" {
     )
     error_message = "interface_endpoints.subnet_tier must be an existing tier and must not be the public tier."
   }
+
+  validation {
+    # Code running in the VPC must not be able to change AgentCore resources.
+    condition     = !contains(var.interface_endpoints.services, "bedrock-agentcore-control")
+    error_message = "interface_endpoints.services must not contain bedrock-agentcore-control; only the data plane endpoint bedrock-agentcore is allowed in the VPC."
+  }
 }
 
 variable "services" {
@@ -135,5 +141,24 @@ variable "alb_ingress" {
   validation {
     condition     = var.alb_ingress.https ? true : !contains(var.alb_ingress.cidrs, "0.0.0.0/0") && !contains(var.alb_ingress.cidrs, "::/0")
     error_message = "Without a certificate (https = false) the ALB must not be open to 0.0.0.0/0 or ::/0. Use a CloudFront prefix list or specific CIDRs."
+  }
+}
+
+variable "agent_runtimes" {
+  description = "Per-Runtime network settings for AgentCore Runtimes. The keys must equal the agent_runtimes published by containerimage. Each Runtime gets a security group with 443 egress; data_access lists the data_stores keys it may reach directly. Empty by default."
+  type = map(object({
+    data_access = optional(list(string), [])
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue(flatten([for r in values(var.agent_runtimes) : [for d in r.data_access : contains(keys(var.data_stores), d)]]))
+    error_message = "agent_runtimes data_access must name keys of data_stores."
+  }
+
+  validation {
+    # Runtime security groups are keyed agent_<name> in the same map as the service security groups.
+    condition     = length(setintersection(toset([for r in keys(var.agent_runtimes) : "agent_${replace(r, "-", "_")}"]), toset([for s in keys(var.services) : replace(s, "-", "_")]))) == 0
+    error_message = "A Runtime security group key agent_<name> must not collide with a service name."
   }
 }

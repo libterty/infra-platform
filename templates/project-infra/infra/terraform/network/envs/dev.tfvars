@@ -35,3 +35,7 @@ alb_ingress = {
   https = false
   cidrs = ["203.0.113.0/24"]
 }
+
+# AgentCore Runtimes, keyed like containerimage agent_runtimes. Each gets a security group; data_access lets it reach a
+# data store directly. Empty means no Runtime.
+agent_runtimes = {}
