@@ -6,7 +6,7 @@
 
 ```hcl
 module "inference_profile" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-inference-profile?ref=bedrock-inference-profile-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-inference-profile?ref=bedrock-inference-profile-v0.1.1"
 
   name_prefix = "alpha-dev"
 
