@@ -9,3 +9,14 @@ variable "tracing" {
   type        = set(string)
   default     = []
 }
+
+variable "agent_access" {
+  description = "Service => the AgentCore and Bedrock resources it may call, by the keys the agent stack publishes: runtimes, models, guardrails, knowledge_bases. This is the single decision point for what ECS services may call; application injects the matching ids. A service that is not listed gets no bedrock or bedrock-agentcore permission. Empty by default."
+  type = map(object({
+    runtimes        = optional(list(string), [])
+    models          = optional(list(string), [])
+    guardrails      = optional(list(string), [])
+    knowledge_bases = optional(list(string), [])
+  }))
+  default = {}
+}

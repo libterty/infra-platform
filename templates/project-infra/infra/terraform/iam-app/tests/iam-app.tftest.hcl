@@ -22,6 +22,68 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+  values = { insecure_value = "{}" }
+}
+
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/models"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+  values = { insecure_value = "{\"enabled\":false}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+  values = { insecure_value = "{\"enabled\":false}" }
+}
+
+# The Runtime "assistant" and the service roles; read only by the runs that publish them.
+override_data {
+  target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+  values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[\"chat\"],\"memories\":[\"conversation\"],\"guardrails\":[\"safety\",\"english\"],\"knowledge_bases\":[\"products\"],\"gateway\":true,\"tracing\":true}" }
+}
+
+override_data {
+  target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_agent_assistant_execution_arn"]
+  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-agent-assistant" }
+}
+
+override_data {
+  target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_bedrock_kb_arn"]
+  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-bedrock-kb" }
+}
+
+override_data {
+  target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_agentcore_gateway_arn"]
+  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/data_access"]
   values = { insecure_value = "{\"db\":[\"api\"]}" }
 }
@@ -29,7 +91,7 @@ override_data {
 override_data {
   target = module.in.data.aws_ssm_parameter.this["data/database"]
   values = {
-    insecure_value = "{\"enabled\":true,\"deployment\":\"aurora_serverless\",\"port\":5432,\"name\":\"app\",\"secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf\",\"has_reader\":false}"
+    insecure_value = "{\"enabled\":true,\"deployment\":\"aurora_serverless\",\"port\":5432,\"name\":\"app\",\"secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf\",\"has_reader\":false,\"cluster_arn\":\"arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db\",\"data_api\":true}"
   }
 }
 
@@ -43,10 +105,23 @@ run "reads_only_listed_keys" {
         data_access        = "network/data_access"
         role_rds_proxy_arn = "iam-base/role_rds_proxy_arn"
         database           = "data/database"
+        agent_runtimes     = "containerimage/agent_runtimes"
+        agent_data_access  = "network/agent_data_access"
+        models             = "agent/models"
+        guardrails         = "agent/guardrails"
+        agent_memories     = "agent/agent_memories"
+        knowledge_bases    = "agent/knowledge_bases"
+        agentcore_gateway  = "agent/agentcore_gateway"
+        bedrock_invoke     = "agent/bedrock_invoke"
       } &&
       local.ssm_input_lists == { services = "containerimage/services" }
     )
-    error_message = "iam-app must read the key, the data access list, the Proxy role, the database and the service list"
+    error_message = "iam-app must read the key, the data access list, the Proxy role, the database, the service list and the agent keys"
+  }
+
+  assert {
+    condition     = local.ssm_agent_strings == {}
+    error_message = "With an empty agent stack the second read must be empty"
   }
 }
 
@@ -60,6 +135,7 @@ run "publishes_under_stack_path" {
       ecs_exec_api         = "/alpha/dev/iam-app/ecs_exec_api"
       ecs_exec_worker      = "/alpha/dev/iam-app/ecs_exec_worker"
       tracing              = "/alpha/dev/iam-app/tracing"
+      agent_access         = "/alpha/dev/iam-app/agent_access"
     }
     error_message = "ssm-publish must write a task role ARN and an ECS Exec flag per service, and the tracing list, under the iam-app path"
   }
@@ -332,11 +408,67 @@ run "wildcard_resource_allowlist" {
   variables {
     ecs_exec_services = ["api", "worker"]
     tracing           = ["api", "worker"]
+    agent_access      = { api = { runtimes = ["assistant"], models = ["chat"], guardrails = ["safety"], knowledge_bases = ["products"] } }
+  }
+
+  # A second Runtime without tracing: xray:PutSpans must stay limited to the traced one.
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\",\"order-bot\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_order_bot"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_order_bot-AbCdEfGhIj\",\"id\":\"alpha_dev_order_bot-AbCdEfGhIj\",\"name\":\"alpha_dev_order_bot\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-order-bot\",\"models\":[\"chat\"],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_agent_order_bot_execution_arn"]
+    values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-agent-order-bot" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition     = length(local.agent_runtime_policies) == 2 && length(merge(local.bedrock_kb_policy, local.agentcore_gateway_policy)) == 2
+    error_message = "The allow-list check must also walk the Runtime, knowledge base and gateway policies"
   }
 
   assert {
     condition = alltrue(flatten([
-      for p in concat(values(local.proxy_secret_access.policies), flatten([for s in values(local.task_policies) : values(s)])) : [
+      for p in concat(
+        values(local.proxy_secret_access.policies),
+        flatten([for s in values(local.task_policies) : values(s)]),
+        flatten([for x in values(merge(local.bedrock_kb_policy, local.agentcore_gateway_policy)) : values(x.policies)]),
+        ) : [
         for s in jsondecode(p).Statement : [
           for a in flatten([s.Action]) : contains([
             "ecr:GetAuthorizationToken",
@@ -353,6 +485,24 @@ run "wildcard_resource_allowlist" {
       ]
     ]))
     error_message = "Only actions that do not support resource-level permissions may use Resource *"
+  }
+
+  # xray:PutSpans is the only addition, and only for a Runtime with tracing.
+  assert {
+    condition = alltrue(flatten([
+      for r, x in local.agent_runtime_policies : [
+        for p in values(x.policies) : [
+          for s in jsondecode(p).Statement : [
+            for a in flatten([s.Action]) : contains(concat([
+              "ecr:GetAuthorizationToken",
+              "xray:PutTraceSegments",
+              "xray:PutTelemetryRecords",
+            ], local.runtime_grants[r].tracing ? ["xray:PutSpans"] : []), a)
+          ] if contains(flatten([s.Resource]), "*")
+        ]
+      ]
+    ]))
+    error_message = "A Runtime execution role may use Resource * only for the X-Ray actions, and xray:PutSpans only with tracing"
   }
 }
 
@@ -391,8 +541,849 @@ run "keys_follow_the_service_list" {
   }
 
   assert {
-    condition     = toset(keys(local.published_strings)) == toset(["role_order_api_task_arn", "ecs_exec_order_api", "tracing"])
+    condition     = toset(keys(local.published_strings)) == toset(["role_order_api_task_arn", "ecs_exec_order_api", "tracing", "agent_access"])
     error_message = "A hyphen in the service name must become an underscore in the SSM keys"
+  }
+}
+
+# ---- AgentCore and Bedrock permissions (second step after the agent stack) ----
+
+run "agent_default_no_change" {
+  command = plan
+
+  assert {
+    condition     = length(module.agent_runtime_policy) == 0 && length(module.agent_service_policy) == 0 && length(module.in_agents.strings) == 0
+    error_message = "With an empty agent stack no AgentCore or Bedrock policy may be attached and nothing may be read"
+  }
+
+  assert {
+    condition     = toset(keys(local.task_policies["api"])) == toset(["read-db-secret"]) && length(local.task_policies["worker"]) == 0
+    error_message = "With agent_access empty the task role policies must be exactly what they were before the agent stack"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_access"] == "{}"
+    error_message = "agent_access must be published as {} by default"
+  }
+}
+
+run "runtime_execution_permissions_exact" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition     = local.agent_runtime_policies["assistant"].role_arn == "arn:aws:iam::111111111111:role/alpha-dev-agent-assistant"
+    error_message = "The Runtime permissions must be attached to the execution role published by iam-base"
+  }
+
+  assert {
+    condition = jsonencode(jsondecode(local.agent_runtime_policies["assistant"].policies["agent"]).Statement) == jsonencode([
+      {
+        Sid    = "InvokeModels"
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+        ]
+      },
+      {
+        Sid    = "ApplyGuardrails"
+        Effect = "Allow"
+        Action = ["bedrock:ApplyGuardrail"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234",
+          "arn:aws:bedrock:*:111111111111:guardrail-profile/apac.guardrail.v1:0",
+          "arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678",
+        ]
+      },
+      {
+        Sid      = "UseMemories"
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:CreateEvent", "bedrock-agentcore:ListEvents", "bedrock-agentcore:GetEvent", "bedrock-agentcore:RetrieveMemoryRecords"]
+        Resource = ["arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj"]
+      },
+      {
+        Sid      = "QueryKnowledgeBases"
+        Effect   = "Allow"
+        Action   = ["bedrock:Retrieve", "bedrock:RetrieveAndGenerate"]
+        Resource = ["arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001"]
+      },
+      {
+        Sid      = "InvokeGateway"
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:InvokeGateway"]
+        Resource = ["arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij"]
+      },
+      {
+        Sid      = "ReadDatabaseMasterSecret"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf"
+      },
+      {
+        Sid       = "DecryptMasterSecret"
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+        Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.ap-northeast-1.amazonaws.com" } }
+      },
+      {
+        Sid      = "XRayTraces"
+        Effect   = "Allow"
+        Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:PutSpans"]
+        Resource = "*"
+      },
+    ])
+    error_message = "Every Runtime permission must point at the exact ARNs the agent stack published; * only in the region of the foundation model and guardrail profile ARNs, and for X-Ray"
+  }
+}
+
+run "guardrail_profile_region_star" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition = (
+      contains(flatten([for s in jsondecode(local.agent_runtime_policies["assistant"].policies["agent"]).Statement : flatten([s.Resource]) if contains(s.Action, "bedrock:ApplyGuardrail")]), "arn:aws:bedrock:*:111111111111:guardrail-profile/apac.guardrail.v1:0") &&
+      !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "guardrail-profile/*")
+    )
+    error_message = "A STANDARD guardrail needs its profile in any region, with the exact profile id"
+  }
+
+  assert {
+    condition     = length(regexall("guardrail-profile", local.agent_runtime_policies["assistant"].policies["agent"])) == 1
+    error_message = "The CLASSIC guardrail must not add a profile ARN"
+  }
+}
+
+run "runtime_without_permissions_gets_no_policy" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  assert {
+    condition     = length(module.agent_runtime_policy) == 0
+    error_message = "A Runtime that may use nothing must get no policy (iam-role-policy refuses an empty one)"
+  }
+}
+
+run "untraced_runtime_has_no_xray" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[\"chat\"],\"memories\":[\"conversation\"],\"guardrails\":[\"safety\",\"english\"],\"knowledge_bases\":[\"products\"],\"gateway\":true,\"tracing\":false}" }
+  }
+
+  assert {
+    condition     = !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "xray:")
+    error_message = "A Runtime without tracing must not get any X-Ray action"
+  }
+
+  assert {
+    condition     = !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "secretsmanager:")
+    error_message = "A Runtime that is not in agent_data_access must not read the database secret"
+  }
+}
+
+run "cross_account_assumes_role_instead_of_invoking" {
+  command = plan
+
+  variables {
+    agent_access = { api = { models = ["chat"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":true,\"role_arn\":\"arn:aws:iam::333333333333:role/bedrock-invoke\",\"session_seconds\":3600}" }
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(local.agent_runtime_policies["assistant"].policies["agent"]).Statement : s.Resource if contains(s.Action, "sts:AssumeRole")] == [["arn:aws:iam::333333333333:role/bedrock-invoke"]] &&
+      !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "bedrock:InvokeModel")
+    )
+    error_message = "With bedrock_invoke a Runtime must assume exactly the role in account B and must not invoke models itself"
+  }
+
+  assert {
+    condition     = strcontains(local.task_policies["api"]["agent"], "sts:AssumeRole") && !strcontains(local.task_policies["api"]["agent"], "bedrock:InvokeModel")
+    error_message = "With bedrock_invoke a service must assume the role too"
+  }
+}
+
+run "same_account_invokes_models" {
+  command = plan
+
+  variables {
+    agent_access = { api = { models = ["chat"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition     = !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "sts:AssumeRole") && strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "bedrock:InvokeModel")
+    error_message = "Without bedrock_invoke there must be no sts:AssumeRole and the model is invoked directly"
+  }
+}
+
+run "kb_role_does_not_read_master_secret" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition     = local.bedrock_kb_policy["bedrock_kb"].role_arn == "arn:aws:iam::111111111111:role/alpha-dev-bedrock-kb"
+    error_message = "The knowledge base permissions must be attached to the role published by iam-base"
+  }
+
+  assert {
+    condition = [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s.Resource if contains(s.Action, "secretsmanager:GetSecretValue")] == [[
+      "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf",
+      "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf",
+    ]]
+    error_message = "The knowledge base role must read exactly the dedicated secret of each knowledge base"
+  }
+
+  assert {
+    condition     = !strcontains(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"], "rds!cluster-0000")
+    error_message = "The knowledge base role must never read the master secret of the database"
+  }
+
+  assert {
+    condition = [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s if contains(s.Action, "kms:Decrypt")] == [{
+      Sid       = "DecryptKnowledgeBaseUserSecrets"
+      Effect    = "Allow"
+      Action    = ["kms:Decrypt"]
+      Resource  = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+      Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.ap-northeast-1.amazonaws.com" } }
+    }]
+    error_message = "kms:Decrypt must be limited to the project key and to calls through Secrets Manager"
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s.Resource if contains(s.Action, "rds-data:ExecuteStatement")] == [["arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"]] &&
+      [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s.Resource if contains(s.Action, "rds:DescribeDBClusters")] == [["arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"]] &&
+      [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s.Resource if contains(s.Action, "bedrock:InvokeModel")] == [["arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"]]
+    )
+    error_message = "The Data API, the cluster description and the embedding model must point at exactly the database cluster and the embedding model"
+  }
+}
+
+run "kb_role_reads_only_own_corpus_bucket" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition = jsonencode([for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s if contains(s.Action, "s3:ListBucket")]) == jsonencode([
+      { Action = ["s3:ListBucket"], Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-policies-111111111111"] },
+      { Action = ["s3:ListBucket"], Condition = { StringLike = { "s3:prefix" = ["faq/*", "manuals/*"] } }, Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-products-111111111111"] },
+    ])
+    error_message = "Listing must be limited to the corpus bucket of each knowledge base, and to its prefixes when every data source has one"
+  }
+
+  assert {
+    condition = [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s.Resource if contains(s.Action, "s3:GetObject")] == [
+      ["arn:aws:s3:::alpha-dev-kb-policies-111111111111/*"],
+      ["arn:aws:s3:::alpha-dev-kb-products-111111111111/faq/*", "arn:aws:s3:::alpha-dev-kb-products-111111111111/manuals/*"],
+    ]
+    error_message = "Reading objects must be limited to the corpus bucket of each knowledge base and its prefixes"
+  }
+}
+
+run "gateway_role_invokes_lambda_targets" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"],\"tool_schema_arns\":[\"arn:aws:s3:::alpha-dev-tools/order-lookup.json\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition = local.agentcore_gateway_policy["agentcore_gateway"].role_arn == "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway" && jsondecode(local.agentcore_gateway_policy["agentcore_gateway"].policies["lambda-targets"]).Statement == [{
+      Sid      = "InvokeLambdaTargets"
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = ["arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup", "arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup:*"]
+      }, {
+      Sid      = "ReadToolSchemas"
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = ["arn:aws:s3:::alpha-dev-tools/order-lookup.json"]
+    }]
+    error_message = "The gateway role must invoke exactly the Lambda targets, with their versions and aliases, and read exactly their tool schema objects"
+  }
+}
+
+run "kb_secret_wildcard_from_ssm_rejected" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:*\"}}" }
+  }
+
+  expect_failures = [terraform_data.knowledge_base_secrets_are_exact]
+}
+
+run "gateway_without_lambda_gets_no_policy" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[]}" }
+  }
+  assert {
+    condition     = length(local.agentcore_gateway_policy) == 0 && !contains(keys(local.ssm_agent_strings), "role_agentcore_gateway_arn")
+    error_message = "Without a Lambda target the gateway role needs no policy"
+  }
+}
+
+run "service_agent_permissions" {
+  command = plan
+
+  variables {
+    agent_access = { api = { runtimes = ["assistant"], models = ["chat"], guardrails = ["safety"], knowledge_bases = ["products"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition = jsonencode(jsondecode(local.task_policies["api"]["agent"]).Statement) == jsonencode([
+      {
+        Sid      = "InvokeAgentRuntimes"
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Resource = ["arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj", "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj/runtime-endpoint/*"]
+      },
+      {
+        Sid    = "InvokeModels"
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+        ]
+      },
+      {
+        Sid      = "ApplyGuardrails"
+        Effect   = "Allow"
+        Action   = ["bedrock:ApplyGuardrail"]
+        Resource = ["arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234", "arn:aws:bedrock:*:111111111111:guardrail-profile/apac.guardrail.v1:0"]
+      },
+      {
+        Sid      = "QueryKnowledgeBases"
+        Effect   = "Allow"
+        Action   = ["bedrock:Retrieve"]
+        Resource = ["arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001"]
+      },
+    ])
+    error_message = "A listed service must get exactly the Runtime, model, guardrail and knowledge base ARNs it names"
+  }
+
+  assert {
+    condition     = !strcontains(jsonencode(local.task_policies["worker"]), "bedrock")
+    error_message = "A service that is not in agent_access must get no bedrock or bedrock-agentcore action"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["agent_access"]) == { api = { runtimes = ["assistant"], models = ["chat"], guardrails = ["safety"], knowledge_bases = ["products"] } }
+    error_message = "agent_access must be published as it is for application"
+  }
+}
+
+run "agent_access_unknown_service_rejected" {
+  command = plan
+
+  variables {
+    agent_access = { ghost = { runtimes = ["assistant"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  expect_failures = [terraform_data.agent_access_is_known]
+}
+
+run "agent_access_unknown_runtime_rejected" {
+  command = plan
+
+  variables {
+    agent_access = { api = { runtimes = ["ghost"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  expect_failures = [terraform_data.agent_access_is_known]
+}
+
+run "agent_access_unknown_model_rejected" {
+  command = plan
+
+  variables {
+    agent_access = { api = { models = ["ghost"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  expect_failures = [terraform_data.agent_access_is_known]
+}
+
+run "agent_access_known_passes" {
+  command = plan
+
+  variables {
+    agent_access = { api = { runtimes = ["assistant"], knowledge_bases = ["policies"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]},\"embedding\":{\"model_id\":\"amazon.titan-embed-text-v2:0\",\"invoke_arns\":[\"arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"},\"english\":{\"id\":\"ijklmnop5678\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/ijklmnop5678\",\"version\":\"DRAFT\",\"profile_id\":null}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agent_memories"]
+    values = { insecure_value = "{\"conversation\":{\"id\":\"alpha_dev_conversation-AbCdEfGhIj\",\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/alpha_dev_conversation-AbCdEfGhIj\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[\"manuals/\"],\"faq\":[\"faq/\"]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"},\"policies\":{\"id\":\"KBID000002\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000002\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-policies-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-policies-111111111111\",\"inclusion_prefixes\":{\"all\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["agent/agentcore_gateway"]
+    values = { insecure_value = "{\"enabled\":true,\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:gateway/alpha-dev-gateway-abcdefghij\",\"url\":\"https://alpha-dev-gateway-abcdefghij.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp\",\"lambda_arns\":[\"arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup\"]}" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["network/agent_data_access"]
+    values = { insecure_value = "{\"db\":[\"assistant\"]}" }
+  }
+
+  assert {
+    condition     = contains(keys(local.task_policies["api"]), "agent")
+    error_message = "Names published by the agent stack must pass"
   }
 }
 

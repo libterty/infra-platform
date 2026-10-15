@@ -8,6 +8,8 @@ locals {
     { for s, k in local.service_key : "ecs_exec_${k}" => jsonencode({ enabled = contains(local.ecs_exec_enabled, s) }) },
     # application mounts the collector sidecar for these services. SSM rejects an empty list, so this is JSON in a String; it is "[]" when nothing is traced.
     { tracing = jsonencode(sort(tolist(local.tracing_enabled))) },
+    # application injects the ids for these services; "{}" when no service calls AgentCore or Bedrock.
+    { agent_access = jsonencode(var.agent_access) },
   )
 }
 
