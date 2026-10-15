@@ -39,13 +39,14 @@ module "ecs_execution" {
 - `arn` 輸出帶 `depends_on = [aws_iam_role_policy.this]`，下游拿到 ARN 時 inline policy 已附加。
 - Allow statement 的 Action 不可是 `*` 或以 `:*` 結尾；Deny statement 不受限。
 - Allow statement 不可使用 `NotAction`（等於授權「列出的動作以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotAction` 不受限。
+- Allow statement 不可使用 `NotResource`（等於授權「列出的資源以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotResource` 不受限。
 
 ## 限制
 
 - 不收 AWS managed policy 與 customer managed policy，也沒有 instance profile。
 - trust 只收 AWS 服務主體，不收 AWS 帳號、OIDC 或 `*`。
 - 不使用任何獨佔管理 inline policy 的資源（例如 provider 的 role policies exclusive 類型），否則會刪掉 `iam-role-policy` 附加的 policy。
-- 只檢查 Action，不檢查 `NotAction`、`Resource`；`Resource = "*"` 是否合理由呼叫端的測試負責。
+- 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`；`Resource = "*"` 是否合理由呼叫端的測試負責。
 - `Statement` 必須是清單（單一物件的寫法會被擋）。
 
 ## 輸入
