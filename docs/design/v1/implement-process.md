@@ -2,7 +2,7 @@
 
 > 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `28a8647`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
-> 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11（設計文件）進行中，12–16 未開始。
+> 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 與兩個新輸出、`s3-bucket` 的不過期選項排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11（設計文件）進行中，12–16 未開始。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
@@ -34,12 +34,12 @@
 | 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`a89e478` |
 | 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`6fcd3e2`、`79a6520`、`ff68ca4`、`feat(template): wire x-ray tracing into the template` |
 | 10 | 整體驗收 | 已完成：刪掉 `.cache/` 後全量 52 個目錄全過（583 秒，provider 重新下載），測試 1,037 個（module 671、範本 366）；修正 ADR 0001 對 tag 檢查的錯誤說明 | 1：`docs: record phase 10 acceptance` |
-| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–50） | 進行中 | 1：`docs(design): add llm and agentcore addendum` |
-| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）與 `rds` 的 Data API | 未開始 | 2 |
+| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 進行中 | 1：`docs(design): add llm and agentcore addendum` |
+| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`） | 未開始 | 3 |
 | 13 | 增補：7 個新 module | 未開始 | 7 |
 | 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 未開始 | 1 |
 | 15 | 增補：`docs/guides/llm-agentcore.md` 與相關文件 | 未開始 | 1 |
-| 16 | 增補：整體驗收、manifest 登記 `rds` 0.2.0、人手動打 8 個 tag | 未開始 | 0–1 |
+| 16 | 增補：整體驗收、manifest 登記 `rds` 與 `s3-bucket` 0.2.0、人手動打 9 個 tag | 未開始 | 0–1 |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
 
@@ -908,14 +908,14 @@ Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Ph
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與各 Phase 回報一致 |
 | commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 47 個 commit（含 Phase 9 補充 4 個與 Phase 10 的 1 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
 
-### 增補：Phase 11–16（LLM 與 AgentCore，design 決策 37–50）
+### 增補：Phase 11–16（LLM 與 AgentCore，design 決策 37–53）
 
-**結論**：在 v1 上增補 7 個新 module、範本的 `agent` stack、`rds` 的 Data API。分 6 個 Phase，規則全部沿用上面的〈全局規則〉（硬性限制 10 條、TDD 節奏、一個 module 一個 commit、主 agent 自己重跑驗證才 commit、不 push）。19 個既有的 `<module>-v0.1.0` tag 留在 `28a8647`，整個增補過程不得移動。
+**結論**：在 v1 上增補 7 個新 module、範本的 `agent` stack、`rds-v0.2.0`（Data API 加 `deployment`、`database_name` 兩個輸出）、`s3-bucket-v0.2.0`（`never_expire`）。分 6 個 Phase，規則全部沿用上面的〈全局規則〉（硬性限制 10 條、TDD 節奏、一個 module 一個 commit、主 agent 自己重跑驗證才 commit、不 push）。19 個既有的 `<module>-v0.1.0` tag 留在 `28a8647`，整個增補過程不得移動。
 
 | Phase | 內容 | 只能動的路徑 | commit |
 |---|---|---|---|
-| 11 | 設計文件：design §4.23–§4.31、§5.3〈增補：`agent` stack〉、§5.4 增補、§5.6、§7.1、§7.3 第 15–24 項、§8.8、§9 的 J50–J66、決策 37–50、D22–D29；本文件 Phase 11–16 | `docs/design/v1/` | 1：`docs(design): add llm and agentcore addendum` |
-| 12 | 共用設定與 `rds` 的 Data API | `release-please-config.json`、`.release-please-manifest.json`、`README.md`、`docs/adr/0001-*`、`docs/guides/releasing-modules.md`、`scripts/validate.sh`、design §3.2 那一行；`modules/rds/` | 2：`chore(repo): register llm modules and forbid guardrail versions`、`feat(rds): add data api switch for aurora` |
+| 11 | 設計文件：design §4.23–§4.32、§5.3〈增補：`agent` stack〉、§5.4 增補、§5.6、§7.1、§7.3 第 15–25 項、§8.8、§9 的 J50–J70、決策 37–53、D22–D29、§9.5；本文件 Phase 11–16 | `docs/design/v1/` | 1：`docs(design): add llm and agentcore addendum` |
+| 12 | 共用設定、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（不過期） | `release-please-config.json`、`.release-please-manifest.json`、`README.md`、`docs/adr/0001-*`、`docs/guides/releasing-modules.md`、`scripts/validate.sh`、design §3.2 那一行；`modules/rds/`；`modules/s3-bucket/` | 3：`chore(repo): register llm modules and forbid guardrail versions`、`feat(rds): add data api switch and deployment outputs`、`feat(s3-bucket): add never_expire for content buckets` |
 | 13 | 7 個新 module，可以平行 | 各自的 `modules/<name>/` | 7，一個 module 一個 |
 | 14 | 範本接線：新增 `agent`，改 `containerimage`、`network`、`iam-base`、`data`、`iam-app`、`application` | `templates/project-infra/` | 1：`feat(template): add agent stack for agentcore and bedrock` |
 | 15 | 文件：新增 `docs/guides/llm-agentcore.md`，更新其他 guide 與範本 README | `docs/guides/`、`templates/project-infra/infra/README.md`、`README.md` | 1：`docs(guides): add llm and agentcore guide` |
@@ -926,7 +926,7 @@ Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Ph
 | 順序 | 理由 |
 |---|---|
 | 11 先 | 介面、SSM key、決策先定案，後面的 Phase 才有依據；這個 Phase 不動任何程式 |
-| 12 在 13 之前 | release-please 的兩個 JSON、`validate.sh`、README 是每個新 module 都會碰的共用檔，先由一個 commit 改好，13 才能平行；S9 先就位，新 module 一寫錯就被擋。`rds` 的 Data API 跟新 module 沒有檔案重疊，放在 12 是因為它是 14 的前提，而且要單獨一個 commit |
+| 12 在 13 之前 | release-please 的兩個 JSON、`validate.sh`、README 是每個新 module 都會碰的共用檔，先由一個 commit 改好，13 才能平行；S9 先就位，新 module 一寫錯就被擋。`rds`、`s3-bucket` 的 MINOR 跟新 module 沒有檔案重疊，放在 12 是因為它們是 14 的前提（`data` 要讀 `rds` 的新輸出、`agent` 要用 `never_expire` 建語料 bucket），而且各自要單獨一個 commit |
 | 13 在 14 之前 | 範本的測試會 init 所有 module |
 | 15 在 14 之後 | guide 要引用範本的真實檔案與變數名 |
 
@@ -953,22 +953,22 @@ grep -ohE '`(modules|templates|scripts|docs)/[^` ]+`' docs/design/v1/*.md | tr -
 grep -nE '[a-z-]+/v[0-9]' docs/design/v1/design-docs.md | grep -v 'v1/'   # 沒有斜線格式的 tag
 ```
 
-「待建或錯誤」的輸出只能是 7 個新 module、`templates/project-infra/infra/terraform/agent`、`docs/guides/llm-agentcore.md` 底下的路徑，以及 `modules/rds/tests/data-api.tftest.hcl`；另外有 4 個是 v1 原文引用參考專案時省略了專案前綴（docs/reports 的客戶自管網路報告、docs/spec/infra.md、modules/app-platform/iam.tf、scripts/lib/env-guard.sh），不是本 repo 的路徑，維持原樣。其他的都要修；增補段落引用參考專案一律寫成 `project-a/…`、`project-b/…`、`project-c-…/` 開頭的完整相對路徑。保密檢查：文件不得出現參考專案的真實名稱、客戶名稱、本機絕對路徑、真實帳號 id（用 `grep -P` 加 `\b` 對照名單檢查，名單不寫進 repo）。
+「待建或錯誤」的輸出只能是 7 個新 module、`templates/project-infra/infra/terraform/agent`、`docs/guides/llm-agentcore.md` 底下的路徑，以及 `modules/rds/tests/data-api.tftest.hcl`、`modules/rds/tests/deployment-outputs.tftest.hcl`、`modules/s3-bucket/tests/never-expire.tftest.hcl`；另外有 4 個是 v1 原文引用參考專案時省略了專案前綴（docs/reports 的客戶自管網路報告、docs/spec/infra.md、modules/app-platform/iam.tf、scripts/lib/env-guard.sh），不是本 repo 的路徑，維持原樣。其他的都要修；增補段落引用參考專案一律寫成 `project-a/…`、`project-b/…`、`project-c-…/` 開頭的完整相對路徑。保密檢查：文件不得出現參考專案的真實名稱、客戶名稱、本機絕對路徑、真實帳號 id（用 `grep -P` 加 `\b` 對照名單檢查，名單不寫進 repo）。
 
-#### Phase 12：共用設定與 `rds` 的 Data API
+#### Phase 12：共用設定、`rds-v0.2.0`、`s3-bucket-v0.2.0`
 
 **commit 1（`chore(repo)`）**
 
 | 路徑 | 改什麼 |
 |---|---|
 | `release-please-config.json` | `packages` 加 7 個 module，格式同既有的 19 個 |
-| `.release-please-manifest.json` | 7 個新 module 都登記 `0.1.0`（比照決策 27：第一個 tag 由人打）；`rds` 維持 `0.1.0`，Phase 16 才改 |
+| `.release-please-manifest.json` | 7 個新 module 都登記 `0.1.0`（比照決策 27：第一個 tag 由人打）；`rds`、`s3-bucket` 維持 `0.1.0`，Phase 16 才改 |
 | `scripts/validate.sh` | 新增 S9：`resource "aws_bedrock_guardrail_version"` 出現在 `modules/` 或 `templates/` 任何 `.tf` 就失敗；註解與輸出格式同 S1–S8 |
 | `README.md` | module 清單改成 26 個，照 design §1 的分類加一組「LLM 與 AgentCore」 |
-| `docs/adr/0001-*`、`docs/guides/releasing-modules.md` | 「19 個」改成「v1 的 19 個加增補的 7 個」；手動打 tag 的步驟加上 Phase 16 的 8 個 tag |
+| `docs/adr/0001-*`、`docs/guides/releasing-modules.md` | 「19 個」改成「v1 的 19 個加增補的 7 個」；手動打 tag 的步驟加上 Phase 16 的 9 個 tag（7 個 `<module>-v0.1.0`、`rds-v0.2.0`、`s3-bucket-v0.2.0`） |
 | design §3.2 | tag regex 加 7 個 module 名稱 |
 
-**commit 2（`feat(rds)`）**：照 design §4.31。`variables.tf` 加 `data_api`（含 validation）、`cluster.tf` 加 `enable_http_endpoint = var.data_api`、README 的輸入表、`examples/aurora-serverless-proxy` 不動（預設維持原行為）、`CHANGELOG.md` 加 `## 0.2.0` 一段（寫明「既有消費端 plan 應零差異；這是讀 schema 推論，未以 plan 驗證」）、新測試檔 `tests/data-api.tftest.hcl`。
+**commit 2（`feat(rds)`）**：照 design §4.31（決策 39、52）。`variables.tf` 加 `data_api`（含 validation）、`cluster.tf` 加 `enable_http_endpoint = var.data_api`、`outputs.tf` 加 `deployment`、`database_name` 兩個輸出（值取變數）、README 的輸入表與輸出表、`examples/aurora-serverless-proxy` 不動（預設維持原行為）、`CHANGELOG.md` 加 `## 0.2.0` 一段（寫明兩件事：新變數 `data_api`，既有消費端 plan 應零差異，這是讀 schema 推論，未以 plan 驗證；新輸出 `deployment`、`database_name`，D21 的待辦）、新測試檔 `tests/data-api.tftest.hcl` 與 `tests/deployment-outputs.tftest.hcl`。
 
 | run | 斷言 |
 |---|---|
@@ -977,6 +977,19 @@ grep -nE '[a-z-]+/v[0-9]' docs/design/v1/design-docs.md | grep -v 'v1/'   # 沒�
 | `data_api_on_aurora` | `data_api = true` → `true` |
 | `data_api_rejected_for_rds` | `deployment = "rds"` 配 `data_api = true` → `expect_failures = [var.data_api]` |
 | `data_api_false_passes_for_rds` | `deployment = "rds"` 配 `data_api = false` → 通過（反向） |
+| `deployment_output_rds`、`deployment_output_aurora`、`deployment_output_serverless`（`deployment-outputs.tftest.hcl`） | 三種型態各自 `output.deployment` 等於輸入 |
+| `database_name_output_follows_input` | `database_name = "kb"`（非範例預設值）時 `output.database_name == "kb"` |
+
+**commit 3（`feat(s3-bucket)`）**：照 design §4.32（決策 51、J67）。`variables.tf` 的 `expiration_days` 預設改 `null`、validation 改成條件式，新增 `never_expire`（`nullable = false`、互斥 validation）；`main.tf` 加 `local.expiration_days`、rule id 依 `never_expire` 切換、`expiration` 改成 dynamic；README 的用途改成「log 與內容 bucket」、輸入表與「刻意不做」（versioning 仍不做）；`CHANGELOG.md` 加 `## 0.2.0`（寫明既有消費端 plan 應零差異、`expiration_days` 傳 null 從失敗改成當成 90）；`examples/basic` 不動；新測試檔 `tests/never-expire.tftest.hcl`（mock 與 `override_resource` 照既有測試檔開頭的寫法）。**既有的 `tests/s3-bucket.tftest.hcl` 一行不改。**
+
+| run | 斷言 |
+|---|---|
+| `never_expire_drops_expiration` | `never_expire = true` → rule 的 `expiration` 長度 0、`abort_incomplete_multipart_upload` 的 `days_after_initiation == 7`、`id == "abort-incomplete-uploads"`、`status == "Enabled"` |
+| `default_keeps_expire_rule` | 不給兩個變數 → `id == "expire-objects"`、`expiration.days == 90` |
+| `explicit_null_days_means_90` | `expiration_days = null` → `expiration.days == 90`（不是不過期） |
+| `null_never_expire_means_false` | `never_expire = null` → `expiration.days == 90` |
+| `days_without_never_expire` | `never_expire = false`、`expiration_days = 30` → `expiration.days == 30`（互斥的反向） |
+| `never_expire_rejects_expiration_days` | `never_expire = true`、`expiration_days = 30` → `expect_failures = [var.never_expire]` |
 
 **驗收**
 
@@ -985,8 +998,11 @@ shellcheck -S warning scripts/validate.sh
 jq -r '.packages | keys[]' release-please-config.json | wc -l      # 26
 jq -r 'keys[]' .release-please-manifest.json | wc -l               # 26
 jq -r 'to_entries[] | .value' .release-please-manifest.json | sort -u   # 只有 0.1.0
-git diff HEAD~1 --stat -- modules/rds/tests/ | grep -v data-api    # 既有 5 個測試檔沒有改動
-scripts/validate.sh modules/rds                                    # 回報 n passed（Phase 5 是 108，加 5 個）
+git show --stat <feat(rds) 的 commit> -- modules/rds/tests/ | grep -vE 'data-api|deployment-outputs'   # 既有 5 個測試檔沒有改動
+git show --stat HEAD -- modules/s3-bucket/tests/ | grep -v never-expire        # 既有測試檔沒有改動
+scripts/validate.sh modules/rds                                    # 回報 n passed（Phase 5 是 108，加 9 個）
+scripts/validate.sh modules/s3-bucket                              # 回報 n passed（Phase 7 是 28，加 6 個）
+scripts/validate.sh templates/project-infra/infra/terraform/foundation   # 兩個 log bucket 的測試不改仍全過
 scripts/validate.sh                                                # 全量全綠
 ```
 
@@ -999,7 +1015,7 @@ S9 的反向驗證在 scratchpad 的暫存複本做（同 Phase 6）：
 | 只有 `resource "aws_bedrock_guardrail"` | 通過 |
 | 註解裡出現 `aws_bedrock_guardrail_version` 字樣 | 通過（只比對 `resource "..."` 宣告） |
 
-`rds` 的反向驗證：暫時把 `enable_http_endpoint` 寫死 `true`，`data_api_off_by_default_*` 要紅；暫時拿掉 validation，`data_api_rejected_for_rds` 要紅。
+`rds` 的反向驗證：暫時把 `enable_http_endpoint` 寫死 `true`，`data_api_off_by_default_*` 要紅；暫時拿掉 validation，`data_api_rejected_for_rds` 要紅；暫時把 `deployment` 輸出寫死 `"aurora"`，`deployment_output_rds` 要紅。`s3-bucket` 的反向驗證：暫時讓 `never_expire = true` 也送 `expiration`，`never_expire_drops_expiration` 要紅；暫時拿掉互斥 validation，`never_expire_rejects_expiration_days` 要紅；暫時拿掉 `coalesce`，`explicit_null_days_means_90` 要紅；暫時把 rule id 寫死成 `abort-incomplete-uploads`，既有測試檔不會紅、`default_keeps_expire_rule` 要紅（這條證明新檔補到既有測試沒鎖的地方）。
 
 #### Phase 13：7 個新 module（可平行，一個 module 一個 commit）
 
@@ -1051,6 +1067,7 @@ git show --stat HEAD                               # 只動 modules/<name>/
 | `network` | `publishes_agent_data_access` | 預設發布 `{}` |
 | `iam-base` | design §5.4 增補的 `iam-base` 三列 | — |
 | `data` | `data_api_passed_and_published` | `db.data_api = true` 時傳給 `rds`，`database` JSON 有 `cluster_arn` 與 `data_api = true`；預設時 `data_api = false` |
+| `data` | `database_json_from_rds_outputs` | `database` JSON 的 `deployment`、`name` 等於 `module.db[0].deployment`、`module.db[0].database_name`（`override_module` 給跟 `var.db` 不同的值，證明取的是輸出不是變數；決策 52）；既有的 `database_json_shape` 不改仍通過 |
 | `agent` | `nothing_by_default` | 所有輸入預設時，七種 module 呼叫都是 0 個，發布的 JSON 都是空的（`{}`、`{"enabled":false}`） |
 | `agent` | `guardrail_defaults_standard` | `guardrails` 只給名稱與一個 filter 時，傳給 module 的 tier 是 `STANDARD` |
 | `agent` | `invoke_arns_shapes` | 三種模型設定（沒有 prefix、有 prefix、tracked）各自的 `invoke_arns`；foundation-model 的 region 一律是 `*`；`global` prefix 多一條 region 與帳號都空白的 foundation-model ARN |
@@ -1058,10 +1075,13 @@ git show --stat HEAD                               # 只動 modules/<name>/
 | `agent` | `nat_none_requires_endpoints` | `nat.mode = "none"`、VPC Runtime、`interface_endpoints` 少 `bedrock-runtime` 或少 `bedrock-agentcore` 各被擋；都有時通過；`external` 時不檢查；PUBLIC Runtime 時不檢查；有 tracing 少 `xray`、有 `bedrock_invoke` 少 `sts`、有 KB 少 `bedrock-agent-runtime` 各被擋 |
 | `agent` | `nat_none_blocks_gateway` | `nat.mode = "none"` 且有 Runtime `gateway = true` 被擋；有 NAT 時通過 |
 | `agent` | `kb_requires_aurora_data_api` | `database` 是 `rds` 型態、或 `data_api = false`、或 `agent_service_roles` 沒有 `knowledge_base` 各被擋；三者都滿足時通過 |
+| `agent` | `kb_corpus_bucket` | 每個 KB 一個 `s3-bucket` 呼叫，名稱 `<project>-<env>-kb-<key>-<account_id>`、`never_expire = true`、`kms_key_arn = null`、`log_delivery = []`；KB 的每個 data source 的 `bucket_arn` 都等於同一個 KB 的 bucket；`knowledge_bases = {}` 時沒有任何 `s3-bucket` 呼叫；名稱超過 63 字被擋（決策 51） |
+| `agent` | `kb_secret_not_master` | `credentials_secret_arn` 等於 `override_data` 餵的 `database.secret_arn` 被擋；不是 Secrets Manager ARN、region 或帳號不同各被擋；另一個 secret ARN 通過，且原樣傳給 module 的 `aurora.credentials_secret_arn`（決策 53） |
+| `agent` | `publishes_kb_bucket_and_secret` | `knowledge_bases` JSON 有 `bucket_name`、`bucket_arn`、`credentials_secret_arn`，值等於 bucket 的輸出與 tfvars |
 | `agent` | `public_runtime_without_db` | PUBLIC Runtime 在 `agent_data_access` 上被擋 |
 | `agent` | `cross_account_rules` | `bedrock_invoke.session_seconds = 899` 被擋（900 通過）；同時有 `tracked` 模型被擋 |
 | `agent` | `publishes_agent_keys` | 發布的 key 集合等於 design §5.6 增補列出的 `agent` key 加每個 Runtime 一個 `agent_runtime_<rt>` |
-| `iam-app` | design §5.4 增補的 `iam-app` 各列 | — |
+| `iam-app` | design §5.4 增補的 `iam-app` 各列（含「KB role 不讀 master secret」「KB role 只讀自己的語料 bucket」） | — |
 | `iam-app` | `agent_access_must_reference_known` | `agent_access` 的服務不在 `containerimage/services`、或引用 `agent` 沒發布的 key，各被擋 |
 | `application` | `no_agent_access_no_change` | `agent_access = {}` 時 task definition 跟加這個功能之前完全相同（迴歸，比照決策 36） |
 | `application` | `agent_env_injected` | 有列的服務多 `AGENTCORE_RUNTIME_ARN_<RT>` 等環境變數，值等於 `override_data` 餵的 `agent_runtime_<rt>`；沒列的服務沒有 |
@@ -1076,20 +1096,20 @@ grep -h 'version = ' templates/project-infra/infra/terraform/*/.terraform.lock.h
 grep -n 's8_allowed' -A3 scripts/validate.sh       # 例外清單沒有變長
 ```
 
-反向驗證（暫時改壞、確認變紅、改回）：`agent` 永遠發布 `{}`；`invoke_arns` 把 region 寫死成 `var.aws_region`；`iam-app` 給所有服務 `InvokeAgentRuntime`；guardrail profile 的 id 寫成 `*`；`application` 對沒列的服務也注入 Runtime ARN；拿掉 `nat_none` 的 `bedrock-agentcore` 檢查。
+反向驗證（暫時改壞、確認變紅、改回）：`agent` 永遠發布 `{}`；`invoke_arns` 把 region 寫死成 `var.aws_region`；`iam-app` 給所有服務 `InvokeAgentRuntime`；guardrail profile 的 id 寫成 `*`；`application` 對沒列的服務也注入 Runtime ARN；拿掉 `nat_none` 的 `bedrock-agentcore` 檢查；KB role 的 secret Resource 改回 `database.secret_arn`；拿掉 `agent` 的「不等於 master secret」precondition；語料 bucket 改成 `never_expire = false`；`data` 的 `deployment` 改回取 `var.db`。
 
 **完成定義**：上面全綠；`common.tf` 9 份一致（S5）；18 份 tfbackend 的 key 格式正確（S6）；範本預設的 dev、prod tfvars 不開任何 AI 功能（`agent` 什麼都不建）。
 
-**不在本次範圍**：Lambda 本身（Gateway 的 Lambda ARN 是外部輸入）、KB 的文件 bucket（J50）、資料庫 migration、Bedrock 告警、Memory 的自訂 strategy。
+**不在本次範圍**：Lambda 本身（Gateway 的 Lambda ARN 是外部輸入）、資料庫 migration 與 KB 帳號的建立（專案的事，SQL 在 design §4.30）、KB 帳號的 secret（專案在範本外建，design 決策 53；要不要改由範本建見 design §9.5 Q1）、Bedrock 告警、Memory 的自訂 strategy。KB 的語料 bucket 改由 `agent` 建（design 決策 51，取代 J50），在本次範圍內。
 
 #### Phase 15：文件
 
 | 路徑 | 內容 |
 |---|---|
-| `docs/guides/llm-agentcore.md`（新增） | 結論先講：範本已接好、預設關閉，開一個 Runtime 要改哪幾份 tfvars、照什麼順序 apply。然後是：Runtime 換版（只改 `image_tag` 再 apply，不用 API 換版）與映像要求（arm64、OTEL 的啟動方式，照 project-a 的經驗寫，標未實測）；guardrail 三條紅線（tier、不發佈版本、input 不放 PII 遮罩）與「資源就位不等於生效」；guardrail profile 的 IAM 為什麼是 region `*`；跨帳號的 A、B 兩側分工與 B 側要做的事；沒有 NAT 時要開哪些 endpoint；`TRACELOOP_TRACE_CONTENT`；Transaction Search（`aws/spans`）的前置條件；模型使用權的檢查方式；**Knowledge Base：design §4.30 的 SQL 原樣收錄、欄位對照表、`data` → migration → `agent` 的順序、`StartIngestionJob` 怎麼跑、改用專用資料庫帳號的 SQL** |
+| `docs/guides/llm-agentcore.md`（新增） | 結論先講：範本已接好、預設關閉，開一個 Runtime 要改哪幾份 tfvars、照什麼順序 apply。然後是：Runtime 換版（只改 `image_tag` 再 apply，不用 API 換版）與映像要求（arm64、OTEL 的啟動方式，照 project-a 的經驗寫，標未實測）；guardrail 三條紅線（tier、不發佈版本、input 不放 PII 遮罩）與「資源就位不等於生效」；guardrail profile 的 IAM 為什麼是 region `*`；跨帳號的 A、B 兩側分工與 B 側要做的事；沒有 NAT 時要開哪些 endpoint；`TRACELOOP_TRACE_CONTENT`；Transaction Search（`aws/spans`）的前置條件；模型使用權的檢查方式；**Knowledge Base：design §4.30 的 SQL 原樣收錄（含第 4 步的 KB 專用帳號與 GRANT）、欄位對照表、〈帳號的密碼〉四個步驟的可照抄指令（建 secret 時用 `foundation` 的 `kms_key_arn`、密碼不進 shell history、換密碼時兩邊一起改）、`data` → 建 secret 與 migration → `agent` 的順序、語料 bucket 的名稱怎麼查（`agent/knowledge_bases` 的 `bucket_name`）與上傳權限由誰給、`StartIngestionJob` 怎麼跑、權限不夠時只在那張表補、不改成 schema 層級的 `ALL`；PostgreSQL 14 以前 `public` schema 的 `CREATE` 要不要收回由專案決定** |
 | `docs/guides/project-infra-standard.md` | 9 個 stack 與 apply 順序、新的單一決定點、SSM 合約表的增補列 |
 | `docs/guides/observability.md` | Runtime 的追蹤走 `agent_runtimes[*].tracing`（不是 `iam-app/tracing`），兩者的差別 |
-| `templates/project-infra/infra/README.md` | 9 個 stack、合約表、流量規格表加 AgentCore ENI 的說明、第一次部署有 KB 時的順序 |
+| `templates/project-infra/infra/README.md` | 9 個 stack、合約表、流量規格表加 AgentCore ENI 的說明、第一次部署有 KB 時的順序（含專案建 secret、跑 migration、設密碼三步） |
 | `README.md` | guides 連結加一份 |
 
 **驗收**（同 Phase 9 的寫法）
@@ -1114,15 +1134,16 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 | 舊 tag 沒動 | 每支 Phase 前的 19 個 tag 跑 `git rev-parse "<tag>^{commit}"` | 全部是 `28a8647` |
 | module 只用英文 | 同 Phase 10 | 沒有輸出 |
 | 靜態規則 | S1–S9 | 通過 |
-| 介面與 design 一致 | 7 個新 module 與 `rds` 的變數名、預設值、輸出對照 design §4.24–§4.31；範本的 key 對照 §5.6 增補 | 不一致要揭露，回寫 design §9.4，不自行改 design 的決策 |
+| 介面與 design 一致 | 7 個新 module、`rds`、`s3-bucket` 的變數名、預設值、輸出對照 design §4.24–§4.32；範本的 key 對照 §5.6 增補 | 不一致要揭露，回寫 design §9.4，不自行改 design 的決策 |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與 Phase 12–14 的回報一致 |
 | commit 歷史 | `git log --format='%ae %s' 28a8647..HEAD` | Phase 11–15 的 commit，每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote |
 
-驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 的 `rds` 改成 `0.2.0`（`chore(repo): record rds 0.2.0 as released`），理由同決策 27：release-please 把 manifest 的版本當成已發布。**tag 由人打**，在這個 commit 上手動打 8 個：7 個 `<module>-v0.1.0` 與 `rds-v0.2.0`，指令寫在 `docs/guides/releasing-modules.md`（Phase 12 已加）。主 agent 不打 tag。
+驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 的 `rds` 與 `s3-bucket` 改成 `0.2.0`（`chore(repo): record rds and s3-bucket 0.2.0 as released`），理由同決策 27：release-please 把 manifest 的版本當成已發布。**tag 由人打**，在這個 commit 上手動打 9 個：7 個 `<module>-v0.1.0`、`rds-v0.2.0`、`s3-bucket-v0.2.0`，指令寫在 `docs/guides/releasing-modules.md`（Phase 12 已加）。主 agent 不打 tag。
 
 ```bash
 git tag -l '*-v0.1.0' | wc -l      # 打完是 26
 git tag -l 'rds-v*'                # rds-v0.1.0、rds-v0.2.0
+git tag -l 's3-bucket-v*'          # s3-bucket-v0.1.0、s3-bucket-v0.2.0
 ```
 
 ## 驗證指令的具體寫法
@@ -1249,9 +1270,10 @@ git tag -l 'rds-v*'                # rds-v0.1.0、rds-v0.2.0
 | P8 | tfvars（dev、prod、examples）不在測試裡複製值，由 `validate.sh` 對範本 stack 另跑 `terraform test -var-file=...` |
 | P9 | Phase 7E：先一個 docs commit（設計文件）、一個 chore commit（release-please 加 3 個 module、README 改成 18 個），再 3 個新 module 與 `feat(ecs-service)` 的 sidecars 各一個 commit；`ecs-service` 既有測試檔一行都不改（design 決策 31–33） |
 | P10 | 增補 Phase 11–16 沿用 P1–P6；19 個既有 tag 留在 `28a8647`，不得移動（design 決策 37） |
-| P11 | Phase 12 的 `feat(rds)` 是單獨一個 commit，既有 5 個測試檔一行不改；`rds` 發 `0.2.0`（MINOR，design 決策 39、§4.31） |
-| P12 | Phase 16 驗收後，manifest 的 `rds` 由主 agent 改成 `0.2.0`；7 個 `<module>-v0.1.0` 與 `rds-v0.2.0` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27） |
+| P11 | Phase 12 的 `feat(rds)` 是單獨一個 commit，既有 5 個測試檔一行不改；`rds` 發 `0.2.0`，內容是 `data_api` 加 `deployment`、`database_name` 兩個輸出（MINOR，design 決策 39、52、§4.31） |
+| P12 | Phase 16 驗收後，manifest 的 `rds`、`s3-bucket` 由主 agent 改成 `0.2.0`；7 個 `<module>-v0.1.0`、`rds-v0.2.0`、`s3-bucket-v0.2.0` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27） |
 | P13 | Phase 14 的 `agent` lock 檔照 Phase 8 原文產生，是硬性限制第 9 條例外的延伸（design J65） |
+| P14 | Phase 12 的 `feat(s3-bucket)` 是單獨一個 commit，既有 `tests/s3-bucket.tftest.hcl` 一行不改；`s3-bucket` 發 `0.2.0`（MINOR，design 決策 51、§4.32）。KB 用專用資料庫帳號、secret 由專案在範本外建（design 決策 53）；範本不建 secret 容器，除非使用者對 design §9.5 Q1 改變決定 |
 
 ### 跟 design-docs 不一致的點
 

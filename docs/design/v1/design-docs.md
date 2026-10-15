@@ -22,7 +22,7 @@ infra-platform 是Terraform private registry 的範例 repo。它用「Git tag �
 - 範本的 stack 只呼叫 module，不寫原生 AWS resource；例外只有一個（`foundation` 的 secret 容器），明列在 §5.3。整個 repo 只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM。
 - 1 份 8 個 stack 的專案 infra 範本：照 project-a 的 state 拆法，修掉已知的坑；在本 repo 內用相對路徑引用 module；附 PoC／一般正式／大流量三組範例 tfvars（§5.11）。
 - 使用與發版文件、3 份 ADR、CI 與 release 設定。
-- **增補（決策 37 起）**：再加 7 個 LLM 與 AgentCore 的 module（`bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base`，各自從 `v0.1.0` 開始），module 合計 26 個；範本加第 9 個 stack `agent`，預設關閉；`rds` 加 Data API，升 `rds-v0.2.0`。上面「19 個 module」「8 個 stack」是 v1 原本的範圍，19 個 tag 不動（§4.23、§5.3）。
+- **增補（決策 37 起）**：再加 7 個 LLM 與 AgentCore 的 module（`bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base`，各自從 `v0.1.0` 開始），module 合計 26 個；範本加第 9 個 stack `agent`，預設關閉；`rds` 加 Data API 與兩個輸出，升 `rds-v0.2.0`；`s3-bucket` 加不過期的選項，升 `s3-bucket-v0.2.0`（決策 51、52）。上面「19 個 module」「8 個 stack」是 v1 原本的範圍，19 個 tag 不動（§4.23、§5.3）。
 
 全部只做離線驗證（`fmt`、`tflint`、`init -backend=false`、`validate`、`terraform test` 搭配 `mock_provider`），**不做 `plan`／`apply`，也不碰任何 AWS 帳號**。
 
@@ -196,7 +196,7 @@ module "api" {
 - **in-place 變更要寫進 CHANGELOG**。MINOR 版如果會讓既有資源 in-place 更新（例如告警門檻從 80 改 85），CHANGELOG 必須寫出消費端 plan 會看到哪幾個資源、哪個屬性變了。
 - **ECS task definition 的變更要特別標註**。task definition 只要內容變就會產生新 revision，ECS 會滾動部署。不會 replace 資源位址，算 MINOR，但 CHANGELOG 要寫「會觸發一次部署」。
 - **起始版本**：19 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
-- **增補的起始版本**：決策 37 的 7 個新 module 一樣從 `v0.1.0` 開始，在 Phase 16 的驗收 commit 上手動打；`rds` 因為 Data API（§4.31）打 `rds-v0.2.0`。19 個既有的 `v0.1.0` tag 留在原本的 commit，不移動。
+- **增補的起始版本**：決策 37 的 7 個新 module 一樣從 `v0.1.0` 開始，在 Phase 16 的驗收 commit 上手動打；`rds` 因為 Data API 與兩個新輸出（§4.31）打 `rds-v0.2.0`，`s3-bucket` 因為不過期的選項（§4.32）打 `s3-bucket-v0.2.0`。19 個既有的 `v0.1.0` tag 留在原本的 commit，不移動。
 - **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 19 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
 
 ### 3.6 升級到真 registry 的路徑
@@ -1721,6 +1721,8 @@ variable "tags" {
 
 **刻意不做**：versioning、replication、object lock、bucket 本身的 access logging、event notification、CORS、跨帳號寫入。第一版的用途只有 log，這些都用不到。
 
+增補（決策 51）：`s3-bucket-v0.2.0` 加 `never_expire`，讓 KB 的語料 bucket 可以不過期，見 §4.32。上面的介面是 `v0.1.0` 的樣子，不改寫。
+
 ### 4.13 `ssm-read`
 
 **用途**：跟 `ssm-publish` 配對的讀取 module。給 key 清單，回傳字串與清單。範本每個 stack 的 `ssm-inputs.tf` 改成呼叫它，不再各自寫 `data "aws_ssm_parameter"` 與 `split()`。
@@ -2672,7 +2674,7 @@ module "api_alarms" {
 
 ### 4.23 增補：LLM 與 AgentCore 的 module（決策 37 起）
 
-這一段是 v1 的增補，不是另一版設計。§4.2–§4.22 的 19 個 module 與它們的 `v0.1.0` tag 不動；下面 7 個新 module 各自從 `<module>-v0.1.0` 開始，`rds` 為了 Knowledge Base 加 Data API（§4.31），升 `rds-v0.2.0`。實作步驟見 implement-process 的 Phase 11–16。
+這一段是 v1 的增補，不是另一版設計。§4.2–§4.22 的 19 個 module 與它們的 `v0.1.0` tag 不動；下面 7 個新 module 各自從 `<module>-v0.1.0` 開始，`rds` 為了 Knowledge Base 加 Data API 與兩個輸出（§4.31），升 `rds-v0.2.0`；`s3-bucket` 為了 KB 的語料 bucket 加不過期的選項（§4.32），升 `s3-bucket-v0.2.0`。實作步驟見 implement-process 的 Phase 11–16。
 
 | module | 一句話 | 參考實作 | 有沒有部署過的證據 |
 |---|---|---|---|
@@ -3246,7 +3248,7 @@ variable "tags" {
 
 **用途**：建一個 Bedrock Knowledge Base（`VECTOR` 型），向量存在專案自己的 Aurora PostgreSQL（pgvector），文件來源是 S3。向量儲存**只收 Aurora PostgreSQL**（決策 38）。
 
-**為什麼只收 Aurora**：範本已經有 `rds` module 與 `data` stack，KB 跟應用程式用同一顆資料庫，不多一套向量資料庫的費用與維運。代價是兩件 Terraform 做不到的事，要由專案的 migration 做：建 `vector` extension、建表與索引（SQL 見下）。module 只負責接線，並在 plan 時擋掉名稱與欄位對應寫錯的輸入；**資料庫裡有沒有那張表，module 驗不到**。
+**為什麼只收 Aurora**：範本已經有 `rds` module 與 `data` stack，KB 跟應用程式用同一顆資料庫，不多一套向量資料庫的費用與維運。代價是三件 Terraform 做不到的事，要由專案的 migration 做：建 `vector` extension、建表與索引、建 KB 專用的資料庫帳號（SQL 見下，決策 53）。module 只負責接線，並在 plan 時擋掉名稱與欄位對應寫錯的輸入；**資料庫裡有沒有那張表，module 驗不到**。
 
 **參考來源**：三個參考專案都沒有用過 Bedrock Knowledge Base。project-a 的知識庫是自建的 pgvector 加 Bedrock 嵌入模型，不經過 Bedrock KB（`project-a/docs/spec/knowledge-base.md`）。這個 module 的依據只有 schema 與 AWS 文件，所有行為都列在 §7.3 第 21 項待實測。
 
@@ -3292,7 +3294,7 @@ variable "embedding_dimensions" {
 variable "aurora" {
   type = object({
     cluster_arn            = string              # rds module output arn (deployment aurora or aurora_serverless)
-    credentials_secret_arn = string              # Secrets Manager secret with username and password
+    credentials_secret_arn = string              # Secrets Manager secret {"username","password"} of a dedicated KB database user
     database_name          = string
     table_name             = string              # schema.table, e.g. bedrock_integration.bedrock_kb
     field_mapping = optional(object({
@@ -3346,6 +3348,7 @@ variable "tags" {
 
 - `vector_knowledge_base_configuration.embedding_model_arn = var.embedding_model_arn`；`embedding_model_configuration.bedrock_embedding_model_configuration.dimensions = var.embedding_dimensions`。
 - `storage_configuration.rds_configuration`：`resource_arn = aurora.cluster_arn`、`credentials_secret_arn`、`database_name`、`table_name`、`field_mapping` 照輸入；`custom_metadata_field = null` 時不送。
+- module 不知道 `credentials_secret_arn` 是哪個資料庫帳號，也不擋 master secret（module 拿不到 master secret 的 ARN）。範本的 `agent` 只收專用帳號的 secret，並用 precondition 擋掉 master secret（決策 53，§5.3 增補）；README 與 description 寫明「不要給 master secret」。
 - `data_deletion_policy` 預設 `RETAIN`：刪掉 data source 時不連帶清掉向量資料，避免一次錯誤的 apply 清空知識庫；要跟著刪的專案明寫 `DELETE`。
 - `chunking.strategy = "NONE"` 時不送 `fixed_size_chunking_configuration`。
 
@@ -3373,6 +3376,21 @@ CREATE INDEX IF NOT EXISTS bedrock_kb_chunks_idx
   ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));
 CREATE INDEX IF NOT EXISTS bedrock_kb_custom_metadata_idx
   ON bedrock_integration.bedrock_kb USING gin (custom_metadata);
+
+-- 4. KB 專用的資料庫帳號（決策 53）。只能讀寫上面那張表，不是 superuser、不能建資料庫與帳號、
+--    不能在任何 schema 建物件。密碼不寫在 migration 裡，見下方〈帳號的密碼〉。
+--    database 名稱 app 換成 rds 的 database_name；表名換成 aurora.table_name
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bedrock_kb_user') THEN
+    CREATE ROLE bedrock_kb_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE app TO bedrock_kb_user;
+GRANT USAGE ON SCHEMA bedrock_integration TO bedrock_kb_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON bedrock_integration.bedrock_kb TO bedrock_kb_user;
 ```
 
 | 對照 | SQL | module 輸入 |
@@ -3383,18 +3401,32 @@ CREATE INDEX IF NOT EXISTS bedrock_kb_custom_metadata_idx
 | 文字 | `chunks text` | `field_mapping.text_field`（預設 `chunks`） |
 | metadata | `metadata json` | `field_mapping.metadata_field`（預設 `metadata`） |
 | 自訂 metadata | `custom_metadata jsonb` | `field_mapping.custom_metadata_field`（預設 null；有給才送，SQL 的這一欄與它的索引才需要） |
+| 資料庫帳號 | `bedrock_kb_user` | `aurora.credentials_secret_arn` 指向的 secret 的 `username`（範本從 `agent` 的 `knowledge_bases[*].credentials_secret_arn` 傳入） |
 
-欄位名稱、型別與三個索引照 AWS 文件〈Prerequisites for Aurora PostgreSQL〉的範例，**沒有在我們的環境實測**；pgvector 要 0.5.0 以上才有 HNSW，Aurora PostgreSQL 各版本附的 pgvector 版本也**未查證**。SQL 用 master 帳號執行（範本第一版只有 master 帳號，§8.2）；KB 連資料庫用的也是同一個 secret，風險見 §8.8。
+欄位名稱、型別與三個索引照 AWS 文件〈Prerequisites for Aurora PostgreSQL〉的範例，**沒有在我們的環境實測**；pgvector 要 0.5.0 以上才有 HNSW，Aurora PostgreSQL 各版本附的 pgvector 版本也**未查證**。migration 用 master 帳號執行（建 extension 與帳號需要它，§8.2）；**KB 連資料庫用的是第 4 步的專用帳號，不是 master**（決策 53，§8.8）。
 
-**apply 順序**：`data`（Aurora 開 Data API，§4.31）→ **專案跑 migration**（上面的 SQL）→ `agent`（建 KB）。KB 建立時 Bedrock 會不會檢查表與欄位、還是要到第一次 ingestion 才失敗，**未實測**（§7.3 第 21 項）；順序照「建立時就會檢查」排，比較保守。
+**帳號權限比 AWS 文件的範例窄**：AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA bedrock_integration`，並用 KB 帳號建表（表的 owner 是 KB 帳號）。這裡表由 migration 建、owner 不是 KB 帳號，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`，沒有 `CREATE`，也碰不到其他 schema 的表。Bedrock 在 ingestion 與查詢時是否需要更多權限（例如 `TRUNCATE`），**未實測**（§7.3 第 21 項）；實測不夠時，只在那張表上補缺的那一項，不改成 schema 層級的 `ALL`。PostgreSQL 14 以前 `PUBLIC` 預設對 `public` schema 有 `CREATE`，那是整顆資料庫的設定、不是這個帳號的權限，要不要 `REVOKE` 由專案決定，guide 寫明。
+
+**帳號的密碼**（專案負責，不在 Terraform 裡；決策 53）：
+
+| 步驟 | 誰做 | 做什麼 |
+|---|---|---|
+| 1 | 專案 | 在 Secrets Manager 建一個 secret，值是 `{"username":"bedrock_kb_user","password":"<隨機產生>"}`（Bedrock 讀這兩個 key），用 `foundation` 的專案 KMS key 加密（跟 master secret 一樣，§8.3）。secret 的容器要不要改由範本建，是待決事項（§9.5 Q1） |
+| 2 | 專案 | 跑上面的 migration（第 1–4 步） |
+| 3 | 專案 | 用 master 帳號執行 `ALTER ROLE bedrock_kb_user PASSWORD '<secret 裡的值>'`。密碼從 secret 讀出來直接送進 psql，不寫進 migration 檔、不進 shell history（guide 附指令） |
+| 4 | 專案 | 把 secret ARN 寫進 `agent` 的 tfvars：`knowledge_bases[*].credentials_secret_arn` |
+
+這個 secret 不由 RDS 管理，**沒有自動輪替**。換密碼時第 1 步的 `put-secret-value` 與第 3 步的 `ALTER ROLE` 要一起做，中間這段時間 ingestion 與查詢會認證失敗；KB 是每次連線都讀 secret、還是會快取，**未實測**（§7.3 第 21 項）。
+
+**apply 順序**：`data`（Aurora 開 Data API，§4.31）→ **專案建 secret、跑 migration、設密碼**（上表第 1–3 步）→ `agent`（建語料 bucket 與 KB）。KB 建立時 Bedrock 會不會檢查表與欄位、還是要到第一次 ingestion 才失敗，**未實測**（§7.3 第 21 項）；順序照「建立時就會檢查」排，比較保守。
 
 **輸出**：`knowledge_base_id`、`knowledge_base_arn`、`data_source_ids`（`map(string)`）。
 
-**刻意不做**：ingestion job（是執行期的動作，不是資源；文件上傳後由人或 CI 呼叫 `StartIngestionJob`，寫在 guide）；其他 7 種向量儲存（決策 38；S3 Vectors、OpenSearch Serverless 都不做，後者的向量索引 aws provider 也建不了）；`HIERARCHICAL`、`SEMANTIC` chunking 與 parsing、custom transformation；data source bucket 本身（J50）；IAM（KB role 的權限在 `iam-app`，§5.4 增補）。
+**刻意不做**：ingestion job（是執行期的動作，不是資源；文件上傳後由人或 CI 呼叫 `StartIngestionJob`，寫在 guide）；其他 7 種向量儲存（決策 38；S3 Vectors、OpenSearch Serverless 都不做，後者的向量索引 aws provider 也建不了）；`HIERARCHICAL`、`SEMANTIC` chunking 與 parsing、custom transformation；data source bucket 本身（module 不呼叫 module，§4.1；範本的 `agent` 用 `s3-bucket` 建，決策 51）；資料庫帳號與它的 secret（專案的 migration 與流程，決策 53）；IAM（KB role 的權限在 `iam-app`，§5.4 增補）。
 
-### 4.31 `rds` 的 Data API（MINOR，`rds-v0.2.0`）
+### 4.31 `rds` 的 Data API 與兩個新輸出（MINOR，`rds-v0.2.0`）
 
-**用途**：讓 Aurora cluster 開啟 RDS Data API（`aws_rds_cluster.enable_http_endpoint`）。Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取（§4.30），`rds` 目前沒有這個開關。
+**用途**：兩件事一起發成 `rds-v0.2.0`（決策 39、52）。一是讓 Aurora cluster 開啟 RDS Data API（`aws_rds_cluster.enable_http_endpoint`）：Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取（§4.30），`rds` 目前沒有這個開關。二是補上 D21 記的兩個輸出 `deployment`、`database_name`，讓 `data` stack 發布 `database` JSON 時不用再從自己的 `var.db` 取這兩個值。
 
 **介面**
 
@@ -3412,7 +3444,24 @@ variable "data_api" {
 
 - `aws_rds_cluster.this` 加 `enable_http_endpoint = var.data_api`；`aws_db_instance` 不動（它沒有這個屬性）。
 - 變數名用 `data_api`，不用 `enable_http_endpoint`：AWS 的屬性名看不出它是 Data API。也不算 §4.1 禁止的 `enable_xxx` 開關：那條指的是「要不要建資源」，這是既有資源上的一個屬性，跟 `deletion_protection` 同類。
-- **不用新增輸出**：KB 要的 cluster ARN 就是既有的 `arn`（Aurora 時是 cluster ARN，`modules/rds/outputs.tf`），secret 是既有的 `master_user_secret_arn`。
+- **KB 不需要新的輸出**：KB 要的 cluster ARN 就是既有的 `arn`（Aurora 時是 cluster ARN，`modules/rds/outputs.tf`）。KB 不用 master secret（決策 53），`master_user_secret_arn` 跟 KB 無關。
+
+**新輸出**（決策 52，D21）
+
+```hcl
+output "deployment" {
+  description = "Deployment type as given: rds, aurora or aurora_serverless."
+  value       = var.deployment
+}
+
+output "database_name" {
+  description = "Name of the database created with the instance or cluster."
+  value       = var.database_name
+}
+```
+
+- 名稱照既有變數（`deployment`、`database_name`），不另取名。值直接取變數，不讀 resource 的屬性：兩者在三種型態都是原樣傳進 resource，取變數在 plan 時就是已知值，下游的 precondition 不會遇到 unknown。
+- `data` stack 的 `database` JSON 改取這兩個輸出（`"deployment"`、`"name"`），JSON 的欄位與值都不變（Phase 14）。
 - Data API 對 Aurora PostgreSQL 的版本要求（例如 13.12、14.9、15.4、16.1 以上）照 AWS 文件，**未查證**，不做成 validation，寫進 README 與 §7.3 第 21 項。
 
 **版本判斷（§3.5）**：MINOR，`rds-v0.1.0` → `rds-v0.2.0`。
@@ -3422,9 +3471,96 @@ variable "data_api" {
 | 既有消費端換 `ref`、不改程式碼 | 新變數有預設值 `false`，不用改 |
 | plan 會看到什麼 | `enable_http_endpoint` 在 schema 是 optional、非 computed，provider 對沒設的值當成 `false`；改成明寫 `false` 之後，既有 cluster 的 plan 應該零差異。**這是讀 schema 推論的，沒有 plan 可以證明**（本 repo 不跑 plan）；Phase 12 用「既有 5 個測試檔一行不改全部通過」加一個斷言 `enable_http_endpoint == false` 的 run 鎖住 |
 | validation 有沒有收緊 | 沒有，新 validation 只作用在新變數 |
-| 為什麼不是 PATCH | 新增能力（§3.5：新增有預設值、預設維持原行為的變數是 MINOR） |
+| 新輸出 | `deployment`、`database_name` 是新增的 output，不改任何資源；§3.5 的「新增 output」是 MINOR |
+| 為什麼不是 PATCH | 新增能力（§3.5：新增有預設值、預設維持原行為的變數、新增 output 都是 MINOR） |
 
-D21 裡 `rds` 另一個待辦（新增 `deployment` 與資料庫名稱兩個輸出，也是 MINOR）**不併進這一版**，範圍維持只有 Data API；要併的話是使用者決定（§9.1 J64 附註）。
+D21 裡 `rds` 的待辦（新增 `deployment` 與資料庫名稱兩個輸出）**併進這一版**（決策 52，取代原本「不併進」的寫法，§9.1 J64 附註已改）。
+
+### 4.32 `s3-bucket` 的不過期選項（MINOR，`s3-bucket-v0.2.0`）
+
+**用途**：讓 bucket 可以不設過期規則，給 Knowledge Base 的語料 bucket 用（決策 51）。`s3-bucket-v0.1.0` 的 lifecycle 一律帶 `expiration`（1–3650 天），拿它放語料，文件到期會被 S3 刪掉，KB 下一次同步就跟著把向量清掉，而且整個過程不報錯。
+
+**介面**
+
+```hcl
+variable "expiration_days" {
+  type        = number
+  default     = null
+  description = "Days after which objects expire, 1-3650. null means 90. Must stay null when never_expire is true."
+
+  validation {
+    condition     = var.expiration_days == null ? true : (var.expiration_days >= 1 && var.expiration_days <= 3650)
+    error_message = "expiration_days must be between 1 and 3650."
+  }
+}
+
+variable "never_expire" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "Keep objects until they are deleted explicitly: the lifecycle rule has no expiration. For content such as a knowledge base corpus; not for log buckets."
+
+  validation {
+    condition     = !(var.never_expire && var.expiration_days != null)
+    error_message = "never_expire cannot be combined with expiration_days; leave expiration_days unset."
+  }
+}
+```
+
+`main.tf` 的改動：
+
+```hcl
+locals {
+  expiration_days = var.never_expire ? null : coalesce(var.expiration_days, 90)
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    # The id stays expire-objects for existing buckets, so switching to v0.2.0 is not a change.
+    id     = var.never_expire ? "abort-incomplete-uploads" : "expire-objects"
+    status = "Enabled"
+
+    filter {}
+
+    dynamic "expiration" {
+      for_each = var.never_expire ? [] : [local.expiration_days]
+      content {
+        days = expiration.value
+      }
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+```
+
+**設計取捨**
+
+| 問題 | 做法 | 理由 |
+|---|---|---|
+| 為什麼不讓 `expiration_days = null` 直接代表不過期 | 不過期一律要明寫 `never_expire = true`；`expiration_days = null` 代表「用預設 90 天」 | 呼叫端常用 `optional(number)` 轉傳，沒給值時就是 null；如果 null 代表不過期，一個 log bucket 會在沒人注意時變成永久保存。明寫的布林值在 PR 審查看得到 |
+| 為什麼 `expiration_days` 的預設從 `90` 改成 `null` | 預設 null、module 內 `coalesce` 成 90，效果不變 | 要讓「`never_expire = true` 又給了 `expiration_days`」被擋下，module 必須分得出呼叫端有沒有給天數；預設是 90 的話，給 90 跟沒給分不出來 |
+| 互斥放在哪個變數 | `never_expire` 的 validation 引用 `expiration_days` | Terraform 1.9 起 validation 可以引用其他變數（本 repo `required_version >= 1.10`，`kms_key_arn` 的 validation 已經這樣用） |
+| `expiration_days` 的 validation 為什麼寫成條件式 | `== null ? true : (...)` | `||` 在 `required_version` 涵蓋的所有版本是否都短路沒有查證；寫成條件式，null 時不會去比大小 |
+| 不過期時 lifecycle 還留什麼 | 只留 `abort_incomplete_multipart_upload` 7 天，rule id 改成 `abort-incomplete-uploads` | 未完成的分段上傳不會變成物件，只會佔空間收錢，清掉它不影響語料；既有 bucket 的 rule id 維持 `expire-objects`，換版不會出現差異 |
+| 算不算 §4.1 禁止的 `enable_xxx` | 不算 | 那條指的是「要不要建資源」，這是既有 lifecycle rule 裡的一個區塊（同 §4.31 對 `data_api` 的判斷） |
+
+**刻意不做**：versioning（語料被誤刪救不回來；KB 的 `data_deletion_policy = "RETAIN"` 只在刪掉 data source 時保留向量，物件被刪之後的下一次同步仍會清掉對應的向量，§4.30。要不要做 versioning 是 `s3-bucket` 下一個 MINOR，等有專案需要）；event notification（上傳後自動觸發 ingestion 是應用程式的事）；允許其他 principal 寫入的 bucket policy（上傳的人或 CI 用自己的 IAM 權限，範本不給）。
+
+**版本判斷（§3.5）**：MINOR，`s3-bucket-v0.1.0` → `s3-bucket-v0.2.0`。
+
+| 檢查 | 結果 |
+|---|---|
+| 既有消費端換 `ref`、不改程式碼 | `never_expire` 有預設值 `false`；`expiration_days` 沒給時仍是 90，給了數字時照舊 |
+| plan 會看到什麼 | `never_expire = false` 時 rule id、`expiration.days`、`abort_incomplete_multipart_upload` 都跟 `v0.1.0` 相同，應該零差異；範本 `foundation` 的兩個 log bucket 明寫 `expiration_days = 90`，也不受影響。**這是讀程式推論的，沒有 plan 可以證明**；Phase 12 用「既有測試檔一行不改全部通過」鎖住 |
+| validation 有沒有收緊 | 沒有。`expiration_days` 原本傳 null 會失敗，現在當成 90，是放寬；新的互斥 validation 只在新變數 `never_expire = true` 時才會擋 |
+| 為什麼不是 PATCH | 新增能力 |
+
+**輸出**：不變（`bucket_name`、`arn`、`bucket_regional_domain_name`）。
 
 ## 5. 專案 infra 規範（給專案 app team）
 
@@ -3673,9 +3809,9 @@ apply 順序（增補後）：`foundation` → `containerimage` → `network` �
 | 2 | `containerimage` | 每個 Runtime 一個 ECR repository；**Runtime 清單的單一決定點** `var.agent_runtimes` | `ecr-repository`（第三個 `for_each`，`module "ecr_agent"`） | 不變 | `agent_runtimes`、`ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` |
 | 3 | `network` | 每個 Runtime 一個 SG（同一次 `security-group` 呼叫）；Runtime 連 DB 的規則；`interface_endpoints` 拒收 `bedrock-agentcore-control` | `security-group`（不變） | 多讀 `containerimage/agent_runtimes` | `sg_agent_<rt>_id`、`agent_data_access` |
 | 4 | `iam-base` | 每個 Runtime 一個 execution role（trust、ECR 拉取、log）；KB 與 Gateway 的 service role（只有 trust） | `iam-role`（多兩個 `for_each`） | 多讀 `containerimage/agent_runtimes`、`ecr_agent_<rt>_arn` | `role_agent_<rt>_execution_arn`、`role_bedrock_kb_arn`、`role_agentcore_gateway_arn`、`agent_service_roles` |
-| 5 | `data` | Aurora 可選開 Data API | `rds`（`rds-v0.2.0`，§4.31） | 不變 | `database` 的 JSON 多兩個欄位（`cluster_arn`、`data_api`） |
-| 5a | **`agent`（新）** | guardrail、inference profile、Memory、Runtime、Runtime 的 log group 與 vended log／trace、Gateway、KB | `bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-memory`、`agentcore-runtime`、`log-group`、`log-delivery`、`agentcore-gateway`、`bedrock-knowledge-base`、`ssm-read`、`ssm-publish` | `foundation`、`containerimage`、`network`、`iam-base`、`data` | 見下〈`agent` 發布的 key〉 |
-| 6 | `iam-app` | Runtime execution role、KB role、Gateway role 的權限（確切 ARN）；ECS task role 呼叫 Runtime、模型、guardrail、KB 的權限；**誰能呼叫什麼的單一決定點** `var.agent_access` | `iam-role-policy`（多三個 `for_each`）、`iam-role`（task role 多幾條 statement） | 多讀 `agent/*` | `agent_access` |
+| 5 | `data` | Aurora 可選開 Data API；`database` JSON 的 `deployment`、`name` 改取 `rds` 的新輸出（值不變，決策 52） | `rds`（`rds-v0.2.0`，§4.31） | 不變 | `database` 的 JSON 多兩個欄位（`cluster_arn`、`data_api`） |
+| 5a | **`agent`（新）** | guardrail、inference profile、Memory、Runtime、Runtime 的 log group 與 vended log／trace、Gateway、KB 與它的語料 bucket | `bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-memory`、`agentcore-runtime`、`log-group`、`log-delivery`、`agentcore-gateway`、`bedrock-knowledge-base`、`s3-bucket`（`s3-bucket-v0.2.0`，§4.32）、`ssm-read`、`ssm-publish` | `foundation`、`containerimage`、`network`、`iam-base`、`data` | 見下〈`agent` 發布的 key〉 |
+| 6 | `iam-app` | Runtime execution role、KB role、Gateway role 的權限（確切 ARN；KB role 讀的是 KB 專用帳號的 secret，不是 master secret）；ECS task role 呼叫 Runtime、模型、guardrail、KB 的權限；**誰能呼叫什麼的單一決定點** `var.agent_access` | `iam-role-policy`（多三個 `for_each`）、`iam-role`（task role 多幾條 statement） | 多讀 `agent/*` | `agent_access` |
 | 8 | `application` | 對 `agent_access` 有列的服務注入 Runtime ARN、模型 id、guardrail id、KB id；沒有 NAT 時的 endpoint 檢查 | 不變 | 多讀 `iam-app/agent_access`、`agent/*` | — |
 
 `loadbalancer` 與 `foundation` 不變。stack 的擁有者是專案 app team，變動頻率「中」（換 Runtime 映像、調 guardrail 時動）。
@@ -3689,7 +3825,7 @@ apply 順序（增補後）：`foundation` → `containerimage` → `network` �
 | IAM 在 `agent` 之前 apply，所以 Runtime、Memory 用名稱前綴的萬用字元，guardrail 開到整個帳號 `guardrail/*` | 「哪個角色能用哪支 guardrail」只是約定，不是 IAM 邊界 | 兩段式 IAM，Resource 是確切 ARN | `project-a/infra-v2/terraform/iam/ssm-inputs.tf:45-59`、`project-a/docs/guide/guide-data-scientist.md:302` |
 | `agent` 的 `ssm-outputs.tf` 整份註解掉，Runtime ARN 寫死在 `application` 的 tfvars | Runtime 重建後 tfvars 不改，呼叫打到舊的 Runtime 也不會報錯 | `agent` 一律發布，`application` 只從 SSM 讀 | `project-a/infra-v2/terraform/agent/ssm-outputs.tf:1-57`、`project-a/infra-v2/terraform/application/variables.tf:246`、`project-a/docs/runbook/runbook-agentcore.md:211` |
 
-**第一次部署有 KB 時的順序**：`data`（`db.data_api = true`）→ 專案跑 migration（§4.30 的 SQL）→ `agent` → `iam-app` → … 。沒有 KB 時不用跑 migration 這一步。
+**第一次部署有 KB 時的順序**：`data`（`db.data_api = true`）→ 專案建 KB 帳號的 secret、跑 migration、設密碼（§4.30〈帳號的密碼〉）→ secret ARN 寫進 `agent` 的 tfvars → `agent` → `iam-app` → … 。沒有 KB 時不用這幾步。
 
 ##### 各 stack 的增補細節
 
@@ -3743,7 +3879,7 @@ trust 只用 `aws:SourceAccount`：`iam-role` 目前不支援 `aws:SourceArn`（
 
 發布 `role_agent_<rt>_execution_arn`；`role_bedrock_kb_arn`、`role_agentcore_gateway_arn` 只有在 `agent_service_roles` 含對應值時才存在；`agent_service_roles` 一律發布（String，JSON 陣列，已排序，沒有時 `[]`）。
 
-**`data`**：`var.db` 新增 `data_api = optional(bool, false)`，傳給 `rds` 的 `data_api`（§4.31）。`database` 的 JSON 新增兩個欄位，照 §5.6「新增欄位是相容的」：
+**`data`**：`var.db` 新增 `data_api = optional(bool, false)`，傳給 `rds` 的 `data_api`（§4.31）。`database` JSON 既有的 `deployment`、`name` 改取 `module.db[0].deployment`、`module.db[0].database_name`（決策 52），值跟原本取 `var.db` 時相同，發布的參數不變。`database` 的 JSON 新增兩個欄位，照 §5.6「新增欄位是相容的」：
 
 | 欄位 | 值 | 誰讀 |
 |---|---|---|
@@ -3807,12 +3943,12 @@ variable "memories" {
 
 variable "knowledge_bases" {
   type = map(object({
-    embedding_model      = string                          # var.models 的 key，必須是 foundation model（沒有 prefix、不 tracked）
-    embedding_dimensions = number
-    table_name           = optional(string, "bedrock_integration.bedrock_kb")
-    field_mapping        = optional(map(string), {})       # 對應 bedrock-knowledge-base 的 field_mapping，空 = module 預設
-    data_sources = map(object({
-      bucket_arn         = string                          # 專案自己的 bucket（J50）
+    embedding_model        = string                        # var.models 的 key，必須是 foundation model（沒有 prefix、不 tracked）
+    embedding_dimensions   = number
+    credentials_secret_arn = string                        # KB 專用資料庫帳號的 secret，由專案建立（決策 53）；不得是 master secret
+    table_name             = optional(string, "bedrock_integration.bedrock_kb")
+    field_mapping          = optional(map(string), {})     # 對應 bedrock-knowledge-base 的 field_mapping，空 = module 預設
+    data_sources = map(object({                            # 都在這個 KB 的語料 bucket 裡（決策 51），只用 prefix 區分
       inclusion_prefixes = optional(set(string), [])
     }))
   }))
@@ -3853,7 +3989,8 @@ variable "bedrock_invoke" {
 | Runtime 的 application log group | `log-group`（`for_each`） | `/agentcore/<project>-<env>-<rt>` | 每個 Runtime 一個 |
 | vended log 與 trace | `log-delivery`（一次呼叫） | `<project>-<env>-<rt>-logs`、`-traces` | 每個 Runtime：`APPLICATION_LOGS` → 上面的 log group；`tracing = true` 時另加 `TRACES` → `XRAY` |
 | Gateway | `agentcore-gateway`（`for_each`，0 或 1 個） | `<project>-<env>-gateway` | `agentcore_gateway != null`；authorizer 固定 `AWS_IAM`（J58） |
-| KB | `bedrock-knowledge-base`（`for_each = var.knowledge_bases`） | `<project>-<env>-<key>` | `knowledge_bases` 非空 |
+| KB 的語料 bucket | `s3-bucket`（`for_each = var.knowledge_bases`） | `<project>-<env>-kb-<key>-<account_id>`（同 `foundation` 的 log bucket 帶帳號 id，避免全域撞名） | 每個 KB 一個；`never_expire = true`、`kms_key_arn = null`（SSE-S3）、`log_delivery = []`、`force_destroy = false`（決策 51、J68） |
+| KB | `bedrock-knowledge-base`（`for_each = var.knowledge_bases`） | `<project>-<env>-<key>` | `knowledge_bases` 非空；每個 `data_sources` 的 `bucket_arn` 都是同一個 KB 的語料 bucket；`aurora.credentials_secret_arn` 是 `knowledge_bases[*].credentials_secret_arn` |
 
 KMS：guardrail 與 Memory 的 `kms_key_arn` 範本先傳 `null`（AWS 管的 key），不用 `foundation` 的專案 key：那把 key 的 `service_principals` 要給 Bedrock 與 AgentCore 什麼條件，沒有實測（J59、§7.3 第 22 項）。
 
@@ -3894,6 +4031,8 @@ foundation-model 那條的 region 一律是 `*`：system inference profile 會�
 | PUBLIC 模式 | `network_mode = "PUBLIC"` 的 Runtime 不得在 `network/agent_data_access` 上（PUBLIC 的 Runtime 不在 VPC 裡，連不到 isolated 的資料庫） |
 | 服務角色 | `knowledge_bases` 非空時 `iam-base/agent_service_roles` 含 `knowledge_base`；`agentcore_gateway != null` 時含 `gateway` |
 | KB 的資料庫 | `knowledge_bases` 非空時 `data/database` 是 `enabled = true`、`deployment != "rds"`、`data_api = true` |
+| KB 不用 master secret | 每個 KB 的 `credentials_secret_arn` 是 Secrets Manager ARN、region 等於 `var.aws_region`、帳號等於本帳號，而且**不等於 `data/database` 的 `secret_arn`**（決策 53）。只擋得到「把 master secret 的 ARN 原樣填進來」，secret 裡放的是不是 master 帳號的帳密，Terraform 看不到 |
+| 語料 bucket 名稱 | `<project>-<env>-kb-<key>-<account_id>` 不超過 63 字（`s3-bucket` 的 validation 也會擋，precondition 讓錯誤訊息指到 KB 的 key） |
 | 跨帳號 | `bedrock_invoke != null` 時 `role_arn` 是 IAM role ARN、不是本帳號、`session_seconds >= 900`；而且不得有 `tracked = true` 的模型（application inference profile 建在本帳號，B 帳號用不到）、KB 不得引用模型（KB 用本帳號的 KB role 呼叫嵌入模型） |
 | **沒有 NAT** | 有 `network_mode = "VPC"` 的 Runtime，而且 `network/nat` 的 `mode == "none"` 時，`network/interface_endpoints` 必須含 `bedrock-runtime`、`bedrock-agentcore`（決策 42）；另外依條件要求：`bedrock_invoke != null` 要 `sts`、有 Runtime `tracing = true` 要 `xray`、有 Runtime 列了 `knowledge_bases` 要 `bedrock-agent-runtime`、有 Runtime 列了 `guardrails` 要 `bedrock-runtime`（已涵蓋）。`mode = "external"` 不檢查（客戶的責任，比照決策 36） |
 | 沒有 NAT 時不准 Gateway | `nat.mode == "none"` 而且有 Runtime `gateway = true` 時擋下：Runtime 經 VPC 呼叫 Gateway 要哪個 endpoint 服務名稱，沒有查證（J57、§7.3 第 20 項） |
@@ -3906,7 +4045,7 @@ foundation-model 那條的 region 一律是 `*`：system inference profile 會�
 | `models` | JSON：`{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}`；**模型清單的單一決定點** | `iam-app`、`application` |
 | `guardrails` | JSON：`{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`；`CLASSIC` 時 `profile_id` 是 `null` | `iam-app`、`application` |
 | `agent_memories` | JSON：`{"<key>":{"id":…,"arn":…}}` | `iam-app` |
-| `knowledge_bases` | JSON：`{"<key>":{"id":…,"arn":…,"embedding_model":"<models 的 key>","bucket_arns":[…],"inclusion_prefixes":{…}}}` | `iam-app`、`application` |
+| `knowledge_bases` | JSON：`{"<key>":{"id":…,"arn":…,"embedding_model":"<models 的 key>","bucket_name":…,"bucket_arn":…,"inclusion_prefixes":{…},"credentials_secret_arn":…}}`；`bucket_*` 是 `agent` 建的語料 bucket（決策 51），`credentials_secret_arn` 照 tfvars（決策 53） | `iam-app`（KB role 的 S3 與 secret 權限）、`application` |
 | `agentcore_gateway` | `{"enabled":false}` 或 `{"enabled":true,"arn":…,"url":…,"lambda_arns":[…]}` | `iam-app` |
 | `bedrock_invoke` | `{"enabled":false}` 或 `{"enabled":true,"role_arn":…,"session_seconds":3600}`；**跨帳號的單一決定點**（決策 44） | `iam-app`、`application` |
 
@@ -4098,10 +4237,12 @@ module "agent_logs" {
 | 嵌入模型 | `bedrock:InvokeModel` | 各 KB 的 `embedding_model` 的 `invoke_arns` |
 | Data API | `rds-data:ExecuteStatement`、`rds-data:BatchExecuteStatement` | 恰為 `database.cluster_arn` |
 | cluster 描述 | `rds:DescribeDBClusters` | 恰為 `database.cluster_arn` |
-| DB secret | `secretsmanager:GetSecretValue`；`kms:Decrypt` 帶 `kms:ViaService` | 恰為 `database.secret_arn`；專案 key |
-| 文件來源 | `s3:ListBucket`（帶 `s3:prefix` 條件，只有給了 `inclusion_prefixes` 時）、`s3:GetObject` | 各 data source 的 bucket ARN、`<bucket ARN>/<prefix>*`（沒給 prefix 時是 `<bucket ARN>/*`） |
+| KB 帳號的 secret | `secretsmanager:GetSecretValue`；`kms:Decrypt` 帶 `kms:ViaService = secretsmanager.<region>.amazonaws.com` | 恰為各 KB 的 `credentials_secret_arn`（`agent/knowledge_bases`）；`foundation` 的專案 key（同 master secret 的寫法，J69）。**沒有** `database.secret_arn`（決策 53） |
+| 文件來源 | `s3:ListBucket`（帶 `s3:prefix` 條件，只有給了 `inclusion_prefixes` 時）、`s3:GetObject` | 各 KB 的語料 bucket（`agent/knowledge_bases` 的 `bucket_arn`）、`<bucket ARN>/<prefix>*`（沒給 prefix 時是 `<bucket ARN>/*`） |
 
-動作清單照 AWS 文件〈Create a service role for Knowledge Bases〉，**未實測**是否足夠（§7.3 第 21 項）。bucket 用 KMS 加密時要再加那把 key 的 `kms:Decrypt`，bucket 不是範本建的（J50），所以範本不加，guide 寫明。
+動作清單照 AWS 文件〈Create a service role for Knowledge Bases〉，**未實測**是否足夠（§7.3 第 21 項）。語料 bucket 由範本建、用 SSE-S3（決策 51、J68），KB role 讀物件不需要 KMS 權限。
+
+所有 KB 共用一個 KB role，所以 KB role 讀得到每一個 KB 的 secret。各 KB 的資料庫帳號在資料庫裡只對自己的表有權限，但這個隔離在資料庫層，不在 IAM 層；要讓 KB 之間在 IAM 上也分開，得改成每個 KB 一個 role，第一版不做（J70）。
 
 **Gateway role**（`agent_service_roles` 含 `gateway` 時）：`lambda:InvokeFunction`，Resource 是 Lambda target 的 ARN 與 `<arn>:*`（版本與別名，照 `project-b/infra/terraform/modules/agentcore/gateway.tf:34-50`）。沒有 Lambda target 時不附加（`iam-role-policy` 不收空的 `policies`）。
 
@@ -4127,6 +4268,8 @@ module "agent_logs" {
 | `iam-base` | Runtime execution role 的 trust | 只信任 `bedrock-agentcore.amazonaws.com`，帶 `aws:SourceAccount` |
 | `iam-base` | Runtime 只拉自己的映像 | ECR 拉取的 Resource 恰為 `ecr_agent_<rt>_arn` |
 | `iam-base` | KB、Gateway role 只有 trust | `inline_policies` 是空的；`agent_service_roles = []` 時兩個 role 都不存在 |
+| `iam-app` | KB role 不讀 master secret | KB role 的 `secretsmanager:GetSecretValue` 的 Resource 恰為 `override_data` 餵進來的各 KB `credentials_secret_arn`，**不含** `database.secret_arn`；`kms:Decrypt` 帶 `kms:ViaService`。反向驗證：暫時把 `database.secret_arn` 加進 Resource，測試要紅（決策 53） |
+| `iam-app` | KB role 只讀自己的語料 bucket | S3 的 Resource 恰為 `agent/knowledge_bases` 的 `bucket_arn` 與它的 prefix，沒有其他 bucket |
 | `iam-app` | Resource 恰為確切 ARN | 模型、Memory、guardrail、KB、Gateway、Runtime 的 Resource 都等於 `override_data` 餵進來的 ARN，沒有任何萬用字元（`*` 只出現在 `arn:aws:bedrock:*:` 與 `arn:aws:bedrock:*::foundation-model/` 的 region 欄） |
 | `iam-app` | guardrail profile | Resource 含 `arn:aws:bedrock:*:<account>:guardrail-profile/<id>`，`<id>` 不是 `*`；`CLASSIC` 的 guardrail 沒有 profile 那條 |
 | `iam-app` | 跨帳號 | `bedrock_invoke` 啟用時有 `sts:AssumeRole`、沒有 `bedrock:InvokeModel`；沒啟用時相反 |
@@ -4204,7 +4347,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `agent` | `agent_runtime_<rt>` | String（JSON） | 增補。Runtime 的 ARN、id、名稱、execution role ARN 與它能用的 `models`／`memories`／`guardrails`／`knowledge_bases`（key 清單）、`gateway`、`tracing`（§5.3 增補） |
 | `agent` | `models` | String（JSON） | 增補。`{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}`；模型清單的單一決定點，`invoke_arns` 是唯一的模型 IAM Resource 來源 |
 | `agent` | `guardrails` | String（JSON） | 增補。`{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`，沒有時 `{}` |
-| `agent` | `agent_memories`、`knowledge_bases` | String（JSON） | 增補。`{"<key>":{"id":…,"arn":…}}`（KB 另有 `embedding_model`、`bucket_arns`、`inclusion_prefixes`），沒有時 `{}` |
+| `agent` | `agent_memories`、`knowledge_bases` | String（JSON） | 增補。`{"<key>":{"id":…,"arn":…}}`（KB 另有 `embedding_model`、`bucket_name`、`bucket_arn`、`inclusion_prefixes`、`credentials_secret_arn`；決策 51、53），沒有時 `{}`。`credentials_secret_arn` 是 ARN，不是 secret 的值，符合上面「secret 不進 SSM」 |
 | `agent` | `agentcore_gateway`、`bedrock_invoke` | String（JSON） | 增補。`{"enabled":false}` 或 `{"enabled":true,...}`；`bedrock_invoke` 是跨帳號的單一決定點 |
 | `iam-app` | `agent_access` | String（JSON） | 增補。服務 → `{runtimes, models, guardrails, knowledge_bases}`，沒有時 `{}`；`application` 照它注入環境變數 |
 
@@ -4230,7 +4373,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 
 沒有資料庫時：`{"enabled":false}`。
 
-增補（J64）：有資料庫時多兩個欄位，`"cluster_arn"`（Aurora 是 cluster ARN，`rds` 型態是 `null`）與 `"data_api"`（`true`／`false`），給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用（§5.3 增補）。
+增補（J64）：有資料庫時多兩個欄位，`"cluster_arn"`（Aurora 是 cluster ARN，`rds` 型態是 `null`）與 `"data_api"`（`true`／`false`），給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用（§5.3 增補）。既有的 `"deployment"`、`"name"` 改取 `rds-v0.2.0` 的 `deployment`、`database_name` 輸出（決策 52），欄位與值不變。`secret_arn` 仍是 master secret，KB 不讀它（決策 53）；`agent` 只拿它來擋「KB 填了 master secret」。
 
 | 欄位 | 誰讀 | 說明 |
 |---|---|---|
@@ -4620,8 +4763,12 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | `log-delivery` | 每個 source／destination／delivery 一個資源；XRAY destination 的 `delivery_destination_type = "XRAY"` 且沒有 `delivery_destination_configuration`；CWL destination 只有 `destination_resource_arn`；delivery 的 `delivery_source_name` 與 `delivery_destination_arn` 對到正確的 key；三個 map 都空時什麼都不建；`replace_triggered_by` 存在（grep，不是 run） | delivery 指向不存在的 source 或 destination；XRAY 給了 `resource_arn`；CWL 沒給或給了 S3 ARN；`log_type = "ACCESS_LOGS"`；destination `type = "FIREHOSE"`；名稱 61 字（60 字通過） |
 | `bedrock-knowledge-base` | `knowledge_base_configuration.type = "VECTOR"`、`storage_configuration.type = "RDS"`；`rds_configuration` 的五個欄位照輸入；`field_mapping` 沒給時是 `id`／`embedding`／`chunks`／`metadata`、沒有 `custom_metadata_field`；`dimensions` 照輸入；每個 `data_sources` 一個 data source，`type = "S3"`、`bucket_arn`、`inclusion_prefixes` 照輸入、`data_deletion_policy` 預設 `RETAIN`；`chunking.strategy = "NONE"` 時沒有 `fixed_size_chunking_configuration` | `cluster_arn` 是 `:db:` 的 instance ARN（`:cluster:` 通過）；`table_name` 含大寫、雙引號或三段；兩個欄位同名；欄位名含 `-`；`embedding_dimensions` 0 或 1.5；`embedding_model_arn` 是 inference profile；`overlap_percentage` 0 或 100（1、99 通過）；`max_tokens = 0`；`strategy = "SEMANTIC"`；`data_deletion_policy = "PURGE"`；prefix 以 `/` 開頭 |
 | `rds`（Data API） | **既有 5 個測試檔一行不改全部通過**；新檔 `tests/data-api.tftest.hcl`：預設時 `aws_rds_cluster.this[0].enable_http_endpoint == false`（`aurora` 與 `aurora_serverless` 各一）；`data_api = true` 時是 `true` | `deployment = "rds"` 配 `data_api = true`（`aurora` 配 `true` 通過） |
+| `rds`（新輸出，決策 52） | 新檔 `tests/deployment-outputs.tftest.hcl`：三種型態各一個 run，`output.deployment` 等於輸入的 `deployment`、`output.database_name` 等於輸入的 `database_name`；改一個非預設的 `database_name`（例如 `kb`）時輸出跟著變（不能只測預設值，否則寫死也會過） | 沒有新 validation |
+| `s3-bucket`（不過期，決策 51） | **既有 `tests/s3-bucket.tftest.hcl` 一行不改全部通過**（含 `lifecycle_defaults` 的 90 天與 `expiration_*` 的四個邊界）；新檔 `tests/never-expire.tftest.hcl`：`never_expire = true` 時 rule 沒有 `expiration` 區塊、`abort_incomplete_multipart_upload` 仍是 7 天、rule id 是 `abort-incomplete-uploads`、`status = "Enabled"`；預設時 rule id 是 `expire-objects`、`expiration.days == 90`；明寫 `expiration_days = null` 時是 90（不是不過期）；`never_expire = null` 時當成 `false`（`nullable = false`），`expiration.days == 90`；`never_expire = false` 配 `expiration_days = 30` 時是 30 | `never_expire = true` 配 `expiration_days = 30` 被擋（`expect_failures = [var.never_expire]`；`never_expire = true` 不給天數通過、`never_expire = false` 配 30 通過）；`expiration_days = 0` 仍被擋（既有 run 涵蓋） |
 
 這 7 個 module 不得有任何 `aws_iam_*`（S4），整個 repo 不得有 `aws_bedrock_guardrail_version`（S9），這兩條由 `validate.sh` 擋，不寫成 run。
+
+`s3-bucket` 的反向驗證：暫時讓 `never_expire = true` 也送 `expiration`，不過期的 run 要紅；暫時拿掉互斥 validation，`never_expire_rejects_expiration_days` 要紅；暫時把 `coalesce` 拿掉（null 直接傳給 `days`），明寫 null 的 run 要紅。`rds` 的反向驗證：暫時把 `deployment` 輸出寫死 `"aurora"`，`rds` 型態的 run 要紅。
 
 `run` 的 `command`：預設用 `plan`。**只有在宣告了 `mock_provider "aws"` 的測試檔裡，才可以用 `command = apply`**（mock 下的 apply 不碰 AWS，用來讓 `arn`、`id` 這類 computed 值有假值可以斷言）。`scripts/validate.sh` 已經檢查每個測試檔都有 `mock_provider "aws"`，所以這條由同一個檢查保證。
 
@@ -4672,10 +4819,11 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 18. **名稱與列舉值**：Runtime、Memory、Gateway、target、KB、log delivery 的名稱規則與長度；Runtime 的 `protocol`、Memory strategy 的 `type`、log delivery 的 `log_type` 允許值；Runtime 的 `idle_session_timeout <= max_lifetime`。module 的 validation 比 AWS 寬時會在 apply 才失敗，比 AWS 窄時會擋掉合法的輸入，兩種都要在第一次部署時記下來改。
 19. **log-delivery**：CWL 目的地的 log group resource policy 由 CloudWatch 自動加（部署者有 `logs:PutResourcePolicy` 時）；Runtime 的 `APPLICATION_LOGS` 與 `TRACES` 真的進 log group 與 X-Ray；Runtime 重建時 `replace_triggered_by` 讓 delivery 一起替換、沒有 `ConflictException`；trace 需要帳號層的 Transaction Search（`aws/spans` log group），被清掉時 span 全部遺失且不報錯（`project-a/docs/runbook/runbook-agentcore.md:276`），guide 要寫檢查方式。
 20. **Gateway**：Lambda target 用 `gateway_iam_role` 呼叫 Lambda（project-b 沒有實際用過）；**MCP server target 不帶 credential provider 時 AWS 收不收**；扁平的 `tools` 產生的 inline schema 被 Gateway 接受；Runtime 在 VPC 裡呼叫 Gateway 需要哪個 interface endpoint 服務名稱（查證之前 `agent` 在沒有 NAT 時擋下 Gateway，J57）。
-21. **Knowledge Base**：Aurora PostgreSQL 的哪些版本支援 Data API、附的 pgvector 是否 0.5.0 以上；§4.30 的 SQL（欄位型別、三個索引）是否就是 Bedrock 要的；KB 建立時是否檢查表與欄位（決定 apply 順序是否真的要先跑 migration）；KB role 的動作清單是否足夠（Data API、`DescribeDBClusters`、secret、S3、嵌入模型）；用 RDS 管理的 master secret 當 `credentials_secret_arn` 是否可行（輪替後 KB 是否自動讀新值）；`StartIngestionJob` 跑完向量確實寫進表；`rds` 對既有 Aurora cluster 換成 `rds-v0.2.0`、`data_api = false` 時 plan 零差異。
+21. **Knowledge Base**：Aurora PostgreSQL 的哪些版本支援 Data API、附的 pgvector 是否 0.5.0 以上；§4.30 的 SQL（欄位型別、三個索引）是否就是 Bedrock 要的；KB 建立時是否檢查表與欄位（決定 apply 順序是否真的要先跑 migration）；KB role 的動作清單是否足夠（Data API、`DescribeDBClusters`、secret 與它的 `kms:Decrypt`、S3、嵌入模型）；**KB 專用帳號只有那張表的 `SELECT`／`INSERT`／`UPDATE`／`DELETE` 與 schema 的 `USAGE` 時，ingestion、重新同步（含刪除文件後的清除）、`Retrieve` 是否都成功**，不夠時記下錯誤訊息與缺的權限（§4.30，決策 53）；KB 的 secret 改密碼後，KB 是每次連線都讀新值還是會快取、認證失敗會持續多久；`StartIngestionJob` 跑完向量確實寫進表；`rds` 對既有 Aurora cluster 換成 `rds-v0.2.0`、`data_api = false` 時 plan 零差異。
 22. **KMS**：guardrail、Memory、KB data source 改用 `foundation` 的專案 key 時，key policy 要給哪些 service principal 與條件（範本目前傳 `null`，J59）。
 23. **跨帳號（A 側）**：A 帳號的 Runtime 與 ECS 服務用 `sts:AssumeRole` 取得 B 帳號 role、呼叫 B 帳號的模型；沒有 NAT 時 `sts` endpoint 是否足夠；`models.invoke_arns` 的 foundation-model region `*` 對 `global.` 前綴與地區前綴都成立（project-a 的實測在 B 側，A 側沒有）；`*` 是否涵蓋空 region，涵蓋的話 `global` 那條空 region 的 ARN 可以拿掉。
 24. **Memory strategy**：`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` 不給 `memory_execution_role_arn` 能不能建、能不能產生長期記憶（三個參考專案都沒用過 strategy）。
+25. **`s3-bucket-v0.2.0`**（決策 51）：既有的 log bucket 換成 `s3-bucket-v0.2.0`、不給 `never_expire` 時 plan 零差異；`never_expire = true` 時 lifecycle 只有 `abort_incomplete_multipart_upload` 一條、`filter {}` 的 rule AWS 接受；KB 的 data source 讀 SSE-S3 的語料 bucket 不需要額外的 bucket policy。
 
 ## 8. 安全考量
 
@@ -4694,7 +4842,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 - 不在 Terraform 用 `random_password` 產生 secret（值會留在 state）。
 - 一般的 secret（`foundation` 的 `app_secret_arn`）用 ECS 的 `secrets`（`valueFrom`）注入，權限在 execution role。
 - **DB 的 master secret 例外，由應用程式用 task role 自己讀**（project-a 的做法：`DB_SECRET_ARN` 當環境變數，程式去 Secrets Manager 取）。原因有兩個：execution role 是整個專案共用的，放進去等於每個服務都能拿到 DB 密碼；RDS 管理的 master 密碼會自動輪替，`valueFrom` 只在 task 啟動時讀一次，輪替後舊 task 會用舊密碼連線失敗，程式自己讀才能在認證失敗時重讀。
-- **第一版讓應用程式直接用 master secret，這是已知風險。** master 帳號權限最大（可以改 schema、建帳號），應用程式的 SQL injection 或憑證外洩，影響的是整個資料庫。緩解：只有 `network` 的 `data_access` 名單上的服務能讀（§5.4）；開 Proxy 時應用程式拿到的密碼只用來連 Proxy。之後要補：另建應用程式專用帳號（只給需要的 schema 權限，密碼放另一個 secret），或改用 Proxy 的 IAM 認證，讓應用程式完全不碰密碼。
+- **第一版讓應用程式直接用 master secret，這是已知風險。** master 帳號權限最大（可以改 schema、建帳號），應用程式的 SQL injection 或憑證外洩，影響的是整個資料庫。緩解：只有 `network` 的 `data_access` 名單上的服務能讀（§5.4）；開 Proxy 時應用程式拿到的密碼只用來連 Proxy。之後要補：另建應用程式專用帳號（只給需要的 schema 權限，密碼放另一個 secret），或改用 Proxy 的 IAM 認證，讓應用程式完全不碰密碼。Knowledge Base 不在這個風險裡：它一開始就用專用帳號（決策 53，§8.8）。
 - `rds` module 沒有任何 password 變數，`manage_master_user_password = true` 固定；`scripts/validate.sh` 擋 `modules/rds/variables.tf` 出現名稱含 `password` 的變數與整個 `modules/` 出現 `random_password`。
 - `ssm-publish` 寫的是 `insecure_value`，值會出現在 plan 輸出與 CI log，所以 SSM 只放非機密值。
 
@@ -4753,7 +4901,10 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 - **trace 不含訊息內容**：Runtime 預設 `TRACELOOP_TRACE_CONTENT=false`（決策 49），對話內容不進 X-Ray；要開必須在 tfvars 明寫，PR 審查看得到。
 - **Gateway 一定要認證**：`agentcore-gateway` 不收 `authorizer_type = "NONE"`；範本固定 `AWS_IAM`，只有列了 `gateway = true` 的 Runtime 的 execution role 能呼叫。
 - **PUBLIC 模式**：Runtime 的對外連線不經過 SG 與 interface endpoint，範本只在明寫時使用，而且不能同時連資料庫（決策 42）。
-- **Knowledge Base 用 master secret**：KB 經 Data API 連資料庫用的是 `data` 的 master secret（第一版只有這個帳號，§8.2、J14）。這讓 Bedrock 的 KB role 拿得到最大權限的資料庫帳號，影響範圍是整個資料庫，跟 §8.2 應用程式用 master secret 是同一個風險。緩解：KB role 只有 `agent_service_roles` 含 `knowledge_base` 時才存在，`rds-data` 權限只到那一個 cluster。之後要補：另建只對 KB 那張表有權限的資料庫帳號與 secret（guide 附 SQL），`knowledge_bases` 加一個可選的 `credentials_secret_arn` 覆蓋（MINOR）。
+- **Knowledge Base 用專用的資料庫帳號**（決策 53）：KB 經 Data API 連資料庫用的是專案 migration 建的 `bedrock_kb_user`，不是 master。它只有 KB 那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`，不是 superuser、不能建帳號與資料庫、不能在任何 schema 建物件（§4.30）。KB role 的 `secretsmanager:GetSecretValue` 只到各 KB 的 `credentials_secret_arn`，讀不到 master secret（`iam-app` 的測試鎖住）；`agent` 的 precondition 擋掉把 master secret 的 ARN 填進來。原本「KB role 拿得到最大權限的資料庫帳號、影響整個資料庫」的風險不再適用；應用程式用 master secret 的風險（§8.2）不受影響，仍然存在。
+  - `rds-data:ExecuteStatement` 本身不限資料庫帳號，KB role 能跑哪些 SQL 完全由它拿得到的那個帳號決定，所以**資料庫的 GRANT 是唯一的邊界**。migration 改權限時要當成安全變更審查，不能為了排除 ingestion 錯誤改成 schema 層級的 `ALL`。
+  - 剩下的風險：secret 不由 RDS 管理、沒有自動輪替，換密碼要專案自己把 `put-secret-value` 與 `ALTER ROLE` 一起做；所有 KB 共用一個 KB role，KB 之間的隔離只在資料庫層（J70）；secret 的容器在範本外，建立時用哪把 key、誰有權限寫入，範本管不到（§9.5 Q1）。
+- **語料 bucket 不過期**（決策 51）：KB 的語料 bucket 用 `s3-bucket` 的 `never_expire = true`，文件不會被 lifecycle 刪掉。沒有 versioning，誤刪的物件救不回來，下一次同步會連帶清掉對應的向量（`data_deletion_policy = "RETAIN"` 只管刪掉 data source 的情況）。bucket 封鎖公開存取、只允許 TLS，範本不給任何 principal 寫入權限，上傳由人或 CI 用自己的權限做。
 - **環境變數不是 secret 的地方**：Runtime 的環境變數在 console、API 與 state 裡都看得到。範本只放 id、ARN、URL；DB 密碼一律是 `DB_SECRET_ARN`，由 Runtime 用 execution role 自己讀。module 不做「值看起來像 secret」的檢查（J62）。
 - **控制面 endpoint 不建**：`network` 拒收 `bedrock-agentcore-control`，VPC 內的程式碼不該能改 AgentCore 的設定（project-a 的規格同樣明訂）。
 
@@ -4811,8 +4962,8 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J47 | `aws_default_security_group` 算不算 S4 的範圍 | 不算「新建 SG」，留在 `vpc`；S4 另外寫一條：它只准出現在 `modules/vpc/` | 它接管 VPC 本來就有的 default SG 並清空規則，跟 VPC 生命週期綁在一起；只准在 `vpc`，模式 A 就不會碰到客戶的 default SG |
 | J48 | interface endpoint 的 tier 檢查放哪裡 | 從 `vpc` 的 precondition 搬到 network stack 的 validation | module 改收 subnet id，已經不知道 tier；tier 是範本的語意 |
 | J49 | private DNS 的前提由誰檢查 | network stack 在模式 A 用 `data "aws_vpc"` 檢查客戶 VPC 有開 `enable_dns_support`、`enable_dns_hostnames`；module 不檢查 | module 拿不到 VPC 屬性；自建 VPC 時 `vpc` 已經固定開啟 |
-| J50 | Knowledge Base 的文件來源 bucket 誰建 | 範本不建；`agent` 的 `knowledge_bases[*].data_sources[*].bucket_arn` 由專案在 tfvars 給（跟 `loadbalancer` 的 `certificate_arn` 一樣是外部輸入），KB role 的 S3 權限只到這些 bucket 與 prefix | `s3-bucket` 一律帶 lifecycle 到期（`expiration_days` 1–3650，沒有「不過期」），拿它建語料 bucket，文件會被自動刪掉、KB 下一次同步就跟著清空。讓 `s3-bucket` 支援不過期是它的 MINOR，等第一個專案真的需要時再做 |
-| J51 | KB 連資料庫用哪個帳號 | 第一版用 `data` 的 master secret，風險寫在 §8.8 | 範本第一版只有 master 帳號（J14）；另建帳號要在資料庫執行 SQL 並多一個 secret，範本目前沒有放它的地方。之後補可選的 `credentials_secret_arn` 覆蓋（MINOR） |
+| J50 | ~~Knowledge Base 的文件來源 bucket 誰建~~ **已被決策 51 取代**：範本的 `agent` 用 `s3-bucket-v0.2.0`（`never_expire = true`）為每個 KB 建語料 bucket，`data_sources` 不再收 `bucket_arn`。以下是原本的判斷 | 範本不建；`agent` 的 `knowledge_bases[*].data_sources[*].bucket_arn` 由專案在 tfvars 給（跟 `loadbalancer` 的 `certificate_arn` 一樣是外部輸入），KB role 的 S3 權限只到這些 bucket 與 prefix | `s3-bucket` 一律帶 lifecycle 到期（`expiration_days` 1–3650，沒有「不過期」），拿它建語料 bucket，文件會被自動刪掉、KB 下一次同步就跟著清空。讓 `s3-bucket` 支援不過期是它的 MINOR，等第一個專案真的需要時再做 |
+| J51 | ~~KB 連資料庫用哪個帳號~~ **已被決策 53 取代**：一開始就用 KB 專用的資料庫帳號，`knowledge_bases[*].credentials_secret_arn` 必填。以下是原本的判斷 | 第一版用 `data` 的 master secret，風險寫在 §8.8 | 範本第一版只有 master 帳號（J14）；另建帳號要在資料庫執行 SQL 並多一個 secret，範本目前沒有放它的地方。之後補可選的 `credentials_secret_arn` 覆蓋（MINOR） |
 | J52 | `agentcore-memory` 第一版的範圍與預設 | 只收內建的 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` strategy，不收 `CUSTOM` 與 self-managed；`event_expiry_days` 預設 90 | `CUSTOM` 要自訂模型、`append_to_prompt` 與 Memory execution role，範本就得多一個 role 與權限；三個參考專案都沒用過 strategy。保留天數越長、留存的個資越多，預設取中間值；project-a 用 365 是它自己的取捨 |
 | J53 | `agentcore-runtime` 要不要建 endpoint | 不建，只用 AWS 自帶的 `DEFAULT` | project-a 只用 `DEFAULT`；多 endpoint（例如藍綠）沒有專案需要，之後加是 MINOR |
 | J54 | Lambda target 的工具定義怎麼收 | `tool_schema_s3_uri`（完整定義放 S3）或扁平的 `tools`（每個工具一層屬性），兩者恰好一個 | schema 的 inline 工具定義是多層 block，不是 JSON 字串，Terraform 寫不出任意深度（§9.4 D23）；project-b 的寫法是一層 |
@@ -4825,9 +4976,13 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J61 | `agent` 發布的 JSON 太大怎麼辦 | 每個 Runtime 一個 key；project 層級的 `models` 等放在一個 key；超過 4096 字時 `ssm-publish` 的 validation 在 plan 擋下 | `ssm-publish` 寫死 Standard tier（上限 4096 字）；改 Advanced tier 有費用，等真的有專案超過再說 |
 | J62 | 要不要檢查環境變數「看起來像 secret」 | 不做 | 只能靠猜（名稱含 `PASSWORD`、值像金鑰），會漏也會誤擋，還會讓人以為有防線；規則改成文件與審查：環境變數只放 id、ARN、URL |
 | J63 | `models` 的介面 | `foundation_model_id` 加可選的 `inference_profile_prefix`，不從一個字串解析 | foundation model id 與 system inference profile id 都是點分隔，`anthropic.x` 與 `apac.anthropic.x` 只能靠猜哪一段是地區前綴；分成兩個欄位，`invoke_arns` 的組法就沒有歧義 |
-| J64 | `data` 發布的 `database` 要加什麼 | 加 `cluster_arn`、`data_api` 兩個欄位 | KB 與 KB role 需要 cluster ARN；照 §5.6「新增欄位是相容的」。附註：D21 的 `rds` 新增輸出（`deployment`、資料庫名稱）不併進 `rds-v0.2.0`，要併由使用者決定 |
+| J64 | `data` 發布的 `database` 要加什麼 | 加 `cluster_arn`、`data_api` 兩個欄位 | KB 與 KB role 需要 cluster ARN；照 §5.6「新增欄位是相容的」。附註：~~D21 的 `rds` 新增輸出（`deployment`、資料庫名稱）不併進 `rds-v0.2.0`，要併由使用者決定~~ 使用者決定併進：`rds-v0.2.0` 新增 `deployment`、`database_name` 兩個輸出，`data` 改取這兩個輸出發布（決策 52） |
 | J65 | `agent` 的 lock 檔怎麼產生 | 照 Phase 8〈lock 檔的產生方式〉原文，硬性限制第 9 條的例外延伸到 Phase 14 的 `agent` 一個 stack | 新 stack 是 root，要提交全平台雜湊的 lock 檔；跟其他 8 個 stack 同一個 aws 版本（6.69.0），新 module 的下限 `>= 6.69` 也剛好滿足 |
 | J66 | 跨帳號與其他設定的關係 | `bedrock_invoke` 啟用時：所有列了 `models` 的 Runtime 與服務都改成 `sts:AssumeRole`；不准有 `tracked` 模型；KB 不受影響（KB 用本帳號的 KB role 呼叫本帳號的嵌入模型） | 一個專案的模型不是全在本帳號、就是全在 B 帳號，最單純；application inference profile 建在本帳號，B 帳號的 role 用不到 |
+| J67 | `s3-bucket` 不過期選項的介面 | 新增 `never_expire`（`bool`，預設 `false`，`nullable = false`）；`expiration_days` 預設改成 `null`、module 內當成 90；兩者互斥（`never_expire = true` 時給了 `expiration_days` 就擋）；不過期時 lifecycle 只留未完成分段上傳的清除，rule id 改成 `abort-incomplete-uploads` | 不讓 `expiration_days = null` 直接代表不過期：`optional(number)` 轉傳時沒給值就是 null，log bucket 會在沒人注意時變成永久保存。細節見 §4.32 |
+| J68 | KB 語料 bucket 的設定 | 每個 KB 一個 bucket，名稱 `<project>-<env>-kb-<key>-<account_id>`；SSE-S3（`kms_key_arn = null`）、`force_destroy = false`、不給任何 log delivery；`data_sources` 只用 prefix 區分 | 一個 KB 一個 bucket，KB role 的 S3 權限就是「這個 KB 的 bucket」，不用跨 KB 比對 prefix。SSE-S3 是因為 Bedrock 讀 SSE-KMS bucket 時 key policy 要給什麼沒有實測（同 J59 的理由），用 SSE-S3 的話 KB role 不需要 bucket 的 KMS 權限。不用 versioning：`s3-bucket` 沒有這個能力（§4.32） |
+| J69 | KB 帳號的 secret 用哪把 KMS key | guide 要求用 `foundation` 的專案 key 建；`iam-app` 給 KB role 那把 key 的 `kms:Decrypt`，帶 `kms:ViaService = secretsmanager.<region>.amazonaws.com` | 跟 v1 對 master secret 的做法一樣（`data` 傳 `master_user_secret_kms_key_arn`、`iam-app` 的 Proxy role 與 task role 都是這個 statement，§5.4）。專案改用 AWS 管的 `aws/secretsmanager` 也能用（那把 key 的 policy 允許帳號內經 Secrets Manager 解密），這條 statement 只是用不到；改用其他 CMK 則 KB 讀不到 secret。`agent` 不檢查 secret 用哪把 key：要用 `data "aws_secretsmanager_secret"` 讀，等於讓 `agent` 在 plan 時多一個 AWS 呼叫，換到的只是提早一點看到錯誤 |
+| J70 | 多個 KB 時 secret 與 role 怎麼對應 | 每個 KB 自己一個 `credentials_secret_arn`（可以各自是不同的資料庫帳號、只對自己的表有權限）；KB role 仍然只有一個，讀得到所有 KB 的 secret | KB role 由 `iam-base` 的 `agent_service_roles` 決定、只有一個（J55）。改成每個 KB 一個 role，`iam-base` 就得知道 KB 清單，而 KB 清單在 `agent`，順序在 `iam-base` 之後。第一版 KB 之間的隔離只在資料庫層，寫在 §8.8 |
 
 ### 9.2 已拍板決策
 
@@ -4883,6 +5038,9 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 48 | Runtime 的 `idle_session_timeout` 與 `max_lifetime` 一律一起送，預設 900／28800 | 使用者採納建議；底層 API 是 PUT，少送一個會靜默回到 AWS 預設 | §4.26 |
 | 49 | 範本的 Runtime 預設 `TRACELOOP_TRACE_CONTENT=false` | 使用者採納建議；對話內容不進 trace | §5.3、§8.8 |
 | 50 | guardrail profile 的 IAM ARN region 用 `*`；`models.invoke_arns` 由 `agent` 的一個 local 組，foundation-model 的 region 用 `*` | 使用者採納建議；兩者的 region 都由 AWS 動態決定，寫死會間歇失敗 | §5.3、§5.4 |
+| 51 | KB 的語料 bucket 由範本建：`s3-bucket` 新增不過期的選項（`never_expire`，預設 `false`；`expiration_days` 沒給時仍是 90），既有消費端 plan 零差異，屬於 MINOR，發 `s3-bucket-v0.2.0`；範本的 `agent` 為每個 KB 用 `s3-bucket` 建一個不過期的語料 bucket，`knowledge_bases[*].data_sources` 不再收 `bucket_arn`。取代 J50 | 使用者決定。介面細節是主 agent 的判斷（J67、J68） | §1、§3.5、§4.12、§4.23、§4.30、§4.32、§5.3、§5.4、§5.6、§7.1、§7.3、§8.8 |
+| 52 | `rds-v0.2.0` 同時包含 `data_api` 與 D21 記的兩個新輸出 `deployment`、`database_name`；`data` 發布 `database` JSON 時改取這兩個輸出，欄位與值不變 | 使用者決定；兩者都是 MINOR，一起發可以少一個版本 | §4.31、§5.3、§5.6、§7.1、§9.1 J64、§9.4 D21 |
+| 53 | KB 一開始就用專用的資料庫帳號，不用 master secret。專案的 migration 建只能讀寫 KB 那張表的帳號（不是 superuser、不能在 schema 建物件），帳密由專案放進自己建的 Secrets Manager secret（不在本 repo 的 module 裡）；`agent` 從 tfvars 收 `knowledge_bases[*].credentials_secret_arn` 傳給 `bedrock-knowledge-base`，precondition 擋掉 master secret；`iam-app` 給 KB role 的 `secretsmanager:GetSecretValue` 恰為那些 ARN，加上專案 key 的 `kms:Decrypt`（帶 `kms:ViaService`）。取代 J51 | 使用者決定。secret 容器要不要改由範本建，列為待決（§9.5 Q1） | §4.30、§5.3、§5.4、§5.6、§7.1、§7.3、§8.8 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 
@@ -4917,12 +5075,18 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D18 | （Phase 7 A–D）7 個新 module 的實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 的 validation 改成三條（`Statement[0]` 要求非空清單、迴圈用 `try(..., [])` 讓非 JSON 能被 `expect_failures` 接到、Allow 不准 `NotAction`），兩個 module 一字不差；`kms-key` 的 `administrator_arns` regex 結尾 `[^*]+$` 擋 `role/*`，管理者 statement 的動作清單與服務 statement 的 Sid 規則寫進 §4.10；`s3-bucket` 在 SSE-KMS 時 `bucket_key_enabled = true`；`security-group` 的 `ip_protocol` 只收 `tcp`／`udp`／`-1`、`vpc_id` 有格式 validation、規則的 `Name` tag 是規則的 key，另記兩個已知限制（主機位元、兩個 `/1` 繞過 `allow_internet`）。`ecr-repository`、`ssm-read` 核對後與 design 一致 | 以程式碼為準 |
 | D19 | （Phase 7 完成）實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 新增第四條「Allow 不准 `NotResource`」（決策 35）；`log-group` 的 subscription filter 名稱用 `var.name`，`role_arn` 是 provider 的 optional 加 computed，Lambda 目的地時為 null 只能靠程式碼保證；`log-metric-alarm` 的 `default_value` 在 module 內 `tostring()`，metric filter 不帶 tag；`xray` 的 `version = 1`、`resource_arn = "*"` 寫死；ADOT 範例的 sidecar 改成 `essential = false`；`vpc-interface-endpoints` 的 ingress rule 加 `Name` tag。另外：`allowed_cidrs` 有多個時，每條 ingress rule 的 `Name` 都是同一個 `<name>-vpce-https`，不影響運作，只是在 console 分不出哪一條對應哪個 CIDR | 以程式碼為準；`Name` 相同這點建議下一個 PATCH 版改成帶 CIDR，列為待統一 |
 | D20 | （Phase 8 完成，`e71db48`）範本 8 個 stack 的實作與 design 的差異 | 已回寫：`network/nat` 在客戶自管模式 A 發布 `{"mode":"external","ids":[]}`（§5.6 合約表）；`ssm-inputs.tf` 一律先把 key 清單放進 local 再傳給 `module "in"`，因為 `terraform test` 讀不到 module 的輸入值；`iam-base` 與 `application` 多一個 `module "in_services"` 讀每個服務一組的 key（§5.6 讀取寫法）；SG 之間的每條連線展開成「來源 egress ＋ 目的 ingress」兩條，規則數等於展開後的數量（§5.3 規則表）。另外：規則 key 實作是 `alb_in_<port>_<來源>`、`<來源>_out_<目的>`、`<目的>_in_<來源>`，跟 §4.16 範例的 `alb_in_https`、`api_out_proxy`、`db_in_proxy` 寫法不同（範例的規則 key 把 `db_proxy` 簡寫成 `proxy`，實作一律用完整的 SG key，例如 `api_out_db_proxy`、`db_in_db_proxy`）；測試的寫法差異記在 implement-process 的 Phase 8 節與風險表 R15、R16 | 以程式碼為準；§4.16 的範例只示意展開方式，規則 key 不改 |
-| D21 | （Phase 8 發現）三個 module 的小問題，之後發版處理 | `ecs-service` 的 `cpu`、`memory`、`cpu_architecture`、`desired_count` 有預設值但沒有 `nullable = false`，呼叫端傳 `null` 時不會套預設（`cpu_architecture` 會直接被 validation 擋下），範本在 `application` 的 `optional(..., 預設)` 補上同樣的值；`rds` 的輸出沒有 `deployment` 與資料庫名稱，`data` stack 發布 `database` JSON 時只能取自己的 `var.db`；`vpc-interface-endpoints` 在 `services = []`、什麼都不建時仍然要求至少 2 個 subnet；範本兩種模式的 app tier 都至少有 2 個 subnet，目前不受影響，但其他呼叫端不建 endpoint 也得給 subnet | 列為待辦，等級照 §3.5：`ecs-service` 補 `nullable = false` 是 PATCH（修正傳 `null` 時沒套預設的行為）；`rds` 新增輸出、`vpc-interface-endpoints` 在 `services` 為空時不檢查 subnet 是 MINOR（向下相容的新功能與放寬 validation）。修之前範本的寫法不用改 |
+| D21 | （Phase 8 發現）三個 module 的小問題，之後發版處理 | `ecs-service` 的 `cpu`、`memory`、`cpu_architecture`、`desired_count` 有預設值但沒有 `nullable = false`，呼叫端傳 `null` 時不會套預設（`cpu_architecture` 會直接被 validation 擋下），範本在 `application` 的 `optional(..., 預設)` 補上同樣的值；`rds` 的輸出沒有 `deployment` 與資料庫名稱，`data` stack 發布 `database` JSON 時只能取自己的 `var.db`；`vpc-interface-endpoints` 在 `services = []`、什麼都不建時仍然要求至少 2 個 subnet；範本兩種模式的 app tier 都至少有 2 個 subnet，目前不受影響，但其他呼叫端不建 endpoint 也得給 subnet | 列為待辦，等級照 §3.5：`ecs-service` 補 `nullable = false` 是 PATCH（修正傳 `null` 時沒套預設的行為）；`rds` 新增輸出、`vpc-interface-endpoints` 在 `services` 為空時不檢查 subnet 是 MINOR（向下相容的新功能與放寬 validation）。修之前範本的寫法不用改。增補：`rds` 那一項併進 `rds-v0.2.0`，輸出名稱是 `deployment`、`database_name`（決策 52，§4.31）；其他兩項仍是待辦 |
 | D22 | （LLM 增補規劃稿）「19 個 `v0.1.0` tag 在 `3a15b26`」 | 2026-10-15 改寫 git 歷史之後，19 個 tag 在 `28a8647`（`git tag --points-at 28a8647` 是 19 個） | implement-process Phase 11–16 的驗收指令改用 `git rev-parse <module>-v0.1.0^{commit}`，不寫死 hash |
 | D23 | （規劃稿）Lambda target 的工具定義收 `tool_schema_json` 字串 | aws 6.69.0 的 schema：`target_configuration.mcp.lambda.tool_schema.inline_payload` 是多層 block（`input_schema` → `property` → `items` …，第三層之後才有 `properties_json`／`items_json` 字串），不是 JSON 字串；`tool_schema.s3.uri` 對 Lambda 是 optional、對 MCP server 是必填；MCP server 的 inline payload 才是字串 | `agentcore-gateway` 改收 `tool_schema_s3_uri` 或扁平的 `tools`（J54） |
 | D24 | （規劃稿）Memory 的自訂 strategy「各要 `model_id`」 | schema 的 `configuration.extraction`／`consolidation`／`reflection` 除了 `model_id` 還必填 `append_to_prompt`，`reflection` 另外必填 `namespace_templates` | 第一版不收自訂 strategy（J52），不影響介面 |
 | D25 | （規劃稿）KB 的 `rds_configuration.field_mapping` 有四個欄位 | schema 有五個：`primary_key_field`、`vector_field`、`text_field`、`metadata_field` 必填，另有 optional 的 `custom_metadata_field` | `bedrock-knowledge-base` 收五個，第五個預設 null（§4.30） |
 | D26 | （規劃稿）省略 `tier_config` 就是 `CLASSIC` | 確認，而且 schema 裡 `tier_config` 是 optional 加 **computed**：省略之後 AWS 回填 `CLASSIC`，之後的 plan 不會出現差異，事後也看不出來 | module 一律明寫（§4.24） |
 | D27 | （規劃稿）Gateway 的參考 project-b「OpenAPI 經 VPC Lattice 失敗」引用 `gateway.tf:105-110` | 註解在第 109–113 行；另外檔頭寫明 Lambda target 是「legacy, currently unused」，所以 Lambda target 也沒有部署過的證據 | §4.28 照實寫「沒有部署過的證據」 |
-| D28 | （規劃稿）`rds` 要為 KB 新增 cluster ARN 輸出 | 不用：既有的 `arn` 輸出在 Aurora 時就是 cluster ARN | `rds-v0.2.0` 只加 `data_api` 一個變數（§4.31） |
+| D28 | （規劃稿）`rds` 要為 KB 新增 cluster ARN 輸出 | 不用：既有的 `arn` 輸出在 Aurora 時就是 cluster ARN | `rds-v0.2.0` 不為 KB 加 cluster ARN 輸出；後來另外併進 D21 的 `deployment`、`database_name` 兩個輸出（決策 52，§4.31），跟 KB 無關 |
 | D29 | （規劃稿）`global.` 前綴的模型另外列一條空 region 的 foundation-model ARN | 保留。project-a 的跨帳號 runbook 寫「foundation-model 那條的 region 必須是 `*`」，但同一個專案的批次評分角色仍列了空 region 那一條，註解寫「`*` 能不能涵蓋空 region，沒有在這個角色上實測過」（`project-a/infra-v2/terraform/iam/judge-batch-role.tf:71-78`） | `invoke_arns` 對 `global` 前綴多一條空 region 的 ARN，標未實測（§5.3 增補、§7.3 第 23 項） |
+
+### 9.5 待決事項（需要使用者決定）
+
+| # | 問題 | 現在的寫法 | 另一個選項 | 主 agent 的看法 |
+|---|---|---|---|---|
+| Q1 | KB 帳號的 Secrets Manager secret 容器由誰建 | 照使用者的決定（決策 53）：專案在範本外自己建，`agent` 只收 ARN | 範本建容器、不含值（比照 `foundation` 的 `aws_secretsmanager_secret.app`，決策 30）：例如 `agent` 依 `knowledge_bases` 的 key 建 `<project>-<env>-kb-<key>-db`，用專案 key 加密，發布 ARN；值仍由專案寫入 | 範本建的好處是 KMS key、名稱、tag 一致，`agent` 不必再檢查 ARN 的帳號與 region，`iam-app` 的 Resource 也一定對得上；代價是 §5.3 的原生 resource 例外清單多一列（S8 跟著改），而且 secret 刪除有 7–30 天的復原期，`agent` destroy 後重建同名 secret 會撞名。這是取捨，不是對錯，沒有替使用者決定 |
