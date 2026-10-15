@@ -1,0 +1,65 @@
+# Always published, also when empty, so iam-app and application read the agent stack instead of tfvars.
+locals {
+  published_strings = merge(
+    # One key per Runtime keeps each value under the 4096 character limit of a Standard parameter.
+    {
+      for r, k in local.agent_key : "agent_runtime_${k}" => jsonencode({
+        arn                = module.runtime[r].runtime_arn
+        id                 = module.runtime[r].runtime_id
+        name               = module.runtime[r].runtime_name
+        execution_role_arn = local.runtime_inputs[r].role_arn
+        models             = var.agent_runtimes[r].models
+        memories           = var.agent_runtimes[r].memories
+        guardrails         = var.agent_runtimes[r].guardrails
+        knowledge_bases    = var.agent_runtimes[r].knowledge_bases
+        gateway            = var.agent_runtimes[r].gateway
+        tracing            = var.agent_runtimes[r].tracing
+      })
+    },
+    {
+      models = jsonencode(local.models)
+      guardrails = jsonencode({
+        for k, g in module.guardrail : k => {
+          id         = g.guardrail_id
+          arn        = g.guardrail_arn
+          version    = g.version
+          profile_id = g.cross_region_profile_id
+        }
+      })
+      agent_memories = jsonencode({ for k, m in module.memory : k => { id = m.memory_id, arn = m.memory_arn } })
+      knowledge_bases = jsonencode({
+        for k, kb in module.knowledge_base : k => {
+          id                     = kb.knowledge_base_id
+          arn                    = kb.knowledge_base_arn
+          embedding_model        = var.knowledge_bases[k].embedding_model
+          bucket_name            = module.corpus_bucket[k].bucket_name
+          bucket_arn             = module.corpus_bucket[k].arn
+          inclusion_prefixes     = { for ds, cfg in var.knowledge_bases[k].data_sources : ds => sort(tolist(cfg.inclusion_prefixes)) }
+          data_source_ids        = kb.data_source_ids
+          credentials_secret_arn = var.knowledge_bases[k].credentials_secret_arn
+        }
+      })
+      agentcore_gateway = var.agentcore_gateway == null ? jsonencode({ enabled = false }) : jsonencode({
+        enabled     = true
+        arn         = module.gateway["this"].gateway_arn
+        url         = module.gateway["this"].gateway_url
+        lambda_arns = sort([for t in values(var.agentcore_gateway.targets) : t.lambda_arn if t.type == "lambda"])
+        # iam-app grants s3:GetObject on exactly these objects.
+        tool_schema_arns = sort([for t in values(var.agentcore_gateway.targets) : "arn:aws:s3:::${trimprefix(t.tool_schema_s3_uri, "s3://")}" if t.type == "lambda" && t.tool_schema_s3_uri != null])
+      })
+      bedrock_invoke = var.bedrock_invoke == null ? jsonencode({ enabled = false }) : jsonencode({
+        enabled         = true
+        role_arn        = var.bedrock_invoke.role_arn
+        session_seconds = var.bedrock_invoke.session_seconds
+      })
+    },
+  )
+}
+
+module "ssm_publish" {
+  source = "../../../../../modules/ssm-publish"
+
+  ssm_prefix = local.ssm_prefix
+  stack      = "agent"
+  strings    = local.published_strings
+}
