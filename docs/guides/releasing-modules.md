@@ -1,6 +1,6 @@
 # 怎麼改 module、怎麼發版
 
-結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 9 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
+結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 10 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
 release-please 這條流程本機沒有、也沒有在 GitHub 上跑過，**未實測**；設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
 
@@ -67,7 +67,7 @@ tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發�
 
 ## 第一次發版：手動打 19 個 `<module>-v0.1.0` tag
 
-`.release-please-manifest.json` 已經把 19 個 module 都登記成 `0.1.0`。release-please 會把它當成已經發過，不會自己產生 `<module>-v0.1.0`，所以第一個 tag 由 platform team 手動打，之後的版本才交給 release-please（設計文件 §3.5、決策 27）。
+v1 發版時，`.release-please-manifest.json` 把 19 個 module 都登記成 `0.1.0`。release-please 會把它當成已經發過，不會自己產生 `<module>-v0.1.0`，所以第一個 tag 由 platform team 手動打，之後的版本才交給 release-please（設計文件 §3.5、決策 27）。
 
 前提：整體驗收（implement-process 的 Phase 10）已通過，而且那個 commit 已經在 GitHub 的 `main` 上。
 
@@ -107,11 +107,11 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 本 repo 已照這個迴圈在 `28a8647` 打好 19 個 `<module>-v0.1.0` annotated tag。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。
 
-## 增補：手動打 9 個 `<module>-v0.1.1` tag
+## 增補：手動打 10 個 `<module>-v0.1.1` tag
 
-LLM 與 AgentCore 的增補（設計文件決策 37–54）動到 9 個 module：7 個新 module，加上 `rds`、`s3-bucket`。照使用者決定（決策 54），這 9 個一律打 `v0.1.1`。`rds`、`s3-bucket` 的變更照上面的 semver 表本該是 MINOR，只有這一版例外，之後照表走。其餘 17 個 module 沒有變，只有 `v0.1.0`。
+LLM 與 AgentCore 的增補（設計文件決策 37–54）動到 10 個 module：7 個新 module，加上 `rds`、`s3-bucket`、`iam-role`。照使用者決定（決策 54），這 10 個一律打 `v0.1.1`。`rds`、`s3-bucket`、`iam-role` 的變更照上面的 semver 表本該是 MINOR，只有這一版例外，之後照表走。其餘 16 個 module 沒有變，只有 `v0.1.0`；manifest 因此是 16 個 `0.1.0`、10 個 `0.1.1`。
 
-理由同上一節：增補驗收的 commit 把這 9 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
+理由同上一節：增補驗收的 commit 把這 10 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
 
 前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 已經改好，而且那個 commit 已經在 GitHub 的 `main` 上。
 
@@ -122,10 +122,10 @@ git pull --ff-only
 commit="$(git rev-parse --verify 'HEAD^{commit}')"
 git log -1 --format='%h %s' "$commit"     # 確認是驗收通過的那個 commit
 
-# 2. 要打的 module 從 manifest 讀，不手寫；預期 9 個（變數不叫 modules：zsh 的 modules 是唯讀的內建變數）
+# 2. 要打的 module 從 manifest 讀，不手寫；預期 10 個（變數不叫 modules：zsh 的 modules 是唯讀的內建變數）
 VERSION="0.1.1"
 mods="$(jq -r --arg v "$VERSION" 'to_entries[] | select(.value == $v) | .key | sub("^modules/"; "")' .release-please-manifest.json)"
-echo "$mods" | wc -l                       # 預期 9
+echo "$mods" | wc -l                       # 預期 10
 
 # 3. 確認舊 tag 還在、新 tag 都還沒有
 git tag --points-at 28a8647 | wc -l        # 預期 19
@@ -137,16 +137,18 @@ for m in $(echo "$mods"); do
   git tag -a "${m}-v${VERSION}" -m "${m} v${VERSION}" "$commit"
 done
 
-# 5. 本機檢查：這個 commit 上恰好 9 個；舊的 19 個沒動
-git tag --points-at "$commit" | wc -l      # 預期 9
-git tag -l "*-v${VERSION}" | wc -l         # 預期 9
+# 5. 本機檢查：這個 commit 上恰好 10 個；舊的 19 個沒動
+git tag --points-at "$commit" | wc -l      # 預期 10
+git tag -l "*-v${VERSION}" | wc -l         # 預期 10
 git tag --points-at 28a8647 | wc -l        # 預期 19
 ```
 
-push 一樣由人手動做，只推這 9 個：
+push 一樣由人手動做，只推這 10 個：
 
 ```bash
 git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 ```
 
-推完到 GitHub 的 tag 頁面確認 9 個都在、舊的 19 個沒變。打錯了而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，發下一個 PATCH 版。
+推完到 GitHub 的 tag 頁面確認 10 個都在、舊的 19 個沒變。打錯了而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，發下一個 PATCH 版。
+
+本 repo 已照這個迴圈在 `54f2837` 打好 10 個 `<module>-v0.1.1` annotated tag。第一次是在本機打在 `81ac4d3`，之後的強化與 `iam-role` 的變更還要進同一版，所以在任何 push 之前就用 `git tag -d` 全部刪掉，改在 `54f2837` 重打；遠端從來沒有指向 `81ac4d3` 的 `v0.1.1` tag。
