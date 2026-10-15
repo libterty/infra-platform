@@ -21,12 +21,24 @@ variable "kms_key_arn" {
 
 variable "expiration_days" {
   type        = number
-  default     = 90
-  description = "Days after which objects expire."
+  default     = null
+  description = "Days after which objects expire, 1-3650. null means 90. Must stay null when never_expire is true."
 
   validation {
-    condition     = var.expiration_days >= 1 && var.expiration_days <= 3650
+    condition     = var.expiration_days == null ? true : (var.expiration_days >= 1 && var.expiration_days <= 3650)
     error_message = "expiration_days must be between 1 and 3650."
+  }
+}
+
+variable "never_expire" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "Keep objects until they are deleted explicitly: the lifecycle rule has no expiration. For content such as a knowledge base corpus; not for log buckets."
+
+  validation {
+    condition     = !(var.never_expire && var.expiration_days != null)
+    error_message = "never_expire cannot be combined with expiration_days; leave expiration_days unset."
   }
 }
 
