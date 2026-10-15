@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0（未發布）
+## 0.1.1（未發布）
 
-MINOR。跟 7 個新 module 一起在增補驗收後手動打 tag（manifest 屆時才改成 `0.2.0`），release-please 不會產生這一段。
+新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（design 決策 54）跟 7 個新 module 一起用 `0.1.1`，在增補驗收後手動打 tag（manifest 屆時才改成 `0.1.1`），release-please 不會產生這一段。之後的版本照 semver 表。
 
 - 新變數 `data_api`（預設 `false`）：在 Aurora cluster 開 RDS Data API（`enable_http_endpoint`），給 Bedrock Knowledge Base 的 Aurora 向量儲存用；`deployment = "rds"` 配 `true` 會被 validation 擋下。既有消費端換版、不改程式碼時 plan 應零差異：`enable_http_endpoint` 在 schema 是 optional、非 computed，沒設時 provider 當成 `false`，現在明寫 `false`。**這是讀 schema 推論的，沒有用 plan 驗證。**
 - 新輸出 `deployment`、`database_name`：輸入值原樣輸出（design D21 的待辦），讓呼叫端發布資料庫資訊時不用再從自己的變數取。
