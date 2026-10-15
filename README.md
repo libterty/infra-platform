@@ -8,7 +8,7 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 
 ## module
 
-起始版本都是 `v0.1.0`，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`（見 [ADR-0001](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)）。
+共 26 個：v1 的 19 個加增補的 7 個（LLM 與 AgentCore，設計文件決策 37）。起始版本都是 `v0.1.0`，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`（見 [ADR-0001](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)）。增補的 7 個還沒有 tag，跟 `rds-v0.2.0`、`s3-bucket-v0.2.0` 一起在增補驗收後手動打（[`releasing-modules.md`](./docs/guides/releasing-modules.md)）。
 
 | 分類 | module | 用途 |
 |---|---|---|
@@ -31,6 +31,13 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 | IAM | `iam-role-policy` | 對已存在的 role 附加 inline policy |
 | 跨 stack 傳值 | `ssm-publish` | 跨 stack 傳值的唯一寫入入口 |
 | 跨 stack 傳值 | `ssm-read` | 跨 stack 傳值的唯一讀取入口 |
+| LLM 與 AgentCore | `bedrock-guardrail` | 一支 Bedrock guardrail，tier 預設 `STANDARD` |
+| LLM 與 AgentCore | `bedrock-inference-profile` | application inference profile，給成本歸屬 |
+| LLM 與 AgentCore | `agentcore-runtime` | 一個 AgentCore Runtime |
+| LLM 與 AgentCore | `agentcore-memory` | 一個 AgentCore Memory 與內建 strategy |
+| LLM 與 AgentCore | `agentcore-gateway` | MCP Gateway，target 只收 Lambda 與 MCP server |
+| LLM 與 AgentCore | `log-delivery` | CloudWatch vended log 的 source、destination、delivery |
+| LLM 與 AgentCore | `bedrock-knowledge-base` | Bedrock Knowledge Base（向量儲存只收 Aurora PostgreSQL pgvector）與 S3 data source |
 
 消費端寫法：
 
@@ -62,7 +69,7 @@ scripts/validate.sh                      # 全部
 scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 ```
 
-這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S8、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
+這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S9、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
 
 本專案禁止在這個 repo 跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
 

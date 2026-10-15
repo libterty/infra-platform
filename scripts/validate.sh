@@ -179,6 +179,8 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
         modules/vpc/*) ;;
         *) scan_pattern S4 'aws_default_security_group 只能出現在 modules/vpc' "$f" '^[[:space:]]*resource[[:space:]]+"aws_default_security_group"' ;;
       esac
+      # S9: no guardrail versions; once a version is published, apply only changes DRAFT and the plan stays clean
+      scan_pattern S9 'aws_bedrock_guardrail_version 不得出現在 modules 與 templates（design 決策 46）' "$f" '^[[:space:]]*resource[[:space:]]+"aws_bedrock_guardrail_version"'
       ;;
   esac
   case "$r" in

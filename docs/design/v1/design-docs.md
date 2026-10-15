@@ -155,8 +155,8 @@ infra-platform/
 
 - 這是 release-please manifest 模式的預設格式（`<component>-v<version>`），也對得上 HCP Terraform private registry 的 Module Tag Prefix。
 - 不用帶斜線的 `ecs-service/v1.0.0`：HCP 是否支援沒有查證，斜線在 URL 的 `?ref=` 也容易出錯。
-- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|vpc-interface-endpoints|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|log-group|log-metric-alarm|xray|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
-- 增補：這條 regex 與 README 的 module 清單要加上決策 37 的 7 個 module，屬於 Phase 12 的工作（implement-process），本文件先不改上面那行。
+- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|vpc-interface-endpoints|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|log-group|log-metric-alarm|xray|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish|bedrock-guardrail|bedrock-inference-profile|agentcore-runtime|agentcore-memory|agentcore-gateway|log-delivery|bedrock-knowledge-base)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
+- 增補：上面那條 regex 已加上決策 37 的 7 個 module（implement-process Phase 12，README 的 module 清單同時更新）。
 
 ### 3.3 消費端寫法
 
