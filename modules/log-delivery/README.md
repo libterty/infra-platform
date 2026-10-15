@@ -13,8 +13,8 @@ module "runtime_logs" {
   name_prefix = "alpha-dev"
 
   sources = {
-    chat-logs   = { resource_arn = module.chat_runtime.arn, log_type = "APPLICATION_LOGS" }
-    chat-traces = { resource_arn = module.chat_runtime.arn, log_type = "TRACES" }
+    chat-logs   = { resource_arn = module.chat_runtime.runtime_arn, log_type = "APPLICATION_LOGS" }
+    chat-traces = { resource_arn = module.chat_runtime.runtime_arn, log_type = "TRACES" }
   }
 
   destinations = {
