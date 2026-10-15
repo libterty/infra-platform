@@ -8,7 +8,7 @@
 
 ```hcl
 module "gateway" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-gateway?ref=agentcore-gateway-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/agentcore-gateway?ref=agentcore-gateway-v0.1.1"
 
   name     = "alpha-dev-gateway"
   role_arn = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway"
