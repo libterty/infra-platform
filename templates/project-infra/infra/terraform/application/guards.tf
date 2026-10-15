@@ -61,3 +61,12 @@ resource "terraform_data" "no_nat_endpoints_exist" {
     }
   }
 }
+
+resource "terraform_data" "no_nat_agent_endpoints_exist" {
+  lifecycle {
+    precondition {
+      condition     = length(local.agent_missing_endpoints) == 0
+      error_message = "network has no NAT (nat mode none), so the services in iam-app agent_access need these interface endpoints: ${join(", ", sort(tolist(local.agent_missing_endpoints)))}. Add them to interface_endpoints.services in network."
+    }
+  }
+}

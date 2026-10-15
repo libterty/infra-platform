@@ -75,6 +75,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+  values = { insecure_value = "{}" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/subnet_ids_app"]
   values = { insecure_value = "subnet-0app1,subnet-0app2" }
 }
@@ -134,6 +139,7 @@ run "reads_only_listed_keys" {
         alb_arn_suffix         = "loadbalancer/alb_arn_suffix"
         listener_arn           = "loadbalancer/listener_arn"
         tracing                = "iam-app/tracing"
+        agent_access           = "iam-app/agent_access"
       } &&
       local.ssm_input_lists == {
         services       = "containerimage/services"
@@ -954,6 +960,478 @@ run "external_nat_is_not_checked" {
   assert {
     condition     = length(local.service_inputs["api"].sidecars) == 1
     error_message = "A customer-managed NAT must not be second-guessed"
+  }
+}
+
+# ---- AgentCore and Bedrock ids for the services in iam-app agent_access ----
+
+run "no_agent_access_no_change" {
+  command = plan
+
+  assert {
+    condition     = length(module.in_agent.strings) == 0 && length(local.ssm_agent_strings) == 0
+    error_message = "Without agent_access nothing about the agent stack or the network may be read"
+  }
+
+  assert {
+    condition = (
+      local.service_inputs["api"].environment == local.db_environment &&
+      length(local.service_inputs["worker"].environment) == 0 &&
+      alltrue([for s in values(local.service_inputs) : length(s.sidecars) == 0])
+    )
+    error_message = "Without agent_access the task definitions must be exactly what they were before the agent stack"
+  }
+}
+
+run "agent_env_injected" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  assert {
+    condition = {
+      for k, v in local.service_inputs["api"].environment : k => v if !startswith(k, "DB_")
+      } == {
+      AGENTCORE_RUNTIME_ARN_ASSISTANT = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj"
+      MODEL_ID_CHAT                   = "apac.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      GUARDRAIL_ID_SAFETY             = "abcdefgh1234"
+      GUARDRAIL_VERSION               = "DRAFT"
+      KNOWLEDGE_BASE_ID_PRODUCTS      = "KBID000001"
+    }
+    error_message = "A listed service must get the Runtime ARN, model id, guardrail id and version, and knowledge base id from the agent stack"
+  }
+
+  assert {
+    condition     = local.service_inputs["api"].environment["DB_NAME"] == "app"
+    error_message = "The agent variables must be added to the database variables, not replace them"
+  }
+
+  assert {
+    condition     = length(local.service_inputs["worker"].environment) == 0
+    error_message = "A service that is not in agent_access must get no agent variable"
+  }
+
+  assert {
+    condition     = local.ssm_agent_strings["agent_runtime_assistant"] == "agent/agent_runtime_assistant"
+    error_message = "Only the Runtimes that a service names may be read"
+  }
+}
+
+run "agent_env_cross_account" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":true,\"role_arn\":\"arn:aws:iam::333333333333:role/bedrock-invoke\",\"session_seconds\":3600}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  assert {
+    condition = (
+      local.service_inputs["api"].environment["BEDROCK_INVOKE_ROLE_ARN"] == "arn:aws:iam::333333333333:role/bedrock-invoke" &&
+      local.service_inputs["api"].environment["BEDROCK_INVOKE_SESSION_SECONDS"] == "3600"
+    )
+    error_message = "With bedrock_invoke a service that calls models must get the role to assume and the session length"
+  }
+}
+
+run "nat_none_runtime_requires_bedrock_agentcore" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"bedrock-agent-runtime\",\"bedrock-runtime\",\"sts\"]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_agent_endpoints_exist]
+}
+
+run "nat_none_model_requires_bedrock_runtime" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"bedrock-agent-runtime\",\"bedrock-agentcore\",\"sts\"]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_agent_endpoints_exist]
+}
+
+run "nat_none_guardrail_requires_bedrock_runtime" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[],\"models\":[],\"guardrails\":[\"safety\"],\"knowledge_bases\":[]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_agent_endpoints_exist]
+}
+
+run "nat_none_knowledge_base_requires_agent_runtime_endpoint" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"bedrock-agentcore\",\"bedrock-runtime\",\"sts\"]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_agent_endpoints_exist]
+}
+
+run "nat_none_cross_account_requires_sts" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":true,\"role_arn\":\"arn:aws:iam::333333333333:role/bedrock-invoke\",\"session_seconds\":3600}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"bedrock-agent-runtime\",\"bedrock-agentcore\",\"bedrock-runtime\"]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_agent_endpoints_exist]
+}
+
+run "nat_none_with_agent_endpoints_passes" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":true,\"role_arn\":\"arn:aws:iam::333333333333:role/bedrock-invoke\",\"session_seconds\":3600}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"bedrock-agent-runtime\",\"bedrock-agentcore\",\"bedrock-runtime\",\"sts\"]" }
+  }
+
+  assert {
+    condition     = length(local.agent_missing_endpoints) == 0
+    error_message = "bedrock-agentcore, bedrock-runtime, bedrock-agent-runtime and sts cover every call a service can make"
+  }
+}
+
+run "nat_external_agent_endpoints_not_checked" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/agent_access"]
+    values = { insecure_value = "{\"api\":{\"runtimes\":[\"assistant\"],\"models\":[\"chat\"],\"guardrails\":[\"safety\"],\"knowledge_bases\":[\"products\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/models"]
+    values = { insecure_value = "{\"chat\":{\"model_id\":\"apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"invoke_arns\":[\"arn:aws:bedrock:ap-northeast-1:111111111111:inference-profile/apac.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0\"]}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/guardrails"]
+    values = { insecure_value = "{\"safety\":{\"id\":\"abcdefgh1234\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/abcdefgh1234\",\"version\":\"DRAFT\",\"profile_id\":\"apac.guardrail.v1:0\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/knowledge_bases"]
+    values = { insecure_value = "{\"products\":{\"id\":\"KBID000001\",\"arn\":\"arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001\",\"embedding_model\":\"embedding\",\"bucket_name\":\"alpha-dev-kb-products-111111111111\",\"bucket_arn\":\"arn:aws:s3:::alpha-dev-kb-products-111111111111\",\"inclusion_prefixes\":{\"manuals\":[]},\"credentials_secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf\"}}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/bedrock_invoke"]
+    values = { insecure_value = "{\"enabled\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"external\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_agent.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  assert {
+    condition     = length(local.agent_missing_endpoints) == 0
+    error_message = "The NAT of a customer VPC is the customer's to provide"
   }
 }
 

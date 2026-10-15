@@ -36,7 +36,7 @@ locals {
         security_group_ids = [module.in_services.strings["sg_${local.service_key[s]}_id"]]
       }
 
-      environment = merge(contains(local.db_readers, s) ? local.db_environment : {}, local.tracing_environment[s])
+      environment = tomap(merge(contains(local.db_readers, s) ? local.db_environment : {}, local.tracing_environment[s], local.agent_environment[s]))
       sidecars    = local.tracing_sidecars[s]
       secrets     = { APP_SECRET = module.in.strings["app_secret_arn"] }
 
