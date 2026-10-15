@@ -74,7 +74,7 @@ module "gateway" {
 | `role_arn` | `string` | 無 | 是 | Gateway 的 service role ARN，可以帶 path。Lambda target 用這支 role 呼叫 |
 | `authorizer` | `object` | `{ type = "AWS_IAM" }` | 否 | `type`：`AWS_IAM` 或 `CUSTOM_JWT`。`CUSTOM_JWT` 時 `discovery_url` 必填、`allowed_audience`／`allowed_clients` 至少一個非空；`allowed_audience`／`allowed_clients` 不可有空字串或只有空白的項目；`AWS_IAM` 時這三個不可給 |
 | `mcp` | `object` | `{}` | 否 | `supported_versions`（預設 `["2025-03-26"]`）、`search_type`（`SEMANTIC` 開啟工具搜尋；預設 `null`，不送） |
-| `kms_key_arn` | `string` | `null` | 否 | 加密用的 customer managed key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，不收 alias 與單獨的 key id）；`null` 用 AWS 管的 key |
+| `kms_key_arn` | `string` | `null` | 否 | 加密用的 customer managed key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，不收 alias 與單獨的 key id，multi-region key 可以）；`null` 用 AWS 管的 key |
 | `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、Lambda target 可以在的帳號（12 位數字）。空的時候所有 Lambda target 都必須在目前帳號；`tool_schema_s3_uri` 與 MCP server target 不檢查 |
 | `targets` | `map(object)` | `{}` | 否 | key 是 target 名稱（規則同 `name`）。`type`：`lambda` 或 `mcp_server`；`description` 選填。`lambda`：`lambda_arn` 必填，`tool_schema_s3_uri`（`s3://bucket/key`）與 `tools` 恰好一個，不可給 `endpoint`。`tools` 每個元素有 `name`（同 target 內不重複）、`description`（不可空白）、`properties`（map，key 是屬性名稱；`type` 只收 `string`、`number`、`integer`、`boolean`、`object`、`array`，`description` 選填，`required` 預設 `false`）。`mcp_server`：`endpoint` 必填且是 `https://`，不可給 Lambda 的欄位 |
 | `tags` | `map(string)` | `{}` | 否 | 套用到 Gateway 的 tag，另外加 `Name` |
