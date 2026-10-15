@@ -1,6 +1,6 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `28a8647`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–10 與 LLM 增補的 Phase 11–16 全部完成（驗收結果見下方 Phase 表）。增補動到的 9 個 module 的 `<module>-v0.1.1` tag 已打在 `81ac4d3`（決策 54）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `28a8647`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 與兩個新輸出、`s3-bucket` 的不過期選項排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11–14 已完成，15–16 未開始。
 >
@@ -39,7 +39,7 @@
 | 13 | 增補：7 個新 module | 已完成：7 個 module 共 262 個測試，主 agent 逐一重跑 `validate.sh` 通過；差異記在 design §9.4 D30–D36 | 7：`0c79364`、`ea0a365`、`71e7550`、`8708820`、`1948aba`、`4048dbf`、`36d6ee5` |
 | 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 已完成：9 個 stack 共 462 個 run（Phase 14 之前 310），主 agent 對 9 個 stack 重跑 `validate.sh` 全綠、9 份 `common.tf` 一致；含安全審查後的修正；差異記在 design §9.4 D37–D46 | （commit 見 git log） |
 | 15 | 增補：`docs/guides/llm-agentcore.md` 與相關文件 | 未開始 | 1 |
-| 16 | 增補：整體驗收、manifest 把增補的 9 個 module 登記成 0.1.1、人手動打 9 個 `<module>-v0.1.1` tag（design 決策 54） | 未開始 | 0–1 |
+| 16 | 增補：整體驗收、manifest 把增補的 9 個 module 登記成 0.1.1、人手動打 9 個 `<module>-v0.1.1` tag（design 決策 54） | 已完成 | 1：`81ac4d3` |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
 
@@ -1172,6 +1172,15 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 **完成定義**：guide 結論在最前面、指令可以照抄、未實測的地方都有標；主 agent 對照範本的真實變數名逐一核對 HCL 片段（guide 不會被 CI 驗）。
 
 #### Phase 16：整體驗收與打 tag
+
+**結果（2026-10-15）**：
+
+- **乾淨狀態全綠**：刪掉 `.cache/tf-data` 後重跑 `scripts/validate.sh`，分三組並行（`modules`、stack 1–5、stack 6–9），68 個目錄全部通過；9 份 `common.tf` 一致。
+- **舊 tag**：19 個 `<module>-v0.1.0` 都還在 `28a8647`。
+- **module 只用英文**：通過；唯一的非 ASCII 是 `bedrock-guardrail/examples/zh-tw-standard` 的中文資料值，它就是要示範擋中文。
+- **commit 歷史**：`28a8647..HEAD` 的 author 都是 `<author-email>`；每個 module 的 commit 只動該 module 目錄。repo 已有 remote，沒有推送。
+- **Phase 14 的安全審查**：沒有 BLOCKER；兩個 HIGH（Gateway 讀不到 S3 工具定義、KB secret ARN 可用萬用字元）與 M3 已修並補雙向測試、做過突變驗證，其餘記在 design §8.8（D42–D46）。
+- **manifest 與 tag**：`81ac4d3` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。9 個 `<module>-v0.1.1` annotated tag 照 `releasing-modules.md` 的指令原樣在 zsh 執行打在 `81ac4d3`；跑的時候發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
 
 由主 agent 自己做，不派 subagent。
 
