@@ -487,7 +487,8 @@ run "wildcard_resource_allowlist" {
     error_message = "Only actions that do not support resource-level permissions may use Resource *"
   }
 
-  # xray:PutSpans is the only addition, and only for a Runtime with tracing.
+  # xray:PutSpans is an addition only for a Runtime with tracing. cloudwatch:PutMetricData has no resource-level
+  # permissions, so it is added with Resource * and must be limited to the bedrock-agentcore namespace instead.
   assert {
     condition = alltrue(flatten([
       for r, x in local.agent_runtime_policies : [
@@ -497,12 +498,19 @@ run "wildcard_resource_allowlist" {
               "ecr:GetAuthorizationToken",
               "xray:PutTraceSegments",
               "xray:PutTelemetryRecords",
-            ], local.runtime_grants[r].tracing ? ["xray:PutSpans"] : []), a)
+              ], local.runtime_grants[r].tracing ? ["xray:PutSpans"] : []), a) || (
+              a == "cloudwatch:PutMetricData" && try(s.Condition.StringEquals["cloudwatch:namespace"], null) == "bedrock-agentcore"
+            )
           ] if contains(flatten([s.Resource]), "*")
         ]
       ]
     ]))
-    error_message = "A Runtime execution role may use Resource * only for the X-Ray actions, and xray:PutSpans only with tracing"
+    error_message = "A Runtime execution role may use Resource * only for the X-Ray actions (xray:PutSpans only with tracing) and for cloudwatch:PutMetricData in the bedrock-agentcore namespace"
+  }
+
+  assert {
+    condition     = alltrue([for x in values(local.agent_runtime_policies) : strcontains(x.policies["agent"], "cloudwatch:PutMetricData")])
+    error_message = "Every Runtime execution role must be able to publish AgentCore metrics"
   }
 }
 
@@ -668,8 +676,65 @@ run "runtime_execution_permissions_exact" {
         Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:PutSpans"]
         Resource = "*"
       },
+      {
+        Sid       = "PutAgentCoreMetrics"
+        Effect    = "Allow"
+        Action    = ["cloudwatch:PutMetricData"]
+        Resource  = "*"
+        Condition = { StringEquals = { "cloudwatch:namespace" = "bedrock-agentcore" } }
+      },
     ])
-    error_message = "Every Runtime permission must point at the exact ARNs the agent stack published; * only in the region of the foundation model and guardrail profile ARNs, and for X-Ray"
+    error_message = "Every Runtime permission must point at the exact ARNs the agent stack published; * only in the region of the foundation model and guardrail profile ARNs, for X-Ray, and for metrics in the bedrock-agentcore namespace; no workload access token without workload_identity"
+  }
+}
+
+run "workload_identity_grants_access_token" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false,\"workload_identity\":true}" }
+  }
+
+  assert {
+    condition = [for s in jsondecode(local.agent_runtime_policies["assistant"].policies["agent"]).Statement : s if strcontains(jsonencode(s.Action), "GetWorkloadAccessToken")] == [{
+      Sid    = "GetWorkloadAccessTokens"
+      Effect = "Allow"
+      Action = [
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
+      ]
+      Resource = [
+        "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:workload-identity-directory/default",
+        "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:workload-identity-directory/default/workload-identity/*",
+      ]
+    }]
+    error_message = "A Runtime with workload_identity must get exactly the three workload access token actions on the default directory of this account and region"
+  }
+}
+
+run "workload_identity_false_grants_no_access_token" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["agent/agent_runtime_assistant"]
+    values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false,\"workload_identity\":false}" }
+  }
+
+  assert {
+    condition     = !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "GetWorkloadAccessToken") && !strcontains(local.agent_runtime_policies["assistant"].policies["agent"], "workload-identity")
+    error_message = "A Runtime with workload_identity = false must not get any workload access token action"
   }
 }
 
@@ -725,7 +790,7 @@ run "guardrail_profile_region_star" {
   }
 }
 
-run "runtime_without_permissions_gets_no_policy" {
+run "runtime_without_permissions_gets_only_metrics" {
   command = plan
 
   override_data {
@@ -738,9 +803,10 @@ run "runtime_without_permissions_gets_no_policy" {
     values = { insecure_value = "{\"arn\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj\",\"id\":\"alpha_dev_assistant-AbCdEfGhIj\",\"name\":\"alpha_dev_assistant\",\"execution_role_arn\":\"arn:aws:iam::111111111111:role/alpha-dev-agent-assistant\",\"models\":[],\"memories\":[],\"guardrails\":[],\"knowledge_bases\":[],\"gateway\":false,\"tracing\":false}" }
   }
 
+  # Every Runtime publishes AgentCore metrics, so even a Runtime that may use nothing else gets that one statement.
   assert {
-    condition     = length(module.agent_runtime_policy) == 0
-    error_message = "A Runtime that may use nothing must get no policy (iam-role-policy refuses an empty one)"
+    condition     = [for s in jsondecode(local.agent_runtime_policies["assistant"].policies["agent"]).Statement : s.Sid] == ["PutAgentCoreMetrics"]
+    error_message = "A Runtime that may use nothing else must get only the AgentCore metrics statement"
   }
 }
 
@@ -961,13 +1027,19 @@ run "kb_role_does_not_read_master_secret" {
 
   assert {
     condition = [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s if contains(s.Action, "kms:Decrypt")] == [{
-      Sid       = "DecryptKnowledgeBaseUserSecrets"
-      Effect    = "Allow"
-      Action    = ["kms:Decrypt"]
-      Resource  = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
-      Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.ap-northeast-1.amazonaws.com" } }
+      Sid      = "DecryptKnowledgeBaseUserSecrets"
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt"]
+      Resource = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+      Condition = { StringEquals = {
+        "kms:ViaService" = "secretsmanager.ap-northeast-1.amazonaws.com"
+        "kms:EncryptionContext:SecretARN" = [
+          "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf",
+          "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf",
+        ]
+      } }
     }]
-    error_message = "kms:Decrypt must be limited to the project key and to calls through Secrets Manager"
+    error_message = "kms:Decrypt must be limited to the project key, to calls through Secrets Manager, and to the dedicated secret of each knowledge base"
   }
 
   assert {
@@ -1020,10 +1092,18 @@ run "kb_role_reads_only_own_corpus_bucket" {
 
   assert {
     condition = jsonencode([for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : s if contains(s.Action, "s3:ListBucket")]) == jsonencode([
-      { Action = ["s3:ListBucket"], Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-policies-111111111111"] },
-      { Action = ["s3:ListBucket"], Condition = { StringLike = { "s3:prefix" = ["faq/*", "manuals/*"] } }, Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-products-111111111111"] },
+      { Action = ["s3:ListBucket"], Condition = { StringEquals = { "aws:ResourceAccount" = "111111111111" } }, Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-policies-111111111111"] },
+      { Action = ["s3:ListBucket"], Condition = { StringEquals = { "aws:ResourceAccount" = "111111111111" }, StringLike = { "s3:prefix" = ["faq/*", "manuals/*"] } }, Effect = "Allow", Resource = ["arn:aws:s3:::alpha-dev-kb-products-111111111111"] },
     ])
-    error_message = "Listing must be limited to the corpus bucket of each knowledge base, and to its prefixes when every data source has one"
+    error_message = "Listing must be limited to the corpus bucket of each knowledge base in this account, and to its prefixes when every data source has one"
+  }
+
+  assert {
+    condition = [for s in jsondecode(local.bedrock_kb_policy["bedrock_kb"].policies["knowledge-bases"]).Statement : try(s.Condition, null) if contains(s.Action, "s3:GetObject")] == [
+      { StringEquals = { "aws:ResourceAccount" = "111111111111" } },
+      { StringEquals = { "aws:ResourceAccount" = "111111111111" } },
+    ]
+    error_message = "Reading corpus objects must be limited to buckets in this account"
   }
 
   assert {
@@ -1080,12 +1160,13 @@ run "gateway_role_invokes_lambda_targets" {
       Action   = ["lambda:InvokeFunction"]
       Resource = ["arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup", "arn:aws:lambda:ap-northeast-1:111111111111:function:alpha-dev-order-lookup:*"]
       }, {
-      Sid      = "ReadToolSchemas"
-      Effect   = "Allow"
-      Action   = ["s3:GetObject"]
-      Resource = ["arn:aws:s3:::alpha-dev-tools/order-lookup.json"]
+      Sid       = "ReadToolSchemas"
+      Effect    = "Allow"
+      Action    = ["s3:GetObject"]
+      Resource  = ["arn:aws:s3:::alpha-dev-tools/order-lookup.json"]
+      Condition = { StringEquals = { "aws:ResourceAccount" = "111111111111" } }
     }]
-    error_message = "The gateway role must invoke exactly the Lambda targets, with their versions and aliases, and read exactly their tool schema objects"
+    error_message = "The gateway role must invoke exactly the Lambda targets, with their versions and aliases, and read exactly their tool schema objects in this account"
   }
 }
 

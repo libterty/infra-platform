@@ -76,6 +76,28 @@ locals {
         Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:PutSpans"]
         Resource = "*"
       }] : [],
+      [{
+        # PutMetricData does not support resource-level permissions; the namespace condition limits it instead.
+        Sid       = "PutAgentCoreMetrics"
+        Effect    = "Allow"
+        Action    = ["cloudwatch:PutMetricData"]
+        Resource  = "*"
+        Condition = { StringEquals = { "cloudwatch:namespace" = "bedrock-agentcore" } }
+      }],
+      # Not verified. Older agent JSON has no workload_identity field, which means false.
+      try(g.workload_identity, false) ? [{
+        Sid    = "GetWorkloadAccessTokens"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:GetWorkloadAccessToken",
+          "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+          "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
+        ]
+        Resource = [
+          "arn:aws:bedrock-agentcore:${var.aws_region}:${var.expected_account_id}:workload-identity-directory/default",
+          "arn:aws:bedrock-agentcore:${var.aws_region}:${var.expected_account_id}:workload-identity-directory/default/workload-identity/*",
+        ]
+      }] : [],
     )
   }
 
@@ -83,7 +105,7 @@ locals {
     for r, k in local.agent_key : r => {
       role_arn = module.in_agents.strings["role_agent_${k}_execution_arn"]
       policies = { agent = jsonencode({ Version = "2012-10-17", Statement = local.runtime_statements[r] }) }
-    } if length(local.runtime_statements[r]) > 0
+    }
   }
 
   service_agent_statements = {
@@ -116,6 +138,11 @@ module "agent_runtime_policy" {
 # One role for every knowledge base (the role exists before the agent stack knows the list). It reads the dedicated
 # database secret of each knowledge base, never the master secret, and only the corpus bucket of each knowledge base.
 locals {
+  # S3 ARNs carry no account, so a bucket name taken over in another account would otherwise match.
+  same_account_condition = { StringEquals = { "aws:ResourceAccount" = var.expected_account_id } }
+
+  kb_secret_arns = sort(distinct([for kb in values(local.agent_knowledge_bases) : kb.credentials_secret_arn]))
+
   # A knowledge base with a data source that has no prefix reads its whole bucket.
   corpus_prefixes = {
     for k, kb in local.agent_knowledge_bases : k => (
@@ -147,29 +174,34 @@ locals {
         Sid      = "ReadKnowledgeBaseUserSecrets"
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = sort(distinct([for kb in values(local.agent_knowledge_bases) : kb.credentials_secret_arn]))
+        Resource = local.kb_secret_arns
       },
       {
         # The project creates the secrets with the project key (see the guide); an AWS managed key needs no statement.
-        Sid       = "DecryptKnowledgeBaseUserSecrets"
-        Effect    = "Allow"
-        Action    = ["kms:Decrypt"]
-        Resource  = module.in.strings["kms_key_arn"]
-        Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.${var.aws_region}.amazonaws.com" } }
+        Sid      = "DecryptKnowledgeBaseUserSecrets"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = module.in.strings["kms_key_arn"]
+        Condition = { StringEquals = {
+          "kms:ViaService"                  = "secretsmanager.${var.aws_region}.amazonaws.com"
+          "kms:EncryptionContext:SecretARN" = local.kb_secret_arns
+        } }
       },
     ],
-    [for k, kb in local.agent_knowledge_bases : merge(
-      {
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = [kb.bucket_arn]
-      },
-      length(local.corpus_prefixes[k]) == 0 ? {} : { Condition = { StringLike = { "s3:prefix" = [for p in local.corpus_prefixes[k] : "${p}*"] } } },
-    )],
     [for k, kb in local.agent_knowledge_bases : {
       Effect   = "Allow"
-      Action   = ["s3:GetObject"]
-      Resource = length(local.corpus_prefixes[k]) == 0 ? ["${kb.bucket_arn}/*"] : [for p in local.corpus_prefixes[k] : "${kb.bucket_arn}/${p}*"]
+      Action   = ["s3:ListBucket"]
+      Resource = [kb.bucket_arn]
+      Condition = merge(
+        local.same_account_condition,
+        length(local.corpus_prefixes[k]) == 0 ? {} : { StringLike = { "s3:prefix" = [for p in local.corpus_prefixes[k] : "${p}*"] } },
+      )
+    }],
+    [for k, kb in local.agent_knowledge_bases : {
+      Effect    = "Allow"
+      Action    = ["s3:GetObject"]
+      Resource  = length(local.corpus_prefixes[k]) == 0 ? ["${kb.bucket_arn}/*"] : [for p in local.corpus_prefixes[k] : "${kb.bucket_arn}/${p}*"]
+      Condition = local.same_account_condition
     }],
   )
 
@@ -193,10 +225,11 @@ locals {
         }],
         # The gateway reads the tool schema of a Lambda target from S3 when the target is created.
         length(local.gateway_tool_schema_arns) == 0 ? [] : [{
-          Sid      = "ReadToolSchemas"
-          Effect   = "Allow"
-          Action   = ["s3:GetObject"]
-          Resource = local.gateway_tool_schema_arns
+          Sid       = "ReadToolSchemas"
+          Effect    = "Allow"
+          Action    = ["s3:GetObject"]
+          Resource  = local.gateway_tool_schema_arns
+          Condition = local.same_account_condition
         }],
       ) }) }
     }
