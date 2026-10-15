@@ -1,4 +1,6 @@
 locals {
+  data_api = try(var.db.data_api, false)
+
   # Whether a Proxy exists is decided by the network stack (the security group rules live there); follow it.
   proxy_enabled = jsondecode(module.in.strings["db_proxy"]).enabled
 
@@ -32,6 +34,7 @@ module "db" {
   deletion_protection   = coalesce(var.db.deletion_protection, true)
   skip_final_snapshot   = coalesce(var.db.skip_final_snapshot, false)
   alarm_config          = var.db.alarm_config
+  data_api              = local.data_api
 
   subnet_ids                     = local.db_wiring.subnet_ids
   security_group_ids             = local.db_wiring.security_group_ids

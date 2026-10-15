@@ -66,3 +66,12 @@ run "tfvars_set_a_connections_threshold_where_required" {
     error_message = "rds and aurora need alarm_config.connections_threshold"
   }
 }
+
+run "tfvars_publish_the_data_api_switch" {
+  command = plan
+
+  assert {
+    condition     = local.data_api == var.db.data_api
+    error_message = "The data_api switch in tfvars must reach the rds module"
+  }
+}

@@ -98,6 +98,9 @@ run "database_json_shape" {
       reader_endpoint        = "alpha-dev-db.cluster-ro-abc.ap-northeast-1.rds.amazonaws.com"
       proxy_endpoint         = null
       has_reader             = false
+      deployment             = "aurora_serverless"
+      database_name          = "app"
+      arn                    = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
     }
   }
 
@@ -105,6 +108,7 @@ run "database_json_shape" {
     condition = toset(keys(jsondecode(local.database))) == toset([
       "enabled", "deployment", "port", "name", "secret_arn",
       "app_endpoint", "app_reader_endpoint", "writer_endpoint", "reader_endpoint", "proxy_endpoint", "has_reader",
+      "cluster_arn", "data_api",
     ])
     error_message = "The database JSON must have every field of the SSM contract"
   }
@@ -122,6 +126,8 @@ run "database_json_shape" {
       reader_endpoint     = "alpha-dev-db.cluster-ro-abc.ap-northeast-1.rds.amazonaws.com"
       proxy_endpoint      = null
       has_reader          = false
+      cluster_arn         = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
+      data_api            = false
     }
     error_message = "The values must come from the rds module outputs and the db variable; proxy_endpoint is null without a Proxy"
   }
@@ -285,6 +291,112 @@ run "optional_settings_fall_back_to_module_defaults" {
   assert {
     condition     = module.db[0].has_reader == true
     error_message = "reader_count must reach the module"
+  }
+}
+
+run "data_api_off_by_default" {
+  command = plan
+
+  override_module {
+    target = module.db[0]
+    outputs = {
+      port                   = 5432
+      master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      deployment             = "aurora_serverless"
+      database_name          = "app"
+      arn                    = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
+    }
+  }
+
+  assert {
+    condition     = local.data_api == false && jsondecode(local.database).data_api == false
+    error_message = "Without db.data_api the Data API must stay off and the JSON must say so"
+  }
+}
+
+run "data_api_passed_and_published" {
+  command = plan
+
+  variables {
+    db = {
+      deployment     = "aurora_serverless"
+      engine_version = "16.4"
+      database_name  = "app"
+      serverless     = { min_capacity = 0.5, max_capacity = 4 }
+      data_api       = true
+    }
+  }
+
+  override_module {
+    target = module.db[0]
+    outputs = {
+      port                   = 5432
+      master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      deployment             = "aurora_serverless"
+      database_name          = "app"
+      arn                    = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
+    }
+  }
+
+  assert {
+    condition     = local.data_api == true
+    error_message = "db.data_api must be passed to the rds module"
+  }
+
+  assert {
+    condition     = jsondecode(local.database).data_api == true && jsondecode(local.database).cluster_arn == "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
+    error_message = "The JSON must carry data_api and the cluster ARN from the rds arn output"
+  }
+}
+
+run "database_json_from_rds_outputs" {
+  command = plan
+
+  # Values that differ from var.db prove the JSON is built from the module outputs, not from the variable.
+  override_module {
+    target = module.db[0]
+    outputs = {
+      port                   = 5432
+      master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      deployment             = "aurora"
+      database_name          = "kb"
+      arn                    = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.database).deployment == "aurora" && jsondecode(local.database).name == "kb"
+    error_message = "deployment and name must come from the rds outputs deployment and database_name"
+  }
+}
+
+run "cluster_arn_null_for_rds" {
+  command = plan
+
+  variables {
+    db = {
+      deployment     = "rds"
+      engine_version = "16.4"
+      database_name  = "app"
+      rds            = { instance_class = "db.t4g.micro" }
+      alarm_config   = { connections_threshold = 80 }
+    }
+  }
+
+  override_module {
+    target = module.db[0]
+    outputs = {
+      port                   = 5432
+      master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!db-0000"
+      deployment             = "rds"
+      database_name          = "app"
+      arn                    = "arn:aws:rds:ap-northeast-1:111111111111:db:alpha-dev-db"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.database).cluster_arn == null && jsondecode(local.database).data_api == false
+    error_message = "A single RDS instance has no cluster ARN"
   }
 }
 
