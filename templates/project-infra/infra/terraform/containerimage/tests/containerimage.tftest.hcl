@@ -28,12 +28,13 @@ run "publishes_under_stack_path" {
     condition = module.ssm_publish.names == {
       services        = "/alpha/dev/containerimage/services"
       mirrored_images = "/alpha/dev/containerimage/mirrored_images"
+      agent_runtimes  = "/alpha/dev/containerimage/agent_runtimes"
       ecr_api_url     = "/alpha/dev/containerimage/ecr_api_url"
       ecr_api_arn     = "/alpha/dev/containerimage/ecr_api_arn"
       ecr_worker_url  = "/alpha/dev/containerimage/ecr_worker_url"
       ecr_worker_arn  = "/alpha/dev/containerimage/ecr_worker_arn"
     }
-    error_message = "ssm-publish must write the services list, the mirror list, and a url and an arn per service under the containerimage path"
+    error_message = "ssm-publish must write the services list, the mirror list, the Runtime list, and a url and an arn per service under the containerimage path"
   }
 }
 
@@ -194,6 +195,7 @@ run "publishes_url_and_arn" {
       ecr_order_api_url = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-order-api"
       ecr_order_api_arn = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-order-api"
       mirrored_images   = "[]"
+      agent_runtimes    = "[]"
     }
     error_message = "Hyphens in the service name must become underscores in the SSM keys, and the values must come from the repository"
   }
@@ -369,6 +371,155 @@ run "mirror_next_to_unrelated_service_passes" {
   assert {
     condition     = keys(module.ecr) == ["mirror"] && keys(module.ecr_mirror) == ["adot"]
     error_message = "A service called mirror does not collide with a mirror called adot (alpha-dev-mirror vs alpha-dev-mirror-adot)"
+  }
+}
+
+# ---- agent_runtimes: repositories for AgentCore Runtime images ----
+
+run "agent_runtimes_default_empty" {
+  command = plan
+
+  assert {
+    condition     = length(module.ecr_agent) == 0
+    error_message = "Without agent_runtimes no Runtime repository may exist"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_runtimes"] == "[]"
+    error_message = "The Runtime list must still be published, as an empty JSON array, so downstream stacks can always read it"
+  }
+
+  assert {
+    condition     = length([for k in keys(local.published_strings) : k if startswith(k, "ecr_agent_")]) == 0
+    error_message = "Without Runtimes no ecr_agent_* key may be published"
+  }
+}
+
+run "agent_runtime_repository_is_created" {
+  command = plan
+
+  variables {
+    agent_runtimes  = ["assistant", "order-bot"]
+    lifecycle_rules = { untagged_expire_days = 3, keep_count = 100 }
+  }
+
+  override_module {
+    target = module.ecr_agent["order-bot"]
+    outputs = {
+      repository_url = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-agent-order-bot"
+      arn            = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-order-bot"
+    }
+  }
+
+  assert {
+    condition     = toset(keys(module.ecr_agent)) == toset(["assistant", "order-bot"]) && module.ecr_agent["assistant"].name == "alpha-dev-agent-assistant"
+    error_message = "ecr-repository must be called once per Runtime, named <project>-<env>-agent-<name>"
+  }
+
+  assert {
+    condition = alltrue([for r in values(local.agent_repositories) :
+      r.kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/0000" && r.lifecycle_rules.untagged_expire_days == 3 && r.lifecycle_rules.keep_count == 100
+    ])
+    error_message = "Runtime repositories must use the foundation key and the same lifecycle settings as the service repositories"
+  }
+
+  assert {
+    condition = (
+      local.published_strings["ecr_agent_order_bot_url"] == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-agent-order-bot" &&
+      local.published_strings["ecr_agent_order_bot_arn"] == "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-order-bot"
+    )
+    error_message = "Each Runtime must publish ecr_agent_<name>_url and _arn with hyphens turned into underscores"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["agent_runtimes"]) == ["assistant", "order-bot"] && contains(keys(module.ssm_publish.names), "agent_runtimes")
+    error_message = "The Runtime list must be published as a sorted JSON array"
+  }
+
+  assert {
+    condition     = length(module.ecr) == 2 && length(module.ecr_mirror) == 0
+    error_message = "Adding a Runtime must not change the service or mirror repositories"
+  }
+}
+
+run "agent_runtime_name_clash_with_service" {
+  command = plan
+
+  variables {
+    agent_runtimes = ["api"]
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_runtime_name_clash_with_mirror" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot-collector"]
+    agent_runtimes  = ["adot-collector"]
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_runtime_repository_clash_with_service" {
+  command = plan
+
+  variables {
+    # The service repository alpha-dev-agent-bot would have the same name as the Runtime repository.
+    services       = ["api", "agent-bot"]
+    agent_runtimes = ["bot"]
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_runtime_without_clash_passes" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot-collector"]
+    agent_runtimes  = ["assistant"]
+  }
+
+  assert {
+    condition     = keys(module.ecr_agent) == ["assistant"]
+    error_message = "A Runtime whose name is not used by a service or mirror must pass"
+  }
+}
+
+run "agent_runtime_name_not_kebab_case_rejected" {
+  command = plan
+
+  variables {
+    agent_runtimes = ["order_bot"]
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_runtime_name_too_long" {
+  command = plan
+
+  variables {
+    # alpha_dev_ is 10 characters, so 39 more make 49.
+    agent_runtimes = ["abcdefghijabcdefghijabcdefghijabcdefghi"]
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_runtime_name_at_limit_passes" {
+  command = plan
+
+  variables {
+    agent_runtimes = ["abcdefghijabcdefghijabcdefghijabcdefgh"]
+  }
+
+  assert {
+    condition     = length("alpha_dev_abcdefghijabcdefghijabcdefghijabcdefgh") == 48 && length(module.ecr_agent) == 1
+    error_message = "A Runtime name of exactly 48 characters must pass"
   }
 }
 

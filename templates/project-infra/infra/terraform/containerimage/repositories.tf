@@ -35,3 +35,22 @@ module "ecr_mirror" {
   kms_key_arn     = each.value.kms_key_arn
   lifecycle_rules = each.value.lifecycle_rules
 }
+
+locals {
+  agent_repositories = {
+    for r in var.agent_runtimes : r => {
+      name            = "${local.name_prefix}-agent-${r}"
+      kms_key_arn     = module.in.strings["kms_key_arn"]
+      lifecycle_rules = var.lifecycle_rules
+    }
+  }
+}
+
+module "ecr_agent" {
+  source   = "../../../../../modules/ecr-repository"
+  for_each = local.agent_repositories
+
+  name            = each.value.name
+  kms_key_arn     = each.value.kms_key_arn
+  lifecycle_rules = each.value.lifecycle_rules
+}
