@@ -56,7 +56,7 @@ module "api" {
 
 ### Confirmation
 
-tag 由 release-please 以 `include-component-in-tag` 產生（第一個 `v0.1.0` 由人手動打：v1 的 19 個，加增補的 7 個；增補時一起手動打的還有 `rds-v0.2.0`、`s3-bucket-v0.2.0`，見 `docs/guides/releasing-modules.md`）。`scripts/vendor-modules.sh` 會拒絕不符合 `^<module>-v[0-9]+\.[0-9]+\.[0-9]+$` 或前綴跟 module 對不上的 tag，module 清單從 `modules/` 目錄讀，不手寫。`scripts/validate.sh` 與 CI 不檢查 tag：它們驗的是程式碼，repo 裡的 tag 不經過它們。
+tag 由 release-please 以 `include-component-in-tag` 產生（第一批由人手動打：v1 的 19 個 `v0.1.0`；LLM 增補動到的 9 個（7 個新 module 加 `rds`、`s3-bucket`）打 `v0.1.1`，見 `docs/guides/releasing-modules.md`）。`scripts/vendor-modules.sh` 會拒絕不符合 `^<module>-v[0-9]+\.[0-9]+\.[0-9]+$` 或前綴跟 module 對不上的 tag，module 清單從 `modules/` 目錄讀，不手寫。`scripts/validate.sh` 與 CI 不檢查 tag：它們驗的是程式碼，repo 裡的 tag 不經過它們。
 
 ## Pros and Cons of the Options
 

@@ -30,12 +30,12 @@
 | `log-delivery` | CloudWatch vended log 三件組（source、destination、delivery）；source 的 ARN 換了 delivery 跟著換 | log group 本身（用 `log-group`）、跨帳號 destination | 有（project-a） |
 | `bedrock-knowledge-base` | `VECTOR` 型 KB，向量只存 Aurora PostgreSQL pgvector；S3 data source | extension、表、索引、資料庫帳號與它的 secret（專案的 migration）；ingestion job；其他向量儲存；語料 bucket | **沒有** |
 
-另外兩個既有 module 為了這次增補升 MINOR：
+另外兩個既有 module 為了這次增補發了新版。照 semver 表是 MINOR，這一版照使用者決定跟新 module 一起用 `v0.1.1`（design 決策 54）：
 
 | module | 版本 | 多了什麼 | 誰需要 |
 |---|---|---|---|
-| `rds` | `rds-v0.2.0` | `data_api`（Aurora 開 RDS Data API，預設 `false`）；`deployment`、`database_name` 兩個輸出 | 範本的 `data`：`database` JSON 改取這兩個輸出，**有沒有 KB 都要用 `rds-v0.2.0`**；KB 需要 `data_api = true` |
-| `s3-bucket` | `s3-bucket-v0.2.0` | `never_expire`（lifecycle 不帶過期，只清未完成的分段上傳） | 範本的 `agent`：每個 KB 的語料 bucket |
+| `rds` | `rds-v0.1.1` | `data_api`（Aurora 開 RDS Data API，預設 `false`）；`deployment`、`database_name` 兩個輸出 | 範本的 `data`：`database` JSON 改取這兩個輸出，**有沒有 KB 都要用 `rds-v0.1.1`**；KB 需要 `data_api = true` |
+| `s3-bucket` | `s3-bucket-v0.1.1` | `never_expire`（lifecycle 不帶過期，只清未完成的分段上傳） | 範本的 `agent`：每個 KB 的語料 bucket |
 
 兩者既有消費端換 `ref` 之後 plan 應該零差異，這是讀 schema 與程式推論的，沒有 plan 證明（§7.3 第 21、25 項）。換版之後跑一次 plan 確認。
 
@@ -45,33 +45,20 @@
 
 ```hcl
 module "guardrail" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-guardrail?ref=bedrock-guardrail-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-guardrail?ref=bedrock-guardrail-v0.1.1"
   # ...
 }
 ```
 
 | module | tag |
 |---|---|
-| `bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base` | `<module>-v0.1.0` |
-| `rds` | `rds-v0.2.0` |
-| `s3-bucket` | `s3-bucket-v0.2.0` |
+| `bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base`、`rds`、`s3-bucket` | `<module>-v0.1.1` |
 
 注意三件事：
 
 1. **這 9 個 tag 由人手動打**（見 [`releasing-modules.md`](./releasing-modules.md)）。tag 打出來之前 `terraform init` 會抓不到 ref。
 2. **7 個新 module 的 aws provider 是 `>= 6.69, < 7.0`**，不是其他 module 的 `>= 6.0`：`aws_bedrockagentcore_*` 在舊版不存在。root 的 lock 檔如果釘在 6.69 以前，`init` 會失敗，要 `terraform init -upgrade` 並提交新的 lock 檔。
-3. `consuming-modules.md` 那支一次改完的 `sed` 把所有 module 都換成 `-v0.1.0`。用了 `agent` 範本之後，`rds` 與 `s3-bucket` 要再改成 `0.2.0`：
-
-```bash
-# 在專案 repo 根目錄；macOS 與 Linux 的 sed 都適用
-grep -rlE --include='*.tf' '//modules/(rds|s3-bucket)\?ref=' infra/terraform | while IFS= read -r f; do
-  sed -E -i.bak 's#//modules/(rds|s3-bucket)\?ref=(rds|s3-bucket)-v0\.1\.0#//modules/\1?ref=\2-v0.2.0#' "$f" && rm -f "$f.bak"
-done
-
-grep -rnE --include='*.tf' '(rds|s3-bucket)-v0\.1\.0' infra/terraform   # 預期沒有輸出
-```
-
-`foundation` 的兩個 log bucket 也會一起換成 `s3-bucket-v0.2.0`，它們明寫 `expiration_days = 90`，plan 應該零差異；換完對 `foundation` 跑一次 plan 確認。
+3. [`consuming-modules.md`](./consuming-modules.md) 那支一次改完的指令已經把這 9 個 module 設成 `v0.1.1`，其餘留在 `v0.1.0`。`foundation` 的兩個 log bucket 也會一起換成 `s3-bucket-v0.1.1`，它們明寫 `expiration_days = 90`，plan 應該零差異；換完對 `foundation` 跑一次 plan 確認。
 
 ## 範本怎麼接：`agent` stack
 
@@ -815,9 +802,9 @@ aws secretsmanager get-random-password --password-length 32 --exclude-punctuatio
 | 映像與追蹤 | arm64 要求、HTTP 容器契約、OTEL 的啟動方式（照 project-a 經驗與 AWS 文件） |
 | log-delivery | CWL 目的地的 resource policy 自動加；`APPLICATION_LOGS`、`TRACES` 真的進 log group 與 X-Ray；Runtime 重建時 delivery 一起替換；Transaction Search 的檢查與開啟指令 |
 | Gateway | Lambda target 用 Gateway role 呼叫；MCP server target 不帶 credential provider 收不收；扁平 `tools`（含空 `properties`、`array`／`object` 不帶子定義）被接受；VPC 裡呼叫 Gateway 要哪個 endpoint |
-| Knowledge Base | Data API 的 Aurora 版本、pgvector 版本；SQL 是否就是 Bedrock 要的；KB 建立時是否檢查表；KB role 的動作清單；KB 專用帳號的四個表權限加 schema `USAGE` 夠不夠 ingestion、重新同步、`Retrieve`；換密碼後 KB 是否快取 secret；ingestion 真的寫進表；`inclusion_prefixes` 數量上限；`rds-v0.2.0` 對既有 cluster plan 零差異；這份 guide 的 secret 建立（`file:///dev/stdin`）與設密碼指令 |
+| Knowledge Base | Data API 的 Aurora 版本、pgvector 版本；SQL 是否就是 Bedrock 要的；KB 建立時是否檢查表；KB role 的動作清單；KB 專用帳號的四個表權限加 schema `USAGE` 夠不夠 ingestion、重新同步、`Retrieve`；換密碼後 KB 是否快取 secret；ingestion 真的寫進表；`inclusion_prefixes` 數量上限；`rds-v0.1.1` 對既有 cluster plan 零差異；這份 guide 的 secret 建立（`file:///dev/stdin`）與設密碼指令 |
 | KMS | guardrail、Memory、KB data source 改用 `foundation` 的 key 時 key policy 要給什麼 |
 | 跨帳號 | A 側 assume B 的 role 呼叫模型；沒有 NAT 時 `sts` endpoint 夠不夠；foundation-model region `*` 對 `global.` 與地區前綴都成立；`*` 是否涵蓋空 region |
 | Memory strategy | 三種內建 strategy 不給 Memory execution role 能不能建、能不能產生長期記憶 |
-| `s3-bucket-v0.2.0` | 既有 log bucket 換版 plan 零差異；`never_expire = true` 時只有一條 rule、`filter {}` 被接受；KB 讀 SSE-S3 的語料 bucket 不需要 bucket policy |
+| `s3-bucket-v0.1.1` | 既有 log bucket 換版 plan 零差異；`never_expire = true` 時只有一條 rule、`filter {}` 被接受；KB 讀 SSE-S3 的語料 bucket 不需要 bucket policy |
 | 模型使用權 | `get-foundation-model-availability` 的輸出欄位與 CLI 版本需求 |

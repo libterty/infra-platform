@@ -1,6 +1,6 @@
 # 怎麼改 module、怎麼發版
 
-結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是每個 module 的第一個版本：v1 的 19 個加增補的 7 個 `<module>-v0.1.0` tag 由人在整體驗收通過的 commit 上手動打；增補時 `rds-v0.2.0`、`s3-bucket-v0.2.0` 也一起手動打。步驟在最後兩節。
+結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 9 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
 release-please 這條流程本機沒有、也沒有在 GitHub 上跑過，**未實測**；設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
 
@@ -107,11 +107,13 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 本 repo 已照這個迴圈在 `28a8647` 打好 19 個 `<module>-v0.1.0` annotated tag。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。
 
-## 增補：手動打 9 個 tag（7 個 `<module>-v0.1.0`、`rds-v0.2.0`、`s3-bucket-v0.2.0`）
+## 增補：手動打 9 個 `<module>-v0.1.1` tag
 
-LLM 與 AgentCore 的增補（設計文件決策 37–53）多了 7 個 module，`rds` 與 `s3-bucket` 各升一個 MINOR。理由同上一節：`.release-please-manifest.json` 把 7 個新 module 登記成 `0.1.0`，增補驗收的 commit 再把 `rds`、`s3-bucket` 改成 `0.2.0`，release-please 會把這些版本當成已經發過，所以這 9 個 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
+LLM 與 AgentCore 的增補（設計文件決策 37–54）動到 9 個 module：7 個新 module，加上 `rds`、`s3-bucket`。照使用者決定（決策 54），這 9 個一律打 `v0.1.1`。`rds`、`s3-bucket` 的變更照上面的 semver 表本該是 MINOR，只有這一版例外，之後照表走。其餘 17 個 module 沒有變，只有 `v0.1.0`。
 
-前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 的 `rds`、`s3-bucket` 已改成 `0.2.0`，而且那個 commit 已經在 GitHub 的 `main` 上。
+理由同上一節：增補驗收的 commit 把這 9 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
+
+前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 已經改好，而且那個 commit 已經在 GitHub 的 `main` 上。
 
 ```bash
 # 1. 回到增補驗收通過的那個 commit
@@ -119,36 +121,32 @@ git switch main
 git pull --ff-only
 commit="$(git rev-parse --verify 'HEAD^{commit}')"
 git log -1 --format='%h %s' "$commit"     # 確認是驗收通過的那個 commit
-jq -r '."modules/rds", ."modules/s3-bucket"' .release-please-manifest.json   # 預期兩行都是 0.2.0
 
-# 2. 確認舊 tag 還在、新 tag 都還沒有
-git tag -l '*-v0.1.0' | wc -l              # 預期 19
+# 2. 要打的 module 從 manifest 讀，不手寫；預期 9 個
+VERSION="0.1.1"
+modules="$(jq -r --arg v "$VERSION" 'to_entries[] | select(.value == $v) | .key | sub("^modules/"; "")' .release-please-manifest.json)"
+echo "$modules" | wc -l                    # 預期 9
+
+# 3. 確認舊 tag 還在、新 tag 都還沒有
 git tag --points-at 28a8647 | wc -l        # 預期 19
-git tag -l 'rds-v0.2.0' 's3-bucket-v0.2.0' # 預期沒有輸出
+git tag -l "*-v${VERSION}"                 # 預期沒有輸出
 
-# 3. 還沒有 v0.1.0 tag 的 module 各打一個（module 名稱從目錄讀，不手寫），再打兩個 0.2.0
-for d in modules/*/; do
-  m="$(basename "$d")"
-  git rev-parse -q --verify "refs/tags/${m}-v0.1.0" >/dev/null && continue
-  git tag -a "${m}-v0.1.0" -m "${m} v0.1.0" "$commit"
+# 4. 打 tag
+for m in $modules; do
+  test -d "modules/${m}" || { echo "no such module: $m"; continue; }
+  git tag -a "${m}-v${VERSION}" -m "${m} v${VERSION}" "$commit"
 done
-git tag -a rds-v0.2.0 -m "rds v0.2.0" "$commit"
-git tag -a s3-bucket-v0.2.0 -m "s3-bucket v0.2.0" "$commit"
 
-# 4. 本機檢查：這個 commit 上恰好 9 個，名稱都對得上 modules/ 的目錄；舊的 19 個沒動
+# 5. 本機檢查：這個 commit 上恰好 9 個；舊的 19 個沒動
 git tag --points-at "$commit" | wc -l      # 預期 9
-git tag -l '*-v0.1.0' | wc -l              # 預期 26
+git tag -l "*-v${VERSION}" | wc -l         # 預期 9
 git tag --points-at 28a8647 | wc -l        # 預期 19
-for t in $(git tag --points-at "$commit"); do
-  m="${t%-v*}"
-  test -d "modules/${m}" || echo "no such module: $t"
-done                                        # 預期沒有輸出
 ```
 
 push 一樣由人手動做，只推這 9 個：
 
 ```bash
-git push origin $(git tag --points-at "$commit" | sed 's#^#refs/tags/#')
+git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 ```
 
 推完到 GitHub 的 tag 頁面確認 9 個都在、舊的 19 個沒變。打錯了而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，發下一個 PATCH 版。
