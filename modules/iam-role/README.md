@@ -8,7 +8,7 @@
 
 ```hcl
 module "ecs_execution" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/iam-role?ref=iam-role-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/iam-role?ref=iam-role-v0.1.1"
 
   name = "alpha-dev-ecs-execution"
 
