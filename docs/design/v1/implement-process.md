@@ -1,14 +1,14 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–5 已完成（HEAD `2854256`），Phase 6 起待執行。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–7（A–D）已完成（HEAD `a9f2251`），Phase 7E 起待執行。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
 ## 結論
 
-第一版是 15 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc` 建（design §1、§4.1）。
+第一版是 18 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc` 建（design §1、§4.1）。
 
-分 11 個 Phase（0 到 10）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 18 個 commit，剩下 10 個（Phase 10 有修正才多一個），合計 28 個。
+分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）與 E（觀測性）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 27 個 commit，剩下 8 個（Phase 10 有修正才多一個），合計 35 個。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
@@ -21,10 +21,12 @@
 | 4 | `alb`、`ecs-service-alarms` | 已完成 | 2：`df8ddd0`、`f0f6cf0` |
 | 5 | `rds` | 已完成 | 1：`065e485` |
 | — | 7 個 module 的註解改成只用英文 | 已完成（計畫外） | 7：`d7485e6`、`a2c2cf6`、`3db0a78`、`08ce99a`、`3df5d36`、`09d0103`、`2854256` |
-| 6 | 共用設定更新：release-please 加 7 個 module、`validate.sh` 的 S3／S4／S8、README 的 module 清單 | 待執行 | 1 |
-| 7 | 7 個新 module：`kms-key`、`ecr-repository`、`s3-bucket`、`ssm-read`、`iam-role`、`iam-role-policy`、`security-group` | 待執行 | 7 |
-| 8 | 專案範本（8 個 stack，全部改呼叫 module） | 待執行 | 1 |
-| 9 | `docs/guides/` 五份、`scripts/vendor-modules.sh` | 待執行 | 1 |
+| — | 設計文件擴充到 15 個 module、重排 Phase 6–10 | 已完成 | 1：`b020eef` |
+| 6 | 共用設定更新：release-please 加 7 個 module、`validate.sh` 的 S3／S4／S8、README 的 module 清單 | 已完成 | 1：`0e0efab` |
+| 7A–D | 7 個新 module：`iam-role`、`iam-role-policy`、`kms-key`、`s3-bucket`、`ecr-repository`、`ssm-read`、`security-group` | 已完成 | 7：`fd1cb37`、`8db54cc`、`bf02f15`、`8a805dd`、`63936ce`、`c6ba150`、`a9f2251` |
+| 7E | 觀測性：設計文件、共用設定、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 待執行 | 6 |
+| 8 | 專案範本（8 個 stack，全部改呼叫 module；application 加 `log-metric-alarm`、`xray`） | 待執行 | 1 |
+| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh` | 待執行 | 1 |
 | 10 | 整體驗收 | 待執行 | 有修正才 1 |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
@@ -108,7 +110,8 @@ export AWS_EC2_METADATA_DISABLED=true
 | Phase | commit message（範例） |
 |---|---|
 | 6 | `chore(repo): register seven new modules and tighten static rules` |
-| 7 | `feat(kms-key): add customer managed key module`（其餘 6 個同格式，scope 是 module 名） |
+| 7A–D | `feat(kms-key): add customer managed key module`（其餘 6 個同格式，scope 是 module 名；實際 message 見 git log） |
+| 7E | `docs(design): ...`、`chore(repo): register observability modules`、`feat(log-group): ...`、`feat(log-metric-alarm): ...`、`feat(xray): ...`、`feat(ecs-service): add sidecars for extra containers` |
 | 8 | `feat(template): add project-infra template with eight stacks` |
 | 9 | `docs(guides): add usage guides and vendor-modules script` |
 | 10 | `chore(repo): fix issues found in final acceptance`（有修正才有） |
@@ -122,7 +125,8 @@ export AWS_EC2_METADATA_DISABLED=true
 | Phase 0–5 | 已完成。舊的 8 個 module 不受這次範圍變更影響（只有 S3、S4 的規則改寫，要在 Phase 6 確認它們仍然通過） |
 | Phase 6 先做共用設定 | release-please 的兩個 JSON、`validate.sh`、README 是每個新 module 都會碰到的共用檔。先由一個 commit 改好，Phase 7 的 7 個 module 才能平行開發，不會撞到同一個檔；新的 S3、S4、S8 也要先就位，新 module 一寫錯就會被擋 |
 | Phase 7 新 module | 範本的 8 個 stack 都要呼叫它們 |
-| Phase 8 範本 | 要呼叫全部 15 個 module |
+| Phase 7E 觀測性 | 使用者在 7A–D 完成後追加。跟 Phase 6 一樣，先用一個 chore commit 改共用檔，3 個新 module 與 `ecs-service` 才能平行 |
+| Phase 8 範本 | `application` 要呼叫 `log-metric-alarm`、`xray`，所以排在 7E 之後 |
 | Phase 9 文件 | 要引用範本的真實檔案 |
 
 ### 可平行與不可平行
@@ -133,10 +137,11 @@ export AWS_EC2_METADATA_DISABLED=true
 |---|---|---|
 | Phase 6 與任何 Phase | 不行 | 其他 Phase 都依賴它改的共用檔 |
 | Phase 7 的 7 個 module | 可以 | 各自只動自己的 `modules/<name>/`；共用檔在 Phase 6 已改完 |
+| Phase 7E 的 3 個新 module 與 `ecs-service` | 可以（7E 的 docs 與 chore commit 先做） | 各自只動自己的目錄 |
 | Phase 8 與 Phase 7 | 不行 | 範本的測試會 init 全部 module |
-| Phase 9 與 Phase 8 | 部分可以 | `releasing-modules.md`、`team-roles.md`、`vendor-modules.sh` 只依賴 module，可在 Phase 7 後開始；其餘三份要對到範本的真實檔案 |
+| Phase 9 與 Phase 8 | 部分可以 | `releasing-modules.md`、`team-roles.md`、`vendor-modules.sh` 只依賴 module，可在 Phase 7 後開始；`observability.md` 要對照 `modules/ecs-service/examples/adot-sidecar/`，可在 7E 後開始；其餘三份要對到範本的真實檔案 |
 
-**Phase 7 的分組（4 個執行 subagent）**
+**Phase 7A–D 的分組（4 個執行 subagent，已完成）**
 
 | subagent | module | 為什麼放一起 |
 |---|---|---|
@@ -170,7 +175,9 @@ export AWS_EC2_METADATA_DISABLED=true
 | `e51348f fix(validate)` | 加 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true` | module 沒有 lock 檔時不用快取，每個目錄要下載約 6 分鐘 |
 | 7 個 `style(<module>)` | 註解、`description`、`error_message` 改成只用英文 | 新規則（硬性限制第 6 條）；`alb` 原本就符合 |
 
-### Phase 6：共用設定更新
+### Phase 6：共用設定更新（已完成，`0e0efab`）
+
+**實際結果**：全量 `scripts/validate.sh` 通過。跟計畫的差異：S3 放行 `each.value`（`for_each` 的迭代變數，不是參數值），寫在 `scripts/validate.sh` 的註解。
 
 **目標**：一個 commit 改完所有共用檔，讓 Phase 7 可以平行。
 
@@ -226,7 +233,21 @@ scripts/validate.sh                                                # 既有 21 �
 
 **不在本次範圍**：任何 module 程式碼；CI workflow（不用改，它只呼叫 `validate.sh`）；CODEOWNERS（`/modules/` 已涵蓋新 module）。
 
-### Phase 7：7 個新 module
+### Phase 7A–D：7 個基礎 module（已完成）
+
+| module | commit | 測試數 |
+|---|---|---|
+| `iam-role` | `fd1cb37` | 30 |
+| `iam-role-policy` | `8db54cc` | 23 |
+| `kms-key` | `bf02f15` | 27 |
+| `s3-bucket` | `8a805dd` | 28 |
+| `ecr-repository` | `63936ce` | 17 |
+| `ssm-read` | `c6ba150` | 19 |
+| `security-group` | `a9f2251` | 44 |
+
+全量 `scripts/validate.sh`：35 個目錄通過。跟計畫的差異：`iam-role` 與 `iam-role-policy` 多了一條 validation，Allow statement 不准搭配 `NotAction`（`NotAction` 等於「除了這些以外全部允許」，會繞過禁止萬用動作的檢查）。兩個 module 這條的寫法也一字不差。
+
+以下是當時的計畫，保留作為對照。
 
 **目標**：照 design §4.10–§4.16 做出 7 個 module，run 表以 design §7.1 為基礎。每個 module 一個 commit。
 
@@ -368,6 +389,122 @@ scripts/validate.sh                                       # 全量
 
 **不在本次範圍**：design 各章節「刻意不做」的項目；範本（Phase 8）；`secret` module（design 決策 30）。
 
+### Phase 7E：觀測性（3 個新 module 與 `ecs-service` 的 `sidecars`）
+
+**目標**：照 design §4.17–§4.20、§7.1、決策 31–33，新增 `log-group`、`log-metric-alarm`、`xray`，並讓 `ecs-service` 支援 sidecar。module 總數從 15 變 18。
+
+**commit 順序**（共 6 個）
+
+| # | commit | 內容 | 誰做 |
+|---|---|---|---|
+| 1 | `docs(design): add observability modules and ecs-service sidecars` | design-docs.md 與本文件的 7E 變更 | 主 agent |
+| 2 | `chore(repo): register observability modules` | `release-please-config.json`、`.release-please-manifest.json` 加 3 個 module（`0.1.0`）；`README.md` 的 module 清單改成 18 個 | 主 agent 或執行 subagent，主 agent 驗證 |
+| 3 | `feat(log-group): add log group module with optional subscription` | `modules/log-group/` | 執行 subagent |
+| 4 | `feat(log-metric-alarm): add metric filter and alarm module` | `modules/log-metric-alarm/` | 執行 subagent |
+| 5 | `feat(xray): add sampling rule and group module` | `modules/xray/` | 執行 subagent |
+| 6 | `feat(ecs-service): add sidecars for extra containers` | `modules/ecs-service/`：`sidecars` 變數、新增的測試檔、`examples/adot-sidecar/`、README、CHANGELOG | 執行 subagent |
+
+commit 1、2 先做：commit 2 改的是共用檔，做完後 3–6 可以平行。commit 6 屬於 MINOR（新增有預設值、預設維持原行為的變數），因為 `ecs-service` 還沒打過第一個 tag，所以併進 `v0.1.0`（design §4.20）。
+
+**分組**：E1 負責 `log-group` 與 `log-metric-alarm`（都是 CloudWatch Logs，`log-metric-alarm` 的 SNS 接線要沿用 `ecs-service-alarms` 的寫法）；E2 負責 `xray`；E3 負責 `ecs-service` 的 `sidecars`（動既有 module，單獨一個人，迴歸要求最嚴）。
+
+#### commit 2 的驗收
+
+```bash
+jq -r '.packages | keys[]' release-please-config.json | wc -l      # 預期 18
+jq -r 'keys[]' .release-please-manifest.json | wc -l               # 預期 18
+jq -r 'to_entries[] | .value' .release-please-manifest.json | sort -u   # 預期只有 0.1.0
+scripts/validate.sh                                                # 既有 35 個目錄仍全部通過
+```
+
+#### `log-group`（design §4.17）
+
+| run | 斷言 |
+|---|---|
+| `defaults` | `retention_in_days = 30`；`kms_key_id` 為 null；`subscription = null` 時 `aws_cloudwatch_log_subscription_filter.this` 0 個 |
+| `retention_override` | `retention_days = 365` → `retention_in_days = 365` |
+| `kms_when_given` | 給 key ARN → `kms_key_id` 等於輸入 |
+| `lambda_subscription_without_role` | Lambda 目的地、`role_arn = null` → 1 個 subscription filter，`role_arn` 為 null、`filter_pattern = ""` |
+| `firehose_subscription_with_role` | Firehose 目的地加 `role_arn` → subscription filter 帶 `role_arn` |
+| `outputs` | `name`、`arn` |
+| `retention_values` | `0`、`2` 被擋；`1`、`3653` 通過 |
+| `name_rules` | `aws/foo` 被擋；含空白被擋；`/alpha/dev/worker` 通過 |
+| `destination_arn_format` | S3 ARN 被擋 |
+| `stream_destinations_need_role` | Kinesis 或 Firehose 目的地沒給 `role_arn` → 被擋 |
+
+#### `log-metric-alarm`（design §4.18）
+
+| run | 斷言 |
+|---|---|
+| `one_filter_and_alarm_per_entry` | `alarms` 給兩個 → 兩個 `aws_cloudwatch_log_metric_filter.this`、兩個 `aws_cloudwatch_metric_alarm.this`，名稱是 `<name_prefix>-<key 的 _ 換成 ->` |
+| `filter_defaults` | `metric_transformation` 的 `value = "1"`、`default_value = 0`、`namespace` 與 `name` 照輸入；`log_group_name` 照輸入 |
+| `alarm_defaults` | `statistic = "Sum"`、`period = 60`、`evaluation_periods = 1`、`threshold = 1`、`GreaterThanOrEqualToThreshold`、`notBreaching` |
+| `alarm_override` | 改 `period = 300`、`threshold = 60`、`datapoints_to_alarm = 2`、`evaluation_periods = 3` → 照輸入 |
+| `every_alarm_notifies_both_ways` | 每個 alarm 的 `alarm_actions` 與 `ok_actions` 都等於 `toset(sns_topic_arns)`。反向驗證：拿掉一個的 `ok_actions`，測試要紅 |
+| `empty_alarms_creates_nothing` | `alarms = {}` → 兩種資源都是 0 個 |
+| `outputs` | `alarm_arns`、`alarm_names`、`metric_filter_names` 的 key 等於 `alarms` 的 key |
+| `sns_topic_required` | `sns_topic_arns = []` 被擋 |
+| `key_and_text_rules` | key `PersistenceFailed` 被擋；`pattern = " "` 被擋；`description = ""` 被擋 |
+| `statistic_values` | `statistic = "p99"` 被擋；`Average` 通過 |
+| `period_values` | `period = 45` 被擋；`10`、`30`、`120` 通過 |
+| `datapoints_within_periods` | `datapoints_to_alarm = 3`、`evaluation_periods = 2` 被擋 |
+| `namespace_rules` | `AWS/ECS` 被擋；`Alpha/dev` 通過 |
+| `name_prefix_format` | 大寫被擋 |
+
+alarm 對 filter 的 `depends_on` 用 grep 驗收。
+
+#### `xray`（design §4.19）
+
+| run | 斷言 |
+|---|---|
+| `one_rule_per_entry` | `sampling_rules` 給兩個 → 兩個 `aws_xray_sampling_rule.this`，`rule_name = <name_prefix>-<key>`；`priority`、`fixed_rate`、`reservoir_size` 照輸入 |
+| `rule_wildcard_defaults` | 沒給的 `service_name`、`service_type`、`host`、`http_method`、`url_path` 都是 `*`；`reservoir_size` 預設 1 |
+| `one_group_per_entry` | `groups` 給兩個 → 兩個 `aws_xray_group.this`，`group_name = <name_prefix>-<key>`、`filter_expression` 照輸入；`insights_configuration` 的兩個值照輸入（預設都是 false） |
+| `empty_inputs_create_nothing` | 兩個 map 都空 → 兩種資源都是 0 個 |
+| `outputs` | `sampling_rule_arns`、`group_arns` 的 key 等於輸入的 key |
+| `name_length` | `<name_prefix>-<key>` 超過 32 字（rule 與 group 各測）被擋；剛好 32 字通過 |
+| `priority_range` | `0`、`10000` 被擋；`1`、`9999` 通過 |
+| `fixed_rate_range` | `1.5`、`-0.1` 被擋；`0`、`1` 通過 |
+| `priority_unique` | 兩條 rule 的 `priority` 相同 → 被擋 |
+| `group_filter_required` | `filter_expression = ""` 被擋 |
+| `notifications_need_insights` | `notifications_enabled = true`、`insights_enabled = false` → 被擋；兩個都 true 通過 |
+
+#### `ecs-service` 的 `sidecars`（design §4.20）
+
+**迴歸要求**：`modules/ecs-service/tests/` 底下既有的 5 個測試檔（`autoscaling`、`defaults`、`load-balancer`、`secrets-roles`、`validation`，共 67 個 run）**一行都不改**，全部通過。新增的斷言放在新檔 `tests/sidecars.tftest.hcl`。
+
+| run | 斷言 |
+|---|---|
+| `no_sidecars_keeps_single_container` | `sidecars = []`（預設）→ `jsondecode(container_definitions)` 長度 1；主 container 沒有 `dependsOn` 欄位；跟 commit 前的 task definition 完全相同（反向驗證：在 `sidecars = []` 時也加一個空的 `dependsOn`，這條要紅） |
+| `one_sidecar_order` | 一個 sidecar → 長度 2，`[0].name = "app"`、`[1].name` 是 sidecar 名稱 |
+| `sidecar_logs_share_group` | sidecar 的 `logConfiguration` 是同一個 log group、同樣的 `mode = "non-blocking"`，`awslogs-stream-prefix` 是 sidecar 名稱；給 `log_stream_prefix` 時用給的值 |
+| `sidecar_defaults` | sidecar 有 `initProcessEnabled = true`、`stopTimeout = 120`；`essential` 預設 false |
+| `app_waits_only_when_asked` | `app_depends_on = "START"` → 主 container 有 `dependsOn = [{ containerName = <sidecar>, condition = "START" }]`；不設時沒有 `dependsOn` |
+| `sidecar_secrets_value_from` | sidecar 的 `secrets` 轉成 `[{name, valueFrom}]` |
+| `sidecar_port_mappings_and_health_check` | `port_mappings`、`health_check`、`cpu`、`memory_reservation`、`command`、`environment` 照輸入寫進 sidecar 的定義 |
+| `sidecar_name_rules` | 名稱 `app`、兩個 sidecar 同名、`App` 各自被擋 |
+| `sidecar_image_tag_required` | `:latest` 或沒有 tag 被擋 |
+| `app_depends_on_values` | `READY` 被擋；`HEALTHY` 沒有 `health_check` 被擋；`HEALTHY` 有 `health_check` 通過 |
+| `sidecar_port_conflict` | sidecar 的 `container_port` 跟主 container 相同、或兩個 sidecar 相同 → 被擋 |
+| `sidecar_secret_format` | secret 值不是 ARN → 被擋 |
+
+**`examples/adot-sidecar/`**：照 design §4.20 的表，示範一個 ADOT collector sidecar（映像帶明確 tag、`AOT_CONFIG_CONTENT` 用 `environment` 帶入、health check、`app_depends_on = "START"`、主 container 的 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317`）。只跑 `init -backend=false` 與 `validate`。
+
+**驗收指令**
+
+```bash
+scripts/validate.sh modules/log-group modules/log-metric-alarm modules/xray modules/ecs-service
+git diff --stat <commit 2 的 hash> -- modules/ecs-service/tests/   # 只有新增 tests/sidecars.tftest.hcl，既有 5 個檔沒有變動
+grep -rnP '[^\x00-\x7F]' modules/log-group modules/log-metric-alarm modules/xray modules/ecs-service --include='*.tf' --include='*.tftest.hcl'   # 預期沒有輸出
+grep -rn 'resource "aws_iam_' modules/log-group modules/log-metric-alarm modules/xray   # 預期沒有輸出（S4 也會擋）
+grep -n 'depends_on' modules/log-metric-alarm/*.tf                 # alarm 有 depends_on filter
+scripts/validate.sh                                                # 全量
+```
+
+**完成定義**：design §7.1 表中 `log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` 每一項都有對應的 run 且通過；`ecs-service` 既有 67 個 run 不改一行仍全部通過；`every_alarm_notifies_both_ways` 與 `no_sidecars_keeps_single_container` 經反向驗證確認有效。主 agent 每驗完一個 module 就 commit 一次。
+
+**不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。
+
 ### Phase 8：`templates/project-infra`（8 個 stack）
 
 **目標**：照 design §5。8 個 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 `aws_secretsmanager_secret`（S8）；跨 stack 讀寫一律透過 `ssm-read`／`ssm-publish`；兩個以上 stack 都要知道的開關只由上游一個 stack 決定（design §5.6「單一決定點」），下游用 precondition 檢查自己的設定跟上游一致。
@@ -383,7 +520,7 @@ scripts/validate.sh                                       # 全量
 | 5 | `data` | `rds`、`ssm-read`、`ssm-publish` | foundation、network、iam-base | `database`（JSON） |
 | 6 | `iam-app` | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>` |
 | 7 | `loadbalancer` | `alb`、`ssm-read`、`ssm-publish` | foundation、network | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` |
-| 8 | `application` | `ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`ssm-read` | 前七個 | 不發布 |
+| 8 | `application` | `ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`log-metric-alarm`、`xray`、`ssm-read` | 前七個 | 不發布 |
 
 key 名稱與 JSON 格式以 design §5.6 的合約表為準。
 
@@ -405,7 +542,7 @@ key 名稱與 JSON 格式以 design §5.6 的合約表為準。
 | `tests/tfvars/tfvars.tftest.hcl` | 只放共通值與 `override_data`，由 `validate.sh` 用 `-var-file=envs/<env>.tfvars` 跑 |
 | `.terraform.lock.hcl` | 進版控，產生方式見下 |
 
-`network`、`data`、`loadbalancer` 另有 `envs/examples/{poc,standard,high}.tfvars`（design §5.11，不 apply、沒有 tfbackend、不得含明文 secret）與 `tests/examples/examples.tftest.hcl`（由 `validate.sh` 用 `-var-file=envs/examples/<x>.tfvars` 跑；測試檔不得在 `variables {}` 寫死會蓋掉範例值的變數，斷言寫成對任何合法輸入都成立的形式，design §7.1）。
+`network`、`data`、`loadbalancer`、`application` 另有 `envs/examples/{poc,standard,high}.tfvars`（design §5.11，不 apply、沒有 tfbackend、不得含明文 secret）與 `tests/examples/examples.tftest.hcl`（由 `validate.sh` 用 `-var-file=envs/examples/<x>.tfvars` 跑；測試檔不得在 `variables {}` 寫死會蓋掉範例值的變數，斷言寫成對任何合法輸入都成立的形式，design §7.1）。
 
 範本根目錄 `templates/project-infra/infra/README.md`：stack 清單、apply 順序與 destroy 反序、SSM 合約表（照 design §5.6）、流量規格對照表、`TF_DATA_DIR=.terraform-<env>`、換環境一律 `init -reconfigure`、客戶自管模式 A／B、RDS Proxy 第一次部署的兩段式步驟（design §5.4，未驗證）、複製出去後把相對路徑 source 改成 `git::...?ref=<module>-v<semver>`（指向 `docs/guides/consuming-modules.md`）。不提供 `stacks.sh`。
 
@@ -538,7 +675,7 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `execution_logs_scoped_by_name` | logs 的 Resource 是 `arn:aws:logs:<region>:<account>:log-group:/ecs/<name_prefix>-*:*` |
 | `execution_reads_app_secret_only` | `secretsmanager:GetSecretValue` 的 Resource 恰為 `[app_secret_arn]`；`kms:Decrypt` 只到 foundation 的 key；**沒有任何指向 DB secret 的 Resource** |
 | `monitoring_scoped_to_rdsosmetrics` | monitoring policy 的 6 個 logs action，Resource 只有 `RDSOSMetrics` 的 log group 與 log stream |
-| `wildcard_resource_allowlist` | 所有 policy 裡 Resource 為 `*` 的只能是 `ecr:GetAuthorizationToken`。反向驗證：暫時加一個 `s3:GetObject` on `*`，測試要紅 |
+| `wildcard_resource_allowlist` | 所有 policy 裡 Resource 為 `*` 的只能落在允許清單：`ecr:GetAuthorizationToken`、ECS Exec 的 4 個 `ssmmessages` action、X-Ray 的 `xray:PutTraceSegments`、`PutTelemetryRecords`、`GetSamplingRules`、`GetSamplingTargets`（design §5.4；範本預設不開追蹤，清單先放好讓專案照 `observability.md` 加權限時不會被擋）。反向驗證：暫時加一個 `s3:GetObject` on `*`，測試要紅 |
 | `publishes_role_arns` | 發布三個 role ARN |
 
 「沒有萬用 action」「沒有 managed policy」由 `iam-role` module 的 validation 與 S4 保證，不在這裡重測（design §5.4 的兩層測試）。
@@ -578,7 +715,7 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `no_execution_role_changes` | 這個 stack 不對 `role_ecs_execution_arn` 呼叫 `iam-role-policy`（DB secret 只由 task role 讀，design §8.2） |
 | `exec_permissions_and_flag` | `ecs_exec_services = ["api"]` → api 有 4 個 `ssmmessages` action、發布 `ecs_exec_api = {"enabled":true}`；worker 兩者都沒有 |
 | `ecs_exec_services_must_be_known` | 名單含 `containerimage/services` 以外的名稱 → precondition 失敗 |
-| `wildcard_resource_allowlist` | Resource 為 `*` 的只能是 4 個 `ssmmessages` action；反向驗證同 iam-base |
+| `wildcard_resource_allowlist` | 同 iam-base 的允許清單（design §5.4）；反向驗證同 iam-base。另一個反向：暫時對 api 的 task role 加 `xray:PutTraceSegments` on `*`，測試要**通過** |
 | `publishes_task_role_arns` | 發布每個服務的 `role_<service>_task_arn` |
 
 #### loadbalancer
@@ -597,6 +734,12 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 
 #### application
 
+| 檔案 | 用途 |
+|---|---|
+| `ecs.tf` | `ecs-cluster`、`ecs-service`（`for_each` 服務）、`ecs-service-alarms` |
+| `observability.tf` | `log-metric-alarm`（`for_each = var.log_alarms`，服務名稱 → `alarms` map，`log_group_name` 取對應服務的 `log_group_name` 輸出、`sns_topic_arns` 是 `alarm_topic_arn`）、`xray`（`sampling_rules = var.xray_sampling_rules`、`groups = var.xray_groups`）；三個變數預設都是 `{}`，什麼都不建（design §5.3） |
+| `envs/examples/{poc,standard,high}.tfvars` | `log_alarms`、`xray_sampling_rules`、`xray_groups` 的範例值（design §4.19 的範例：濾掉 health check、5% 抽樣、errors 與 slow 兩個 group） |
+
 | run | 斷言 |
 |---|---|
 | `services_must_match_containerimage` | 服務設定的 key 跟 `containerimage/services` 不一致 → precondition 失敗 |
@@ -610,6 +753,10 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `exec_flag_from_iam_app` | `enable_execute_command` 等於 `ecs_exec_<service>` 的 `enabled` |
 | `alarms_wired_to_foundation_topic` | `ecs-service-alarms` 的 `sns_topic_arns` 是 `alarm_topic_arn` |
 | `no_cross_stack_id_in_variables` | `variables.tf` 沒有 ARN／id 型的跨 stack 輸入（grep） |
+| `observability_off_by_default` | `log_alarms`、`xray_sampling_rules`、`xray_groups` 都是 `{}` → `log-metric-alarm` 沒被呼叫（或 `alarms = {}`）、`xray` 的兩個 map 都空，沒有任何 filter、alarm、rule、group |
+| `log_alarms_wired` | `log_alarms = { api = { ... } }` → `log-metric-alarm` 的 `log_group_name` 是 api 服務的 log group、`sns_topic_arns` 是 `[alarm_topic_arn]` |
+| `log_alarms_services_known` | `log_alarms` 的 key 不在 `containerimage/services` → precondition 失敗 |
+| examples（`tests/examples/`） | 對任何範例都成立：`xray` 的 rule 數等於 `xray_sampling_rules` 的數量、`log-metric-alarm` 的每個 alarm 都接 `alarm_topic_arn` |
 
 **驗收指令**
 
@@ -636,7 +783,8 @@ scripts/validate.sh
 |---|---|
 | `docs/guides/consuming-modules.md` | 怎麼引用（`git::https://github.com/<org>/<repo>.git//modules/<name>?ref=<name>-v<semver>`）、私有 repo 的 git 認證、Git source 只能 `ref` 釘死、從範本複製出去時把相對路徑改成 git source（一個 module 一行的手改方式，加一次改完的指令）、升版、讀 CHANGELOG、升級到真 registry 時消費端改什麼 |
 | `docs/guides/project-infra-standard.md` | 8 個 stack 與 apply 順序、stack 只呼叫 module（例外清單）、iam 為什麼拆兩個、單一決定點、SSM 合約（含 tier 調整時 key 怎麼變）、流量規格對照表與 IP 規劃公式、環境切換四件事、客戶自管模式 A／B |
-| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 15 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
+| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 18 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
+| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 發布 `tracing_<service>` 當單一決定點、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證） |
 | `docs/guides/delivering-to-customer.md` | FDE：`vendor-modules.sh`、`terraform providers mirror`（給客戶環境用，不是本 repo 的驗證流程）、客戶自管資源的 SSM 合約、客戶環境差異怎麼回報 |
 | `docs/guides/team-roles.md` | 四個團隊的責任與交接點，對到 CODEOWNERS |
 | `scripts/vendor-modules.sh` | 只做 `git::...?ref=<tag>` → vendored 相對路徑（design §8.7）。tag 的 module 名稱清單從 `modules/` 目錄讀 |
@@ -663,7 +811,7 @@ grep -rnE '[a-z-]+/v[0-9]' docs/guides README.md   # 預期沒有斜線格式的
 git tag                                            # 預期沒有輸出：tag 留給人在發版時手動打
 ```
 
-**完成定義**：五份文件結論放最前面、指令可照抄；暫存演練輸出貼在回報裡。主 agent 驗證後 commit。
+**完成定義**：六份文件結論放最前面、指令可照抄；暫存演練輸出貼在回報裡。主 agent 驗證後 commit。
 
 **不在本次範圍**：core app team 的 repo；HCP Terraform；實際打 tag。
 
@@ -673,17 +821,17 @@ git tag                                            # 預期沒有輸出：tag �
 
 | 檢查 | 指令或做法 | 預期 |
 |---|---|---|
-| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠（15 個 module、它們的 example、8 個 stack 與各自的 `-var-file` 執行） |
+| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠（18 個 module、它們的 example、8 個 stack 與各自的 `-var-file` 執行） |
 | 沒留下產物 | `git status --short --ignored` | 只有 `.cache/` 與 `docs/slides/` 是 ignored |
 | 沒有禁止的指令 | `grep -rnE 'terraform (plan\|apply\|providers lock)\|aws ' scripts/ .github/` | 只出現在註解或禁止說明 |
 | module 只用英文 | `grep -rnP '[^\x00-\x7F]' modules/ --include='*.tf' --include='*.tftest.hcl'` | 沒有輸出 |
 | IAM 與 SG 的邊界 | S4 | 通過 |
 | stack 只呼叫 module | S8 | 通過 |
-| tag 格式一致 | release-please 設定（15 個 package）、guides、ADR 0001、各 module README、`vendor-modules.sh` | 都是 `<module>-v<semver>`，起始 `0.1.0` |
+| tag 格式一致 | release-please 設定（18 個 package）、guides、ADR 0001、各 module README、`vendor-modules.sh` | 都是 `<module>-v<semver>`，起始 `0.1.0` |
 | stack 清單、SSM key、單一決定點 | 範本 README、`project-infra-standard.md`、ADR 0002、design §5.3、§5.6 | 一致 |
-| 介面與 design 一致 | 15 個 module 的變數名、預設值、輸出對照 design §4.2–§4.16 | 不一致要揭露，不自行改 design |
+| 介面與 design 一致 | 18 個 module 的變數名、預設值、輸出對照 design §4.2–§4.20 | 不一致要揭露，不自行改 design |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與各 Phase 回報一致 |
-| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 28 個 commit（Phase 10 有修正時 29 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
+| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 35 個 commit（Phase 10 有修正時 36 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
 
 ## 驗證指令的具體寫法
 
@@ -727,7 +875,7 @@ git tag                                            # 預期沒有輸出：tag �
 
 ### 原則
 
-- 每個 Phase 派執行 subagent（`tdd-guide`），背景執行；Phase 7 依分組表派 4 個。執行 subagent 只能透過 `scripts/validate.sh` 跑 terraform（Phase 8 的 lock 檔產生除外），不 commit。
+- 每個 Phase 派執行 subagent（`tdd-guide`），背景執行；Phase 7A–D 派了 4 個，7E 依 J7 派 3 個。執行 subagent 只能透過 `scripts/validate.sh` 跑 terraform（Phase 8 的 lock 檔產生除外），不 commit。
 - 主 agent 等回報後，自己重跑該 Phase 的驗收指令與全量 `scripts/validate.sh`，看 diff 範圍有沒有越界；結果跟回報不一致就如實告訴使用者。全綠才 commit，一個 module 一個 commit。
 - 每個 Phase 結束停下來，讓使用者決定要不要進下一個。
 
@@ -766,7 +914,7 @@ git tag                                            # 預期沒有輸出：tag �
 | R3 | `command = plan` 時 computed 屬性是 unknown | 斷言 `arn`、`id` 報「無法判斷」 | 優先用 `override_resource`／`override_data` 加 `override_during = plan`（1.15.8 已驗證可用），其次 `command = apply` |
 | R4 | 用 `TF_CLI_CONFIG_FILE` 指到本機 mirror | `.cache/plugins` 留下 symlink，之後 init 失敗 | 禁止（硬性限制與派工 prompt 都寫）；出事時刪掉整個 `.cache/` |
 | R5 | 開了 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE` 時產生範本 lock 檔 | lock 檔只有本機平台的雜湊，CI 的 `-lockfile=readonly` 失敗 | 照 Phase 8〈lock 檔的產生方式〉不用快取產生，驗收檢查每份都有 `zh:` |
-| R6 | 範本測試會 init 全部 15 個 module 與它們的 provider | 第一次跑很慢 | plugin cache 共用；CI 快取 `.cache/plugins` |
+| R6 | 範本測試會 init 全部 18 個 module 與它們的 provider | 第一次跑很慢 | plugin cache 共用；CI 快取 `.cache/plugins` |
 | R7 | `-test-directory` 的子目錄會不會被一般 `terraform test` 掃到 | 會的話，`tests/tfvars/`、`tests/examples/` 在沒有 `-var-file` 時被跑到而失敗 | 未驗證，Phase 8 第一個 stack 先實測；會掃到就改目錄名（例如 `tests-tfvars/`）並同步改 `validate.sh` |
 | R8 | `rds` 的 `master_user_secret` 是 nested list | 範本 data stack 取 `[0]` 失敗 | 沿用 `modules/rds/tests/` 的 `mock_resource` 寫法，或用 `override_module` 給 `module.db` 的輸出 |
 | R9 | RDS Proxy 建立時 role 還沒有讀 secret 的權限 | 未驗證：可能建立失敗，也可能建立成功但連不上 | 照 design §5.4 的兩種對策；dev 預設不開 Proxy、prod 開 |
@@ -788,6 +936,9 @@ git tag                                            # 預期沒有輸出：tag �
 | J4 | S8 只限制 `resource "aws_*"`，`terraform_data` 這類不碰 AWS 的資源允許 | design §5.3 明文允許；S8 的文字寫的是 `resource "<type>"`，這裡照 §5.3 的意思實作 |
 | J5 | 範本測試優先用 `override_during = plan`，其次 `command = apply` | Phase 1 已證實可用，plan 較快 |
 | J6 | 反向驗證只在暫存複本或工作目錄暫時做，不留痕跡 | 證明測試有效，又不污染 diff |
+| J7 | 7E 分 3 個 subagent：`log-group`＋`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 動既有 module 的那份迴歸要求最嚴，單獨一個人；兩個 CloudWatch Logs 的 module 放一起 |
+| J8 | `sidecars` 的新斷言放在新檔 `tests/sidecars.tftest.hcl` | 「既有測試檔一行都不改」用 `git diff --stat` 就驗得到 |
+| J9 | 範本 iam 兩個 stack 的 `wildcard_resource_allowlist` 先把 4 個 X-Ray 動作放進允許清單，範本本身不給 X-Ray 權限 | design §5.4 的允許清單已含 X-Ray；範本預設不開追蹤，專案照 `observability.md` 加權限時才不會被自己的測試擋 |
 
 ### 已拍板決策（本文件特有；其餘以 design §9.2 為準）
 
@@ -797,18 +948,21 @@ git tag                                            # 預期沒有輸出：tag �
 | P2 | 執行型 subagent 只能透過 `scripts/validate.sh` 跑 terraform；唯一例外是 Phase 8 產生範本 lock 檔，照原文執行 |
 | P3 | 不准 `terraform providers lock`；不准用 `TF_CLI_CONFIG_FILE` 指到本機 mirror |
 | P4 | `validate.sh` 設 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`e51348f`） |
-| P5 | 第一個 tag 由人手動打 15 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（`bb26a42`、design 決策 27） |
+| P5 | 第一個 tag 由人手動打 18 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（`bb26a42`、design 決策 27） |
 | P6 | `modules/` 底下的註解、`description`、`error_message` 只用英文，禁止 icon（design 決策 26） |
-| P7 | 新增 7 個 module，共 15 個；IAM 只由 `iam-role`、`iam-role-policy` 建；SG 只由 `security-group`、`vpc` 建；stack 只呼叫 module，例外只有 foundation 的 secret 容器（design 決策 24、25、28、29、30） |
+| P7 | 新增 7 個 module（再加 7E 的 3 個，共 18 個）；IAM 只由 `iam-role`、`iam-role-policy` 建；SG 只由 `security-group`、`vpc` 建；stack 只呼叫 module，例外只有 foundation 的 secret 容器（design 決策 24、25、28、29、30） |
 | P8 | tfvars（dev、prod、examples）不在測試裡複製值，由 `validate.sh` 對範本 stack 另跑 `terraform test -var-file=...` |
+| P9 | Phase 7E：先一個 docs commit（設計文件）、一個 chore commit（release-please 加 3 個 module、README 改成 18 個），再 3 個新 module 與 `feat(ecs-service)` 的 sidecars 各一個 commit；`ecs-service` 既有測試檔一行都不改（design 決策 31–33） |
 
 ### 跟 design-docs 不一致的點
 
+上一輪列的三點（§7.1 的 Phase 編號、§4.14 的章節引用、決策 14 的文字）design 都已改正。這一輪核對後：
+
 | # | 位置 | 狀況 | 建議 |
 |---|---|---|---|
-| 1 | design §7.1 最後一段 | 寫「子目錄不被預設掃描這點未驗證，Phase 6 先實測」。範本現在是 Phase 8 | design 改成 Phase 8 |
-| 2 | design §4.14 用途段 | 寫「`iam-role-policy`（§4.17）」，`iam-role-policy` 實際是 §4.15，§4.17 是「module 怎麼串」 | design 改成 §4.15 |
-| 3 | design §9.2 決策 14 | 還寫「讀取端不讀 `.value`」，S3 已改成「`data "aws_ssm_parameter"` 只能在 `ssm-read`」 | design 在決策 14 註明由決策 24 與 §5.6 S3 取代 |
+| 1 | design §5.1 的資料夾樹 | 只畫出 `network`、`data`、`loadbalancer` 有 `envs/examples/`；§5.3 與 §4.19 說 `application/envs/examples/` 放 `log_alarms`、`xray_*` 的範例值。本文照 §5.3 寫，`application` 也有 examples | design §5.1 的樹補上 `application/envs/examples/` |
+| 2 | design §5.11 | 流量規格表沒有觀測性的列（每種規格的抽樣比例、要不要開 log 告警），`application` 的三份範例沒有對照依據 | design §5.11 補一列，或註明 `application` 的三份範例內容相同、只示範寫法 |
+| 3 | design §5.6 S3 | 寫「`modules/ssm-read/` 不得出現 `.value`」。實作（`0e0efab`）放行 `each.value`，因為那是 `for_each` 的迭代變數，不是參數值 | design 的 S3 補一句「`each.value` 除外」 |
 
 ### 待補資訊
 
