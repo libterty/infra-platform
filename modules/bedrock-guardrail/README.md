@@ -6,7 +6,7 @@
 
 ```hcl
 module "guardrail" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-guardrail?ref=bedrock-guardrail-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/bedrock-guardrail?ref=bedrock-guardrail-v0.1.1"
 
   name                    = "alpha-dev-input"
   blocked_input_message   = "Sorry, I cannot help with that request."
