@@ -3,6 +3,7 @@
 > 狀態：使用者已拍板（§9.2），可以進入實作；實作步驟見 [`implement-process.md`](./implement-process.md)
 > 範圍：第一版（ECS 試行，加上 VPC、RDS、ALB 組成的最小三層架構）
 > 文中路徑若沒有特別說明，都相對於 `<workspace>/`。
+> 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API（§4.23–§4.31、§5.3〈增補：`agent` stack〉、決策 37–50）。設計已拍板，尚未實作，步驟見 implement-process 的 Phase 11–16。標「增補」的段落是這次加的，其餘是 v1 原文。
 
 ## 1. 結論
 
@@ -21,6 +22,7 @@ infra-platform 是Terraform private registry 的範例 repo。它用「Git tag �
 - 範本的 stack 只呼叫 module，不寫原生 AWS resource；例外只有一個（`foundation` 的 secret 容器），明列在 §5.3。整個 repo 只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM。
 - 1 份 8 個 stack 的專案 infra 範本：照 project-a 的 state 拆法，修掉已知的坑；在本 repo 內用相對路徑引用 module；附 PoC／一般正式／大流量三組範例 tfvars（§5.11）。
 - 使用與發版文件、3 份 ADR、CI 與 release 設定。
+- **增補（決策 37 起）**：再加 7 個 LLM 與 AgentCore 的 module（`bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base`，各自從 `v0.1.0` 開始），module 合計 26 個；範本加第 9 個 stack `agent`，預設關閉；`rds` 加 Data API，升 `rds-v0.2.0`。上面「19 個 module」「8 個 stack」是 v1 原本的範圍，19 個 tag 不動（§4.23、§5.3）。
 
 全部只做離線驗證（`fmt`、`tflint`、`init -backend=false`、`validate`、`terraform test` 搭配 `mock_provider`），**不做 `plan`／`apply`，也不碰任何 AWS 帳號**。
 
@@ -70,11 +72,18 @@ infra-platform/
 │   ├── ecs-service/
 │   ├── ecs-service-alarms/
 │   ├── sns-alarm-topic/
+│   ├── bedrock-guardrail/           # 增補（§4.24–§4.30）
+│   ├── bedrock-inference-profile/   # 增補
+│   ├── agentcore-runtime/           # 增補
+│   ├── agentcore-memory/            # 增補
+│   ├── agentcore-gateway/           # 增補
+│   ├── log-delivery/                # 增補
+│   ├── bedrock-knowledge-base/      # 增補
 │   └── ssm-publish/
 │       （每個都有 main.tf variables.tf outputs.tf versions.tf README.md CHANGELOG.md examples/<情境>/ tests/*.tftest.hcl）
 ├── templates/
 │   └── project-infra/
-│       └── infra/terraform/<stack>/...   # §5；8 個 stack，用相對路徑引用 ../../../../../modules/<name>
+│       └── infra/terraform/<stack>/...   # §5；8 個 stack（增補後 9 個，加 agent），用相對路徑引用 ../../../../../modules/<name>
 └── docs/
     ├── design/
     │   └── v1/
@@ -86,7 +95,8 @@ infra-platform/
     │   ├── releasing-modules.md
     │   ├── delivering-to-customer.md
     │   ├── team-roles.md
-    │   └── observability.md              # ADOT sidecar、X-Ray 權限與抽樣的整套做法（§4.20）
+    │   ├── observability.md              # ADOT sidecar、X-Ray 權限與抽樣的整套做法（§4.20）
+    │   └── llm-agentcore.md              # 增補（Phase 15）：guardrail、Runtime、Memory、Gateway、KB 的整套做法與 KB 的 SQL
     ├── adr/                              # MADR
     │   ├── 0001-git-tag-monorepo-as-private-registry.md
     │   ├── 0002-split-state-by-owner-and-change-rate.md
@@ -146,6 +156,7 @@ infra-platform/
 - 這是 release-please manifest 模式的預設格式（`<component>-v<version>`），也對得上 HCP Terraform private registry 的 Module Tag Prefix。
 - 不用帶斜線的 `ecs-service/v1.0.0`：HCP 是否支援沒有查證，斜線在 URL 的 `?ref=` 也容易出錯。
 - `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|vpc-interface-endpoints|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|log-group|log-metric-alarm|xray|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
+- 增補：這條 regex 與 README 的 module 清單要加上決策 37 的 7 個 module，屬於 Phase 12 的工作（implement-process），本文件先不改上面那行。
 
 ### 3.3 消費端寫法
 
@@ -185,6 +196,7 @@ module "api" {
 - **in-place 變更要寫進 CHANGELOG**。MINOR 版如果會讓既有資源 in-place 更新（例如告警門檻從 80 改 85），CHANGELOG 必須寫出消費端 plan 會看到哪幾個資源、哪個屬性變了。
 - **ECS task definition 的變更要特別標註**。task definition 只要內容變就會產生新 revision，ECS 會滾動部署。不會 replace 資源位址，算 MINOR，但 CHANGELOG 要寫「會觸發一次部署」。
 - **起始版本**：19 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
+- **增補的起始版本**：決策 37 的 7 個新 module 一樣從 `v0.1.0` 開始，在 Phase 16 的驗收 commit 上手動打；`rds` 因為 Data API（§4.31）打 `rds-v0.2.0`。19 個既有的 `v0.1.0` tag 留在原本的 commit，不移動。
 - **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 19 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
 
 ### 3.6 升級到真 registry 的路徑
@@ -218,11 +230,11 @@ module 程式碼不用改。這是第一版就照 standard module structure（`m
 | 項目 | 約定 |
 |---|---|
 | 目錄 | `main.tf`、`variables.tf`、`outputs.tf`、`versions.tf`、`README.md`、`CHANGELOG.md`、`examples/<情境>/`（至少一個，例如 `basic`、`https`、`aurora-serverless-proxy`）、`tests/*.tftest.hcl`（可以依主題拆成多檔）；資源多時可以依主題拆 `.tf`（例如 `alarms.tf`、`proxy.tf`） |
-| `versions.tf` | `required_version = ">= 1.10"`；`aws = { source = "hashicorp/aws", version = ">= 6.0, < 7.0" }`；**module 裡不寫 `provider` 與 `backend`** |
+| `versions.tf` | `required_version = ">= 1.10"`；`aws = { source = "hashicorp/aws", version = ">= 6.0, < 7.0" }`；**module 裡不寫 `provider` 與 `backend`**。增補：決策 37 的 7 個新 module 例外，用 `>= 6.69, < 7.0`（決策 43、§4.23） |
 | 版本範圍 | module 用範圍（`>= 6.0, < 7.0`），root 用 `~> 6.x` 加 `.terraform.lock.hcl` 釘死實際版本 |
 | lock 檔 | **module 不提交 `.terraform.lock.hcl`**（Terraform 只採用 root module 的 lock，module 的 lock 對消費端沒有作用）；範本的每個 stack 是 root，要提交 |
 | 依賴 | 一律從外部傳入（cluster ARN、role ARN、subnet、SG、topic ARN），module 之間不互相呼叫，平坦組合 |
-| IAM | **只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（`aws_iam_role`、`aws_iam_role_policy`）。其他 17 個 module 不建任何 `aws_iam_*`，需要 role 的地方（ECS execution／task role、RDS Proxy role、Enhanced Monitoring role）一律收 ARN；範本的 stack 也一律透過這兩個 module（§5.4）。由 `scripts/validate.sh` 靜態檢查（§5.6 S4） |
+| IAM | **只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（`aws_iam_role`、`aws_iam_role_policy`）。其他 17 個 module（增補後 24 個）不建任何 `aws_iam_*`，需要 role 的地方（ECS execution／task role、RDS Proxy role、Enhanced Monitoring role）一律收 ARN；範本的 stack 也一律透過這兩個 module（§5.4）。由 `scripts/validate.sh` 靜態檢查（§5.6 S4） |
 | stack 只呼叫 module | 範本的 stack 不寫原生 AWS resource，只呼叫 module。例外要列在 §5.3〈stack 裡的原生資源〉並寫理由，`scripts/validate.sh` 依這份清單檢查。data source 不算（`data "aws_ssm_parameter"` 除外，只能在 `ssm-read` 裡） |
 | 註解與訊息的語言 | `modules/` 底下的 `.tf` 與 `.tftest.hcl`，所有註解、`description`、`error_message` 一律只用英文，不可中英混雜，禁止任何 icon／emoji。註解只寫「程式碼看不出來的原因」，不要寫多。`README.md`、`CHANGELOG.md` 不受這條限制。本文件 HCL 範例裡的中文註解只為了說明，實作時要改成英文或拿掉 |
 | inline 規則 | security group 與 route table 一律用獨立資源（`aws_vpc_security_group_ingress_rule`／`egress_rule`、`aws_route`），不用 inline `ingress {}`／`route {}`。inline 寫法對整個 SG／整張表有權威性，客戶在 console 加的規則與路由會在下一次 apply 被靜默刪除（`project-a/docs/reports/2026-09-04-customer-owned-network-and-terraform.md`、`project-a/infra-v2/terraform/network/nat.tf` 的註解） |
@@ -2658,6 +2670,762 @@ module "api_alarms" {
 
 上面範例裡的中文註解只為了說明；寫進 `modules/` 底下的 `.tf` 時，註解一律用英文（§4.1）。
 
+### 4.23 增補：LLM 與 AgentCore 的 module（決策 37 起）
+
+這一段是 v1 的增補，不是另一版設計。§4.2–§4.22 的 19 個 module 與它們的 `v0.1.0` tag 不動；下面 7 個新 module 各自從 `<module>-v0.1.0` 開始，`rds` 為了 Knowledge Base 加 Data API（§4.31），升 `rds-v0.2.0`。實作步驟見 implement-process 的 Phase 11–16。
+
+| module | 一句話 | 參考實作 | 有沒有部署過的證據 |
+|---|---|---|---|
+| `bedrock-guardrail`（§4.24） | 一支 guardrail，tier 預設 `STANDARD` | `project-a/infra-v2/terraform/agent/guardrail.tf` | 有（project-a） |
+| `bedrock-inference-profile`（§4.25） | application inference profile，給成本歸屬 | project-c `project-c-app/modules/app-platform/bedrock-inference-profile.tf` | 有（project-c） |
+| `agentcore-runtime`（§4.26） | 一個 AgentCore Runtime | `project-a/infra-v2/terraform/agent/runtime.tf` | 有（project-a） |
+| `agentcore-memory`（§4.27） | 一個 AgentCore Memory 與內建 strategy | `project-a/infra-v2/terraform/agent/runtime.tf` 的 `aws_bedrockagentcore_memory` | 只有短期記憶（沒有 strategy）部署過 |
+| `agentcore-gateway`（§4.28） | MCP Gateway，target 只收 Lambda 與 MCP server | project-b `infra/terraform/modules/agentcore/gateway.tf` | **沒有**：project-b 的 Lambda target 檔頭註明「legacy, currently unused」，OpenAPI target 已停用 |
+| `log-delivery`（§4.29） | CloudWatch vended log 的 source、destination、delivery | `project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf`、`project-a/infra-v2/terraform/agent/logs.tf` | 有（project-a） |
+| `bedrock-knowledge-base`（§4.30） | Bedrock Knowledge Base（向量儲存只收 Aurora PostgreSQL pgvector）與 S3 data source | 無 | **沒有**：三個參考專案都沒用過 Bedrock Knowledge Base；project-a 的知識庫是自建 pgvector 加嵌入模型 |
+
+**7 個新 module 共通的約定**：§4.1 全部適用（不建 IAM、不互相呼叫、收完整 `name`、`tags` 只加 `Name`、英文註解、沒有 `enable_xxx`），只有一處例外：
+
+| 項目 | 例外 | 理由 |
+|---|---|---|
+| `versions.tf` | aws `>= 6.69, < 7.0`，不是 `>= 6.0, < 7.0` | `aws_bedrockagentcore_*` 在 6.0 不存在（project-a 在 5.100.0 確認過不存在，`project-a/docs/adr/0016-bedrock-interface-endpoints-and-agentcore-memory.md`），寫 `>= 6.0` 等於宣告一個做不到的相容範圍。6.69.0 是唯一實際查過 schema 的版本（範本 8 個 stack 的 lock 檔也是 6.69.0）。之後逐版查出真正的最低版本，放寬下限是 MINOR（§3.5 的「放寬」）。決策 43 |
+
+**schema 查證**：下面每個介面都對過 aws provider 6.69.0 的 `terraform providers schema -json`。schema 不帶 enum 允許值、名稱規則與數值範圍，這些 validation 照 AWS 文件或參考實作寫，**沒有實測的一律在 validation 旁標「未實測」**，列進 §7.3。
+
+### 4.24 `bedrock-guardrail`
+
+**用途**：建一支 Bedrock guardrail。一次呼叫一支；同一個專案要多支（例如輸入、輸出各一支，或依專館分組），由 root 用 `for_each` 呼叫（比照 §9.1 J1）。
+
+**參考來源**
+
+- `project-a/infra-v2/terraform/agent/guardrail.tf`（`tier_config` 第 43–46、107–110、163–166 行；空 policy 不送第 144–145 行；名稱與 topic 數的 precondition 第 224–232 行）
+- `project-a/docs/guide/guide-data-scientist.md`〈五條紅線〉〈三個實測踩過的坑〉（第 266–300 行）
+
+**資源**：`aws_bedrock_guardrail.this`。`data "aws_region"`、`data "aws_caller_identity"`、`data "aws_partition"` 組 guardrail profile ARN（測試用 `override_data`）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[0-9A-Za-z_-]{1,50}$", var.name))
+    error_message = "name must be 1-50 characters of letters, digits, hyphens or underscores."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "blocked_input_message" {
+  type        = string
+  description = "Text returned instead of the prompt when the input is blocked."
+}
+
+variable "blocked_output_message" {
+  type        = string
+  description = "Text returned instead of the model output when the output is blocked."
+}
+
+variable "tier" {
+  type        = string
+  default     = "STANDARD"
+  description = "STANDARD or CLASSIC. CLASSIC evaluates English only; non-English text passes unchecked."
+  validation {
+    condition     = contains(["STANDARD", "CLASSIC"], var.tier)
+    error_message = "tier must be STANDARD or CLASSIC."
+  }
+}
+
+variable "cross_region_profile_id" {
+  type        = string
+  default     = null
+  description = "Guardrail profile id, e.g. apac.guardrail.v1:0. Required for STANDARD. No API validates it; a wrong id only fails on the first real request."
+  validation {
+    condition = var.tier == "STANDARD" ? (
+      var.cross_region_profile_id != null && can(regex("^[a-z]+(-[a-z]+)?\\.guardrail\\.v[0-9]+:[0-9]+$", var.cross_region_profile_id))
+    ) : var.cross_region_profile_id == null
+    error_message = "STANDARD needs cross_region_profile_id like apac.guardrail.v1:0; CLASSIC must leave it null."
+  }
+}
+
+variable "content_filters" {
+  type = map(object({                            # key: SEXUAL | VIOLENCE | HATE | INSULTS | MISCONDUCT | PROMPT_ATTACK
+    input_strength  = string                     # NONE | LOW | MEDIUM | HIGH
+    output_strength = string
+    input_action    = optional(string, "BLOCK")  # BLOCK | NONE
+    output_action   = optional(string, "BLOCK")
+    input_enabled   = optional(bool, true)
+    output_enabled  = optional(bool, true)
+  }))
+  default = {}
+}
+
+variable "denied_topics" {
+  type = map(object({
+    definition = string                          # the only place to state exclusions; examples are positive only
+    examples   = optional(list(string), [])
+  }))
+  default = {}
+}
+
+variable "words" {
+  type    = list(string)
+  default = []
+}
+
+variable "managed_word_lists" {
+  type    = set(string)                          # PROFANITY
+  default = []
+}
+
+variable "pii_entities" {
+  type = map(object({                            # key: entity type, e.g. EMAIL, PHONE
+    action         = string                      # BLOCK | ANONYMIZE
+    input_enabled  = optional(bool, true)
+    output_enabled = optional(bool, true)
+  }))
+  default = {}
+}
+
+variable "regexes" {
+  type = map(object({
+    pattern     = string
+    action      = string                         # BLOCK | ANONYMIZE
+    description = optional(string)
+  }))
+  default = {}
+}
+
+variable "contextual_grounding" {
+  type = object({
+    grounding_threshold = optional(number)       # 0-0.99
+    relevance_threshold = optional(number)
+  })
+  default = null
+}
+
+variable "kms_key_arn" {
+  type    = string
+  default = null
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| 名稱 | 1–50 個 `[0-9A-Za-z_-]` | `project-a/infra-v2/terraform/agent/guardrail.tf:224-227` |
+| tier 與 profile | `STANDARD` 必須給 `cross_region_profile_id`，格式像 `apac.guardrail.v1:0`；`CLASSIC` 必須是 null。格式 regex 只照 project-a 用過的一個值推出來，**未實測**其他 profile id 的形狀 | `project-a/docs/guide/guide-data-scientist.md:280-292` |
+| content filter | key 只收 6 種；strength 只收 `NONE`／`LOW`／`MEDIUM`／`HIGH`；action 只收 `BLOCK`／`NONE`；**`PROMPT_ATTACK` 的 `output_strength` 必須是 `NONE`**（API 會拒絕其他值） | `project-a/docs/guide/guide-data-scientist.md`〈五條紅線〉 |
+| topic 數 | `denied_topics` 不得超過 30 個；`definition` 不得是空字串 | `project-a/infra-v2/terraform/agent/guardrail.tf:229-232` |
+| 至少一種 policy | `content_filters`、`denied_topics`、`words`、`managed_word_lists`、`pii_entities`、`regexes`、`contextual_grounding` 至少一個非空 | Bedrock 不收沒有任何 policy 的 guardrail（**未實測**，照 API 文件） |
+| PII 與 regex 的 action | 只收 `BLOCK`、`ANONYMIZE` | 照 API 文件，**未實測** |
+| grounding 門檻 | 0 到 0.99 | 照 API 文件，**未實測** |
+
+**行為**
+
+- `tier_config { tier_name = var.tier }` **同時**放在 `content_policy_config` 與 `topic_policy_config`。`tier_config` 在 schema 是 optional 加 computed：省略時 AWS 給 `CLASSIC`，之後的 plan 也不會出現差異，所以一律明寫。
+- `tier = "STANDARD"` 時 `cross_region_config.guardrail_profile_identifier` 是 `arn:<partition>:bedrock:<region>:<account>:guardrail-profile/<id>`（照 `project-a/infra-v2/terraform/agent/guardrail.tf:21`）。
+- 每個 policy 區塊在對應輸入為空時整塊不送（dynamic block）：Bedrock 拒收空清單（`project-a/infra-v2/terraform/agent/guardrail.tf:144-145`）。`topic_policy_config` 只有在 `denied_topics` 非空時才送，`tier_config` 跟著它走。
+- topic 沒有 `input_enabled`／`output_enabled`（schema 沒有這兩個欄位），要只作用在某一側，就把它放在只有那一側會呼叫的那支 guardrail。
+
+**輸出**：`guardrail_id`、`guardrail_arn`、`name`、`version`（永遠是 `"DRAFT"`，寫死在 output，不讀 resource 的 `version`）、`cross_region_profile_arn`（`CLASSIC` 時是 null）、`cross_region_profile_id`。
+
+**要修掉的坑**
+
+| project-a 的坑 | 這裡怎麼做 |
+|---|---|
+| 省略 `tier_config` 就是 `CLASSIC`，中文完全不擋，`status: READY`、plan 乾淨 | 預設 `STANDARD`，兩個 policy 都帶；要 `CLASSIC` 必須明寫 |
+| `STANDARD` 的 profile id 寫錯，apply 照樣成功，要到第一個真實請求才失敗 | validation 只擋得到格式；README 寫明「只有實際呼叫驗得到」，§7.3 第 15 項 |
+| 發佈 guardrail 版本之後，apply 只改 `DRAFT`，實際生效的是舊版，plan 乾淨 | **module 不建 `aws_bedrock_guardrail_version`**，`version` 輸出固定 `DRAFT`；靜態規則 S9 擋整個 repo 出現這個 resource（§5.6，決策 46） |
+| input 那支加 PII 遮罩，`ANONYMIZE` 也回 `GUARDRAIL_INTERVENED`，整輪被擋 | 不做成 validation（判斷在應用程式），README 與 guide 寫警告 |
+
+**刻意不做**：`aws_bedrock_guardrail_version`（上表）；IAM（`bedrock:ApplyGuardrail` 在範本的 `iam-app`，§5.4 增補）；`input_modalities`／`output_modalities`（第一版只處理文字）；managed word list 以外的 word list 的 `*_action`（全部用預設的 `BLOCK`，需要時 MINOR）。
+
+### 4.25 `bedrock-inference-profile`
+
+**用途**：建 application inference profile。用途只有一個：成本歸屬。每個 profile 帶自己的 tag，呼叫端把 profile ARN 當 `modelId` 傳，Cost Explorer 就能依 tag 拆出這個專案、這個用途的模型費用。
+
+**參考來源**：`project-c-app/modules/app-platform/bedrock-inference-profile.tf`（檔頭註解第 9–16 行：`copy_from` 必須是 foundation model 或 system inference profile 的完整 ARN；名稱上限 64 字）。
+
+**資源**：`aws_bedrock_inference_profile.this`（`for_each = profiles`）。
+
+**輸入**
+
+```hcl
+variable "name_prefix" {
+  type        = string
+  description = "Profile names are <name_prefix>-<key>."
+}
+
+variable "profiles" {
+  type = map(object({
+    copy_from   = string                         # foundation-model or system inference-profile ARN
+    description = optional(string)
+  }))
+  validation {
+    condition = alltrue([for k, v in var.profiles :
+      length("${var.name_prefix}-${k}") <= 64 &&
+      can(regex("^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:([0-9]{12})?:(foundation-model|inference-profile)/.+$", v.copy_from))
+    ])
+    error_message = "Names must fit 64 chars; copy_from must be a foundation-model or inference-profile ARN."
+  }
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+名稱字元規則照 AWS 文件（`^([0-9a-zA-Z:.][ _-]?)+$`），**未實測**。`profiles` 沒有預設值也可以是空 map：空 map 時什麼都不建（範本的 `agent` 預設就是這樣）。
+
+**輸出**：`arns`、`ids`（`map(string)`，key 同 `profiles`）。
+
+**刻意不做**：模型使用權（`aws_bedrock_foundation_model_agreement`、`aws_bedrock_use_case_for_model_access`：逐帳號、牽涉 Marketplace 訂閱，profile 是 `ACTIVE` 不代表能呼叫，`project-a/docs/runbook/runbook-cross-account-bedrock.md:20-33`）；provisioned throughput；IAM（呼叫 profile 的權限在 `iam-app`，ARN 由 `agent` 的 `models` 統一組，§5.3 增補）。
+
+### 4.26 `agentcore-runtime`
+
+**用途**：建一個 AgentCore Runtime（容器型 artifact）。
+
+**參考來源**
+
+- `project-a/infra-v2/terraform/agent/runtime.tf`（VPC 模式、`lifecycle_configuration` 兩個值一起送，第 91–107 行；`TRACELOOP_TRACE_CONTENT = "false"`，第 22 行）
+- `project-a/infra-v2/terraform/agent/variables.tf`（映像 tag 由 Terraform 擁有，第 189–192 行；lifecycle 範圍 60–1209600，第 194–226 行）
+- `project-a/infra-v2/terraform/iam/ssm-inputs.tf:49`（Runtime 名稱只能用底線）
+
+**資源**：`aws_bedrockagentcore_agent_runtime.this`。不建 `aws_bedrockagentcore_agent_runtime_endpoint`：AWS 自帶的 `DEFAULT` endpoint 夠用，project-a 也只用它（J53）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,47}$", var.name))
+    error_message = "name must start with a letter and use letters, digits or underscores (no hyphens), at most 48 chars."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "role_arn" {
+  type = string
+  validation {
+    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
+    error_message = "role_arn must be an IAM role ARN without a path."
+  }
+}
+
+variable "container_uri" {
+  type        = string
+  description = "ECR image with an explicit tag or digest. Terraform owns the tag: change it here and apply."
+  validation {
+    condition = can(regex("^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/[a-z0-9._/-]+(:[A-Za-z0-9_.-]{1,128}|@sha256:[0-9a-f]{64})$", var.container_uri)) && !endswith(var.container_uri, ":latest")
+    error_message = "container_uri must be an ECR image with an explicit tag (not latest) or a sha256 digest."
+  }
+}
+
+variable "network" {
+  type = object({
+    mode               = optional(string, "VPC")  # VPC | PUBLIC
+    subnet_ids         = optional(list(string), [])
+    security_group_ids = optional(list(string), [])
+  })
+  description = "VPC by default. PUBLIC must be written out; it bypasses security groups and VPC endpoints."
+}
+
+variable "session_lifecycle" {
+  type = object({
+    idle_session_timeout = optional(number, 900)   # seconds
+    max_lifetime         = optional(number, 28800)
+  })
+  default     = {}
+  nullable    = false
+  description = "Always sent as a pair: the API replaces the whole lifecycle configuration, so a missing value silently falls back to the AWS default."
+}
+
+variable "protocol" {
+  type    = string
+  default = "HTTP"                               # HTTP | MCP | A2A
+}
+
+variable "environment_variables" {
+  type    = map(string)
+  default = {}
+}
+
+variable "jwt_authorizer" {
+  type = object({
+    discovery_url    = string
+    allowed_audience = optional(set(string), [])
+    allowed_clients  = optional(set(string), [])
+  })
+  default     = null
+  description = "null keeps the default IAM (SigV4) inbound auth."
+}
+
+variable "request_header_allowlist" {
+  type    = set(string)
+  default = []
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+變數名用 `session_lifecycle` 不用 `lifecycle`：`lifecycle` 是 Terraform 保留給 module block 的名稱，不能當變數名。
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| 名稱 | 字母開頭、只有字母數字底線、最多 48 字 | 底線規則：`project-a/infra-v2/terraform/iam/ssm-inputs.tf:49`；48 字照 AWS 文件，**未實測** |
+| 映像 | ECR URI，明確 tag 或 digest，不得 `:latest` | 跟 `ecs-service` 同一條規則（§4.3）；Terraform 擁有 tag（決策 45） |
+| 網路模式 | `mode` 只收 `VPC`、`PUBLIC`；`VPC` 時 `subnet_ids` 至少 2 個且不重複、`security_group_ids` 1–5 個；`PUBLIC` 時兩者都必須是空的 | 決策 42。subnet 下限 2 是本 repo 的高可用慣例（跟 `rds`、`vpc-interface-endpoints` 一致），不是 AWS 的下限；SG 上限 5 照 AWS 文件，**未實測** |
+| lifecycle | 兩個值都在 60–1209600 之間，且 `idle_session_timeout <= max_lifetime` | 範圍：`project-a/infra-v2/terraform/agent/variables.tf:208`；大小關係照 API 文件，**未實測** |
+| protocol | 只收 `HTTP`、`MCP`、`A2A` | 照 API 文件，**未實測**；project-a 沒有設（用預設），project-b 用過 `HTTP`、`MCP` |
+| JWT | `discovery_url` 以 `https://` 開頭、以 `/.well-known/openid-configuration` 結尾；`allowed_audience` 與 `allowed_clients` 至少一個非空 | 照 API 文件，**未實測** |
+
+**行為**
+
+- `lifecycle_configuration = [{ idle_runtime_session_timeout = ..., max_lifetime = ... }]` 兩個值一律一起送。底層 `update-agent-runtime` 是 PUT，少送一個就靜默回到 AWS 預設；project-a 實測過帶 60 讀回 60、不帶讀回 900（`project-a/infra-v2/terraform/agent/variables.tf:194-226` 的說明）。預設值維持 AWS 的 900／28800（決策 48）。
+- `network_configuration.network_mode = var.network.mode`；`VPC` 時才有 `network_mode_config { subnets, security_groups }`。
+- `jwt_authorizer = null` 時不送 `authorizer_configuration`；`request_header_allowlist` 為空時不送 `request_header_configuration`。
+- **不用 `ignore_changes`**：映像 tag 由 Terraform 擁有，換版只改 `container_uri` 再 apply；繞過 Terraform 直接呼叫 API 換映像，下一次 apply 會退版（`project-a/docs/runbook/runbook-agentcore.md:129,146-148,193`）。project-b 的做法相反（`ignore_changes`，CI 直接更新，`project-b/infra/terraform/modules/agentcore/main.tf:345`），不採用（決策 45）。
+
+**`idle_session_timeout` 的取捨**（寫進 README 與 description）：拉長不會改善冷啟動。project-a 的量測是冷配置約 11.5 秒，而帳號的 session 存量有上限，idle 越長、同時佔用的 session 越多，能撐的流量越少（`project-a/docs/reports/2026-09-19-first-turn-ttft-cold-provisioning/README.md`）。要降冷啟動是應用程式層的 session 分片（project-a ADR-0043），module 不做。
+
+**輸出**：`runtime_arn`、`runtime_id`、`runtime_name`、`runtime_version`、`workload_identity_arn`（`workload_identity_details[0].workload_identity_arn`，空清單時是 null）。
+
+**刻意不做**：execution role（範本 `iam-base` 用 `iam-role` 建）；ECR repository、SG（範本的 `containerimage`、`network`）；log 與 trace 的 delivery（`log-delivery`）；endpoint 資源；`code_configuration`（S3 程式碼型 artifact）與 `filesystem_configuration`；session 分片（應用程式的事）；環境變數的「看起來像 secret」檢查（J62：只能是猜測，會給錯誤的安全感；secret 一律放 Secrets Manager，環境變數只放 ARN）。
+
+### 4.27 `agentcore-memory`
+
+**用途**：建一個 AgentCore Memory，可選加上內建的長期記憶 strategy。
+
+**參考來源**：`project-a/infra-v2/terraform/agent/runtime.tf:72-78`（只有短期記憶，沒有 strategy）、`project-a/infra-v2/terraform/agent/variables.tf:228-237`（事件保留 3–365 天）。
+
+**資源**：`aws_bedrockagentcore_memory.this`、`aws_bedrockagentcore_memory_strategy.this`（`for_each = strategies`，預設 `{}`，等於 project-a 的現況：只有短期記憶）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,47}$", var.name))
+    error_message = "name must start with a letter and use letters, digits or underscores, at most 48 chars."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "event_expiry_days" {
+  type        = number
+  default     = 90
+  description = "Days a short-term event is kept, 3-365. Changing it only affects events written afterwards."
+  validation {
+    condition     = var.event_expiry_days >= 3 && var.event_expiry_days <= 365 && floor(var.event_expiry_days) == var.event_expiry_days
+    error_message = "event_expiry_days must be a whole number between 3 and 365."
+  }
+}
+
+variable "strategies" {
+  type = map(object({
+    type        = string                         # SEMANTIC | SUMMARIZATION | USER_PREFERENCE
+    namespaces  = list(string)                   # e.g. /actors/{actorId}/facts
+    description = optional(string)
+  }))
+  default = {}
+}
+
+variable "kms_key_arn" {
+  type    = string
+  default = null
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| 名稱 | 同 Runtime 的底線規則 | 照 API 文件，**未實測** |
+| 保留天數 | 3–365 的整數 | `project-a/infra-v2/terraform/agent/variables.tf:228-237` |
+| strategy 型別 | 只收 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` | 照 API 文件，**未實測**；三個參考專案都沒用過 strategy |
+| namespace | 每個 strategy 至少一個、以 `/` 開頭 | 照 API 文件，**未實測** |
+
+`event_expiry_days` 預設 90，不是 project-a 的 365：保留期限越長，個資留存的範圍越大，預設取中間值，要更長的專案明寫。這是判斷，不是實測結果（J52）。
+
+**輸出**：`memory_id`、`memory_arn`、`strategy_ids`（`map(string)`）。
+
+**刻意不做**：`CUSTOM` 與 self-managed strategy（`configuration` 區塊）。schema 裡 `configuration.extraction`／`consolidation` 除了 `model_id` 還必填 `append_to_prompt`，而且自訂模型要另外給 `memory_execution_role_arn`，範本就得多一個 role 與它的權限；三個參考專案都沒用過，第一版不做，需要時 MINOR（J52）。另外不做 Kinesis stream delivery、`indexed_key`、trace delivery（交給 `log-delivery`）、IAM。
+
+### 4.28 `agentcore-gateway`
+
+**用途**：建一個 AgentCore Gateway（MCP）與它的 target。target 只收兩種：Lambda、MCP server（決策 40）。
+
+**參考來源**：`project-b/infra/terraform/modules/agentcore/gateway.tf`（`protocol_type = "MCP"`、`authorizer_type = "AWS_IAM"`、`supported_versions = ["2025-03-26"]`；Lambda target 用 `gateway_iam_role` credential）。**這份參考沒有在任何環境實際使用過**：檔頭寫 Lambda target「legacy, currently unused」；OpenAPI target 經 VPC Lattice 在雙帳號跨 region 的配置走不通，已停用（第 109–113 行）。所以這個 module 的每一條行為都只有 schema 與 AWS 文件當依據。
+
+**資源**：`aws_bedrockagentcore_gateway.this`、`aws_bedrockagentcore_gateway_target.this`（`for_each = targets`）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[0-9A-Za-z]([0-9A-Za-z-]{0,98}[0-9A-Za-z])?$", var.name))
+    error_message = "name must be letters, digits and single hyphens, at most 100 chars."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "role_arn" {
+  type = string                                  # IAM role ARN, same validation as agentcore-runtime
+}
+
+variable "authorizer" {
+  type = object({
+    type             = string                    # AWS_IAM | CUSTOM_JWT
+    discovery_url    = optional(string)
+    allowed_audience = optional(set(string), [])
+    allowed_clients  = optional(set(string), [])
+  })
+  default = { type = "AWS_IAM" }
+}
+
+variable "mcp" {
+  type = object({
+    supported_versions = optional(set(string), ["2025-03-26"])
+    search_type        = optional(string)        # SEMANTIC, or null for none
+  })
+  default  = {}
+  nullable = false
+}
+
+variable "kms_key_arn" {
+  type    = string
+  default = null
+}
+
+variable "targets" {
+  type = map(object({
+    type        = string                         # lambda | mcp_server
+    description = optional(string)
+
+    # type = lambda: exactly one of tool_schema_s3_uri and tools
+    lambda_arn         = optional(string)
+    tool_schema_s3_uri = optional(string)
+    tools = optional(list(object({
+      name        = string
+      description = string
+      properties = optional(map(object({         # flat input schema; nested types go through tool_schema_s3_uri
+        type        = string                     # string | number | integer | boolean | object | array
+        description = optional(string)
+        required    = optional(bool, false)
+      })), {})
+    })))
+
+    # type = mcp_server
+    endpoint = optional(string)                  # https URL
+  }))
+  default = {}
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| 名稱 | gateway 與 target 名稱：英數與單一 `-`，最多 100 字 | 照 API 文件，**未實測** |
+| authorizer | `type` 只收 `AWS_IAM`、`CUSTOM_JWT`，**不收 `NONE`**；`CUSTOM_JWT` 時 `discovery_url` 必填（`https://`、`/.well-known/openid-configuration` 結尾）且 `allowed_audience`／`allowed_clients` 至少一個非空；`AWS_IAM` 時這三個必須是 null 或空 | 不收 `NONE`：沒有認證的 Gateway 等於把背後的工具開給任何拿得到 URL 的人 |
+| target 型別 | `type` 只收 `lambda`、`mcp_server` | 決策 40 |
+| 型別對應的欄位 | `lambda`：`lambda_arn` 必填（Lambda ARN 格式），`tool_schema_s3_uri` 與 `tools` 恰好一個；`endpoint` 必須是 null。`mcp_server`：`endpoint` 必填且是 `https://` URL；`lambda_arn`、`tool_schema_s3_uri`、`tools` 都必須是 null | 一個 target 只能是一種 |
+| inline 工具 | `tools` 非空時每個 `name` 不重複、`description` 非空；`properties[*].type` 只收 JSON Schema 的 6 種基本型別 | — |
+| S3 URI | `tool_schema_s3_uri` 以 `s3://` 開頭 | — |
+
+**為什麼 Lambda 的工具定義是「S3 URI 或扁平的 `tools`」**：schema 查證發現 Lambda target 的 `tool_schema.inline_payload` 不是一個 JSON 字串，而是多層的 block（`input_schema` → `property` → `items` → …，第三層之後才是 `properties_json`／`items_json` 字串）。要收任意 JSON Schema 就得寫遞迴的 dynamic block，而 Terraform 沒有遞迴。所以 module 收兩種：工具的輸入只有一層屬性時用 `tools`（project-b 的寫法就是一層）；需要巢狀型別時，把完整的工具定義放在 S3，給 `tool_schema_s3_uri`。MCP server target 不受影響：它的 inline payload 是字串，但 MCP server 的工具清單由 server 自己回報，第一版不收 inline payload（§9.4 D23、J54）。
+
+**行為**
+
+- `protocol_type = "MCP"` 寫死；`authorizer_type = var.authorizer.type`；`AWS_IAM` 時不送 `authorizer_configuration`。
+- Lambda target 一律帶 `credential_provider_configuration { gateway_iam_role {} }`：Gateway 用自己的 role 呼叫 Lambda，權限（`lambda:InvokeFunction`）在範本的 `iam-app` 附加到 gateway role。
+- MCP server target 不帶 `credential_provider_configuration`。**AWS 是否接受不帶 outbound 認證的 MCP server target，未實測**（§7.3 第 20 項）；如果不接受，MCP server target 在 credential provider module 做出來之前無法使用，到時候要回頭找使用者決定。
+- `search_type = null` 時 `protocol_configuration.mcp` 不送 `search_type`。
+
+**輸出**：`gateway_id`、`gateway_arn`、`gateway_url`、`target_ids`（`map(string)`）。
+
+**刻意不做**：credential provider（API key、OAuth；要把 secret 交給 AgentCore，之後若做，另開 module，只用 `api_key_secret_config` 或 write-only 欄位，值不進 state）；OpenAPI、Smithy、API Gateway、`http` 型 target；`private_endpoint`（VPC Lattice）；interceptor、policy engine；IAM。
+
+### 4.29 `log-delivery`
+
+**用途**：建 CloudWatch Logs 的 vended log 三件組：delivery source（哪個資源、哪種 log）、delivery destination（送到哪）、delivery（把兩者接起來）。AgentCore 的 Runtime、Memory、Gateway 都靠它把 application log 送進 log group、把 trace 送進 X-Ray。名稱不叫 `agentcore-logs`：這三個資源是 CloudWatch 的通用機制，其他服務也用同一套。
+
+**參考來源**：`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf`（`TRACES` → `XRAY`；`replace_triggered_by` 第 34–40、61–67 行）、`project-a/infra-v2/terraform/agent/logs.tf`（`APPLICATION_LOGS` → log group）。
+
+**資源**：`aws_cloudwatch_log_delivery_source.this`、`aws_cloudwatch_log_delivery_destination.this`、`aws_cloudwatch_log_delivery.this`（各自 `for_each`）。
+
+**輸入**
+
+```hcl
+variable "name_prefix" {
+  type        = string
+  description = "Source and destination names are <name_prefix>-<key>."
+}
+
+variable "sources" {
+  type = map(object({
+    resource_arn = string
+    log_type     = string                        # APPLICATION_LOGS | TRACES | USAGE_LOGS
+  }))
+  default = {}
+}
+
+variable "destinations" {
+  type = map(object({
+    type         = string                        # CWL | XRAY | S3
+    resource_arn = optional(string)              # log group or bucket ARN; must be null for XRAY
+  }))
+  default = {}
+}
+
+variable "deliveries" {
+  type = map(object({
+    source      = string                         # key in sources
+    destination = string                         # key in destinations
+  }))
+  default = {}
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| `log_type` | 只收 `APPLICATION_LOGS`、`TRACES`、`USAGE_LOGS` | project-a 用過前兩種；第三種照 AWS 文件，**未實測** |
+| 目的地 | `type` 只收 `CWL`、`XRAY`、`S3`；`XRAY` 時 `resource_arn` 必須是 null；`CWL` 時必須是 log group ARN、`S3` 時必須是 bucket ARN | project-a 的 XRAY destination 只設 `delivery_destination_type`（`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf:7-14`），CWL 只設 `destination_resource_arn`（`project-a/infra-v2/terraform/agent/logs.tf`） |
+| 參照 | 每個 delivery 的 `source`、`destination` 都是存在的 key；同一個 source 不接兩次同一個 destination | — |
+| 名稱長度 | `<name_prefix>-<key>` 最多 60 字 | 照 API 文件，**未實測** |
+
+**行為**
+
+- `XRAY` destination 設 `delivery_destination_type = "XRAY"`、不送 `delivery_destination_configuration`；`CWL`、`S3` 只送 `delivery_destination_configuration.destination_resource_arn`，跟 project-a 一致。
+- **delivery 加 `lifecycle { replace_triggered_by = [aws_cloudwatch_log_delivery_source.this[each.value.source].resource_arn] }`**：Runtime 或 Memory 重建、ARN 換了，source 會被替換；delivery 不跟著換的話，刪 source 時撞 `ConflictException`，apply 卡在半途（project-a 實際踩過，`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf:34-40` 的註解）。只看 `resource_arn`，source 只改 tag 時不連帶重建 delivery。
+
+**輸出**：`source_names`、`destination_arns`、`delivery_ids`（`map(string)`）。
+
+**刻意不做**：log group 本身（`log-group` module）；跨帳號的 destination policy；`record_fields`、`field_delimiter`、S3 的 `s3_delivery_configuration`（用預設）；IAM。CloudWatch Logs 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**（§7.3 第 19 項）。
+
+### 4.30 `bedrock-knowledge-base`
+
+**用途**：建一個 Bedrock Knowledge Base（`VECTOR` 型），向量存在專案自己的 Aurora PostgreSQL（pgvector），文件來源是 S3。向量儲存**只收 Aurora PostgreSQL**（決策 38）。
+
+**為什麼只收 Aurora**：範本已經有 `rds` module 與 `data` stack，KB 跟應用程式用同一顆資料庫，不多一套向量資料庫的費用與維運。代價是兩件 Terraform 做不到的事，要由專案的 migration 做：建 `vector` extension、建表與索引（SQL 見下）。module 只負責接線，並在 plan 時擋掉名稱與欄位對應寫錯的輸入；**資料庫裡有沒有那張表，module 驗不到**。
+
+**參考來源**：三個參考專案都沒有用過 Bedrock Knowledge Base。project-a 的知識庫是自建的 pgvector 加 Bedrock 嵌入模型，不經過 Bedrock KB（`project-a/docs/spec/knowledge-base.md`）。這個 module 的依據只有 schema 與 AWS 文件，所有行為都列在 §7.3 第 21 項待實測。
+
+**資源**：`aws_bedrockagent_knowledge_base.this`（`knowledge_base_configuration.type = "VECTOR"`、`storage_configuration.type = "RDS"`）、`aws_bedrockagent_data_source.this`（`for_each = data_sources`，`data_source_configuration.type = "S3"`）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type = string
+  validation {
+    condition     = can(regex("^[0-9A-Za-z]([0-9A-Za-z_-]{0,98}[0-9A-Za-z])?$", var.name))
+    error_message = "name must be letters, digits, hyphens or underscores, at most 100 chars."
+  }
+}
+
+variable "description" {
+  type    = string
+  default = null
+}
+
+variable "role_arn" {
+  type = string                                  # Bedrock KB service role, created by iam-base
+}
+
+variable "embedding_model_arn" {
+  type = string
+  validation {
+    condition     = can(regex("^arn:aws[a-z-]*:bedrock:[a-z0-9-]+::foundation-model/.+$", var.embedding_model_arn))
+    error_message = "embedding_model_arn must be a foundation-model ARN."
+  }
+}
+
+variable "embedding_dimensions" {
+  type        = number
+  description = "Must equal the vector(N) size of the table's vector column."
+  validation {
+    condition     = var.embedding_dimensions > 0 && floor(var.embedding_dimensions) == var.embedding_dimensions
+    error_message = "embedding_dimensions must be a positive whole number."
+  }
+}
+
+variable "aurora" {
+  type = object({
+    cluster_arn            = string              # rds module output arn (deployment aurora or aurora_serverless)
+    credentials_secret_arn = string              # Secrets Manager secret with username and password
+    database_name          = string
+    table_name             = string              # schema.table, e.g. bedrock_integration.bedrock_kb
+    field_mapping = optional(object({
+      primary_key_field     = optional(string, "id")
+      vector_field          = optional(string, "embedding")
+      text_field            = optional(string, "chunks")
+      metadata_field        = optional(string, "metadata")
+      custom_metadata_field = optional(string)
+    }), {})
+  })
+}
+
+variable "data_sources" {
+  type = map(object({
+    bucket_arn              = string
+    inclusion_prefixes      = optional(set(string), [])
+    bucket_owner_account_id = optional(string)
+    data_deletion_policy    = optional(string, "RETAIN")   # RETAIN | DELETE
+    chunking = optional(object({
+      strategy           = optional(string, "FIXED_SIZE")  # FIXED_SIZE | NONE
+      max_tokens         = optional(number, 300)
+      overlap_percentage = optional(number, 20)
+    }), {})
+  }))
+  default = {}
+}
+
+variable "kms_key_arn" {
+  type        = string
+  default     = null
+  description = "KMS key for transient data during ingestion (data source server-side encryption)."
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+| validation | 內容 | 依據 |
+|---|---|---|
+| cluster | `aurora.cluster_arn` 必須是 `arn:aws…:rds:<region>:<account>:cluster:<id>`；DB instance ARN（`:db:`）被擋 | Bedrock KB 經 RDS Data API 連資料庫，Data API 只支援 Aurora cluster（§4.31） |
+| secret | `credentials_secret_arn` 是 Secrets Manager ARN | — |
+| 名稱 | `database_name` 是小寫識別字；`table_name` 是 `<schema>.<table>` 或 `<table>`，每段 `^[a-z_][a-z0-9_]{0,62}$` | 只收小寫，避免 SQL 裡要加雙引號才對得上 |
+| 欄位對應 | 5 個欄位名都是小寫識別字、彼此不重複 | 重複的欄位名，KB 寫入時會互相覆蓋（推論，**未實測**） |
+| 維度 | `embedding_dimensions` 是正整數 | 跟 SQL 的 `vector(N)` 必須相同，module 驗不到資料庫，只能靠 README 與 guide 的對照 |
+| chunking | `strategy` 只收 `FIXED_SIZE`、`NONE`；`max_tokens > 0`；`overlap_percentage` 1–99 | 照 API 文件，**未實測**；`HIERARCHICAL`、`SEMANTIC` 第一版不收 |
+| data source | `bucket_arn` 是 S3 bucket ARN；`data_deletion_policy` 只收 `RETAIN`、`DELETE`；prefix 不以 `/` 開頭 | — |
+
+**行為**
+
+- `vector_knowledge_base_configuration.embedding_model_arn = var.embedding_model_arn`；`embedding_model_configuration.bedrock_embedding_model_configuration.dimensions = var.embedding_dimensions`。
+- `storage_configuration.rds_configuration`：`resource_arn = aurora.cluster_arn`、`credentials_secret_arn`、`database_name`、`table_name`、`field_mapping` 照輸入；`custom_metadata_field = null` 時不送。
+- `data_deletion_policy` 預設 `RETAIN`：刪掉 data source 時不連帶清掉向量資料，避免一次錯誤的 apply 清空知識庫；要跟著刪的專案明寫 `DELETE`。
+- `chunking.strategy = "NONE"` 時不送 `fixed_size_chunking_configuration`。
+
+**資料庫要先準備好的東西**（專案的 migration 負責，不在 Terraform 裡；`docs/guides/llm-agentcore.md` 會原樣收錄這段，Phase 15）
+
+```sql
+-- 1. extension（需要資料庫的 owner 或 rds_superuser）
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. schema 與表。vector(1024) 的 1024 必須等於 embedding_dimensions
+CREATE SCHEMA IF NOT EXISTS bedrock_integration;
+
+CREATE TABLE IF NOT EXISTS bedrock_integration.bedrock_kb (
+  id              uuid PRIMARY KEY,
+  embedding       vector(1024),
+  chunks          text,
+  metadata        json,
+  custom_metadata jsonb
+);
+
+-- 3. 索引：向量用 HNSW（cosine），全文與自訂 metadata 用 GIN
+CREATE INDEX IF NOT EXISTS bedrock_kb_embedding_idx
+  ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS bedrock_kb_chunks_idx
+  ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));
+CREATE INDEX IF NOT EXISTS bedrock_kb_custom_metadata_idx
+  ON bedrock_integration.bedrock_kb USING gin (custom_metadata);
+```
+
+| 對照 | SQL | module 輸入 |
+|---|---|---|
+| 表 | `bedrock_integration.bedrock_kb` | `aurora.table_name` |
+| 主鍵 | `id uuid` | `field_mapping.primary_key_field`（預設 `id`） |
+| 向量 | `embedding vector(1024)` | `field_mapping.vector_field`（預設 `embedding`）、`embedding_dimensions = 1024` |
+| 文字 | `chunks text` | `field_mapping.text_field`（預設 `chunks`） |
+| metadata | `metadata json` | `field_mapping.metadata_field`（預設 `metadata`） |
+| 自訂 metadata | `custom_metadata jsonb` | `field_mapping.custom_metadata_field`（預設 null；有給才送，SQL 的這一欄與它的索引才需要） |
+
+欄位名稱、型別與三個索引照 AWS 文件〈Prerequisites for Aurora PostgreSQL〉的範例，**沒有在我們的環境實測**；pgvector 要 0.5.0 以上才有 HNSW，Aurora PostgreSQL 各版本附的 pgvector 版本也**未查證**。SQL 用 master 帳號執行（範本第一版只有 master 帳號，§8.2）；KB 連資料庫用的也是同一個 secret，風險見 §8.8。
+
+**apply 順序**：`data`（Aurora 開 Data API，§4.31）→ **專案跑 migration**（上面的 SQL）→ `agent`（建 KB）。KB 建立時 Bedrock 會不會檢查表與欄位、還是要到第一次 ingestion 才失敗，**未實測**（§7.3 第 21 項）；順序照「建立時就會檢查」排，比較保守。
+
+**輸出**：`knowledge_base_id`、`knowledge_base_arn`、`data_source_ids`（`map(string)`）。
+
+**刻意不做**：ingestion job（是執行期的動作，不是資源；文件上傳後由人或 CI 呼叫 `StartIngestionJob`，寫在 guide）；其他 7 種向量儲存（決策 38；S3 Vectors、OpenSearch Serverless 都不做，後者的向量索引 aws provider 也建不了）；`HIERARCHICAL`、`SEMANTIC` chunking 與 parsing、custom transformation；data source bucket 本身（J50）；IAM（KB role 的權限在 `iam-app`，§5.4 增補）。
+
+### 4.31 `rds` 的 Data API（MINOR，`rds-v0.2.0`）
+
+**用途**：讓 Aurora cluster 開啟 RDS Data API（`aws_rds_cluster.enable_http_endpoint`）。Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取（§4.30），`rds` 目前沒有這個開關。
+
+**介面**
+
+```hcl
+variable "data_api" {
+  type        = bool
+  default     = false
+  description = "Enable the RDS Data API (enable_http_endpoint) on the Aurora cluster. Needed by Bedrock Knowledge Bases. Aurora only."
+  validation {
+    condition     = var.deployment != "rds" || !var.data_api
+    error_message = "data_api needs deployment aurora or aurora_serverless; the Data API does not support RDS DB instances."
+  }
+}
+```
+
+- `aws_rds_cluster.this` 加 `enable_http_endpoint = var.data_api`；`aws_db_instance` 不動（它沒有這個屬性）。
+- 變數名用 `data_api`，不用 `enable_http_endpoint`：AWS 的屬性名看不出它是 Data API。也不算 §4.1 禁止的 `enable_xxx` 開關：那條指的是「要不要建資源」，這是既有資源上的一個屬性，跟 `deletion_protection` 同類。
+- **不用新增輸出**：KB 要的 cluster ARN 就是既有的 `arn`（Aurora 時是 cluster ARN，`modules/rds/outputs.tf`），secret 是既有的 `master_user_secret_arn`。
+- Data API 對 Aurora PostgreSQL 的版本要求（例如 13.12、14.9、15.4、16.1 以上）照 AWS 文件，**未查證**，不做成 validation，寫進 README 與 §7.3 第 21 項。
+
+**版本判斷（§3.5）**：MINOR，`rds-v0.1.0` → `rds-v0.2.0`。
+
+| 檢查 | 結果 |
+|---|---|
+| 既有消費端換 `ref`、不改程式碼 | 新變數有預設值 `false`，不用改 |
+| plan 會看到什麼 | `enable_http_endpoint` 在 schema 是 optional、非 computed，provider 對沒設的值當成 `false`；改成明寫 `false` 之後，既有 cluster 的 plan 應該零差異。**這是讀 schema 推論的，沒有 plan 可以證明**（本 repo 不跑 plan）；Phase 12 用「既有 5 個測試檔一行不改全部通過」加一個斷言 `enable_http_endpoint == false` 的 run 鎖住 |
+| validation 有沒有收緊 | 沒有，新 validation 只作用在新變數 |
+| 為什麼不是 PATCH | 新增能力（§3.5：新增有預設值、預設維持原行為的變數是 MINOR） |
+
+D21 裡 `rds` 另一個待辦（新增 `deployment` 與資料庫名稱兩個輸出，也是 MINOR）**不併進這一版**，範圍維持只有 Data API；要併的話是使用者決定（§9.1 J64 附註）。
+
 ## 5. 專案 infra 規範（給專案 app team）
 
 ### 5.1 資料夾結構
@@ -2680,6 +3448,7 @@ infra/
     ├── iam-base/
     ├── data/
     │   └── envs/examples/{poc,standard,high}.tfvars
+    ├── agent/                      # 增補（決策 41）：guardrail、Runtime、Memory、Gateway、KB；預設什麼都不建
     ├── iam-app/
     ├── loadbalancer/
     │   └── envs/examples/{poc,standard,high}.tfvars
@@ -2743,7 +3512,7 @@ infra/
 
 ### 5.3 預設 stack 清單
 
-apply 順序：`foundation` → `containerimage` → `network` → `iam-base` → `data` → `iam-app` → `loadbalancer` → `application`；destroy 反序。
+apply 順序：`foundation` → `containerimage` → `network` → `iam-base` → `data` → `iam-app` → `loadbalancer` → `application`；destroy 反序。（v1 原本的 8 個 stack；增補的 `agent` 插在 `data` 與 `iam-app` 之間，見下〈增補：`agent` stack〉。）
 
 | 順序 | stack | 放什麼 | 用到的 module | 擁有者 | 變動頻率 | 讀（SSM，來源 stack） | 寫（SSM key） |
 |---|---|---|---|---|---|---|---|
@@ -2893,6 +3662,327 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 
 沒有 NAT 的安全網放在 `application` 的 precondition：有服務被追蹤，而且 `network/nat` 的 `mode` 是 `none` 時，必須同時 `source = "mirror"`、`network/interface_endpoints` 含 `xray`、`ecr.api`、`ecr.dkr`。`mode = "external"`（客戶自管 VPC，模式 A）的 NAT 是客戶的責任，不擋，README 寫明；`single`、`per_az` 不檢查。S3 gateway endpoint（拉 ECR 映像的 layer 需要）：`modules/vpc` 的 `gateway_endpoints` 預設 `["s3"]`，自建 VPC 已經有；客戶自管 VPC 要自己確認，只寫在文件，不檢查。服務 SG 到 interface endpoint 不需要新規則：服務 SG 本來就有 `0.0.0.0/0` 的 443 egress，endpoint SG 對 VPC CIDR 開 443。xray 的 sampling rule 與 group 維持 `application` 的 `xray_sampling_rules`、`xray_groups`，不受追蹤開關影響。
 
+#### 增補：`agent` stack（決策 41）
+
+**結論**：範本新增第 9 個 stack `agent`，放 guardrail、inference profile、Memory、Runtime、Runtime 的 log 與 trace、Gateway、Knowledge Base。**預設關閉**：所有輸入預設是空的，`agent` 什麼都不建、只發布空的 JSON，其他 stack 的 plan 跟加這個功能之前一樣（比照決策 36 的追蹤）。
+
+apply 順序（增補後）：`foundation` → `containerimage` → `network` → `iam-base` → `data` → **`agent`** → `iam-app` → `loadbalancer` → `application`；destroy 反序。上面那張 8 列的表是 v1 原本的清單，順序欄沒有重排；`agent` 這一列與既有 stack 的增補寫在下表。
+
+| 順序 | stack | 放什麼（增補部分） | 用到的 module | 讀（SSM，來源 stack） | 寫（SSM key，增補部分） |
+|---|---|---|---|---|---|
+| 2 | `containerimage` | 每個 Runtime 一個 ECR repository；**Runtime 清單的單一決定點** `var.agent_runtimes` | `ecr-repository`（第三個 `for_each`，`module "ecr_agent"`） | 不變 | `agent_runtimes`、`ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` |
+| 3 | `network` | 每個 Runtime 一個 SG（同一次 `security-group` 呼叫）；Runtime 連 DB 的規則；`interface_endpoints` 拒收 `bedrock-agentcore-control` | `security-group`（不變） | 多讀 `containerimage/agent_runtimes` | `sg_agent_<rt>_id`、`agent_data_access` |
+| 4 | `iam-base` | 每個 Runtime 一個 execution role（trust、ECR 拉取、log）；KB 與 Gateway 的 service role（只有 trust） | `iam-role`（多兩個 `for_each`） | 多讀 `containerimage/agent_runtimes`、`ecr_agent_<rt>_arn` | `role_agent_<rt>_execution_arn`、`role_bedrock_kb_arn`、`role_agentcore_gateway_arn`、`agent_service_roles` |
+| 5 | `data` | Aurora 可選開 Data API | `rds`（`rds-v0.2.0`，§4.31） | 不變 | `database` 的 JSON 多兩個欄位（`cluster_arn`、`data_api`） |
+| 5a | **`agent`（新）** | guardrail、inference profile、Memory、Runtime、Runtime 的 log group 與 vended log／trace、Gateway、KB | `bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-memory`、`agentcore-runtime`、`log-group`、`log-delivery`、`agentcore-gateway`、`bedrock-knowledge-base`、`ssm-read`、`ssm-publish` | `foundation`、`containerimage`、`network`、`iam-base`、`data` | 見下〈`agent` 發布的 key〉 |
+| 6 | `iam-app` | Runtime execution role、KB role、Gateway role 的權限（確切 ARN）；ECS task role 呼叫 Runtime、模型、guardrail、KB 的權限；**誰能呼叫什麼的單一決定點** `var.agent_access` | `iam-role-policy`（多三個 `for_each`）、`iam-role`（task role 多幾條 statement） | 多讀 `agent/*` | `agent_access` |
+| 8 | `application` | 對 `agent_access` 有列的服務注入 Runtime ARN、模型 id、guardrail id、KB id；沒有 NAT 時的 endpoint 檢查 | 不變 | 多讀 `iam-app/agent_access`、`agent/*` | — |
+
+`loadbalancer` 與 `foundation` 不變。stack 的擁有者是專案 app team，變動頻率「中」（換 Runtime 映像、調 guardrail 時動）。
+
+**為什麼 `agent` 排在 `data` 之後、`iam-app` 之前**（決策 41）：Runtime 要 ECR（`containerimage`）、subnet 與 SG（`network`）、execution role（`iam-base`）、資料庫連線資訊（`data`）；KB 要資料庫已經開了 Data API、而且 migration 已經建好表。反過來，ECS task role 呼叫 Runtime、Runtime 的 execution role 呼叫 Memory 與 guardrail，這些權限要指向確切的 ARN，ARN 要等 `agent` 建好才有。這跟 RDS Proxy 是同一個兩段式（決策 20、28）：`iam-base` 先建只有基本權限的 role，`iam-app` 在 `agent` 之後用 `iam-role-policy` 附加指向確切 ARN 的權限。
+
+這修掉 project-a 的兩個坑：
+
+| project-a 的坑 | 為什麼是坑 | 範本怎麼做 | project-a 來源 |
+|---|---|---|---|
+| IAM 在 `agent` 之前 apply，所以 Runtime、Memory 用名稱前綴的萬用字元，guardrail 開到整個帳號 `guardrail/*` | 「哪個角色能用哪支 guardrail」只是約定，不是 IAM 邊界 | 兩段式 IAM，Resource 是確切 ARN | `project-a/infra-v2/terraform/iam/ssm-inputs.tf:45-59`、`project-a/docs/guide/guide-data-scientist.md:302` |
+| `agent` 的 `ssm-outputs.tf` 整份註解掉，Runtime ARN 寫死在 `application` 的 tfvars | Runtime 重建後 tfvars 不改，呼叫打到舊的 Runtime 也不會報錯 | `agent` 一律發布，`application` 只從 SSM 讀 | `project-a/infra-v2/terraform/agent/ssm-outputs.tf:1-57`、`project-a/infra-v2/terraform/application/variables.tf:246`、`project-a/docs/runbook/runbook-agentcore.md:211` |
+
+**第一次部署有 KB 時的順序**：`data`（`db.data_api = true`）→ 專案跑 migration（§4.30 的 SQL）→ `agent` → `iam-app` → … 。沒有 KB 時不用跑 migration 這一步。
+
+##### 各 stack 的增補細節
+
+**`containerimage`**
+
+| 項目 | 值 | 理由 |
+|---|---|---|
+| Runtime 清單 | `var.agent_runtimes`（`set(string)`，預設空集合），發布成 `agent_runtimes`（String，JSON 陣列，已排序，沒有時 `[]`，寫法比照 `mirrored_images`） | Runtime 清單的單一決定點；`network`、`agent` 用 precondition 檢查自己的 Runtime 設定 key 跟它一致 |
+| 名稱規則 | 同服務名稱（kebab-case）；不得等於任何服務或 mirror 名稱；`<project>-<env>-agent-<rt>` 不得等於任何服務 repository 名稱；`replace("<project>-<env>-<rt>", "-", "_")` 最多 48 字（Runtime 名稱上限，§4.26） | 名稱在 SG key、role 名稱、SSM key 裡跟服務共用同一個命名空間，撞名會互相蓋掉 |
+| repository | `<project>-<env>-agent-<rt>`，設定與服務的 repository 相同（IMMUTABLE、掃描、KMS、lifecycle） | 同一個 `ecr-repository` module 的第三個 `for_each` |
+
+**`network`**
+
+```hcl
+variable "agent_runtimes" {
+  description = "key 必須等於 containerimage 發布的 agent_runtimes。預設空。"
+  type = map(object({
+    data_access = optional(list(string), []) # data_stores 的 key；Runtime 要直接連資料庫時才列
+  }))
+  default = {}
+}
+```
+
+| 規則 | 內容 |
+|---|---|
+| SG | 每個 Runtime 一個 SG，key 是 `agent_<rt 的 - 換成 _>`，同一次 `security-group` 呼叫裡建；`agent_runtimes` 為空時不建（跟服務 SG 一樣，由清單決定，不是開關） |
+| 規則 | Runtime SG 對 `0.0.0.0/0` 的 443 egress 一條（經 NAT 或 interface endpoint 呼叫 AWS API）；`data_access` 照服務的規則展開（有 Proxy 連 Proxy、沒有連 DB，egress ＋ ingress 兩條）。Runtime 沒有任何 ingress：呼叫 Runtime 走 AgentCore 的 API，不經過 SG |
+| 不做 | Runtime 連 ECS 服務的規則（J60） |
+| 發布 | `sg_agent_<rt>_id`；`agent_data_access`（String，JSON，`{"db":["assistant"]}`，沒有時 `{}`）。不併進既有的 `data_access`：那個 key 的名單是服務，`iam-app` 拿它對服務清單，混進 Runtime 名稱會讓既有的檢查失效 |
+| validation | `keys(var.agent_runtimes)` 等於 `containerimage/agent_runtimes`；`data_access` 只能引用存在的 data store；`interface_endpoints.services` 不得含 `bedrock-agentcore-control`（project-a 的規格明訂 VPC 內不得建控制面 endpoint，`project-a/docs/spec/agentcore-bedrock-integration.md:49`） |
+
+Runtime 的 subnet 用哪個 tier 由 `agent` 決定（見下），`network` 已經發布每個 tier 的 `subnet_ids_<tier>`，不用新增 key。
+
+**`iam-base`**：Runtime 清單讀 `containerimage/agent_runtimes`，`ecr_agent_<rt>_arn` 用 `module "in_agents"` 第二次讀（同 §5.6 每個服務一組的 key 的寫法）。KB 與 Gateway 的 role 要不要建，由 `iam-base` 自己的 `var.agent_service_roles` 決定（J55），`agent` 用 precondition 檢查。
+
+```hcl
+variable "agent_service_roles" {
+  description = "要建立的 AgentCore／Bedrock 服務角色（只有 trust）。預設空。"
+  type        = set(string)   # knowledge_base | gateway
+  default     = []
+}
+```
+
+| role | 名稱 | trust | 在 `iam-base` 的權限 | 在 `iam-app` 附加的權限 |
+|---|---|---|---|---|
+| Runtime execution（每個 Runtime 一個） | `<project>-<env>-agent-<rt>` | `bedrock-agentcore.amazonaws.com`，`aws:SourceAccount` | ECR 拉取限該 Runtime 的 repository；`ecr:GetAuthorizationToken`（`*`，既有例外）；`logs:CreateLogGroup`、`CreateLogStream`、`PutLogEvents`、`DescribeLogStreams` 限 `/aws/bedrock-agentcore/runtimes/<runtime 名稱>-*` | 見 §5.4 增補 |
+| KB service role | `<project>-<env>-bedrock-kb` | `bedrock.amazonaws.com`，`aws:SourceAccount` | 無 | 見 §5.4 增補 |
+| Gateway role | `<project>-<env>-agentcore-gateway` | `bedrock-agentcore.amazonaws.com`，`aws:SourceAccount` | 無 | 見 §5.4 增補 |
+
+trust 只用 `aws:SourceAccount`：`iam-role` 目前不支援 `aws:SourceArn`（`modules/iam-role/variables.tf`），加這個能力是 `iam-role` 的 MINOR，這次不做（決策 47）。
+
+發布 `role_agent_<rt>_execution_arn`；`role_bedrock_kb_arn`、`role_agentcore_gateway_arn` 只有在 `agent_service_roles` 含對應值時才存在；`agent_service_roles` 一律發布（String，JSON 陣列，已排序，沒有時 `[]`）。
+
+**`data`**：`var.db` 新增 `data_api = optional(bool, false)`，傳給 `rds` 的 `data_api`（§4.31）。`database` 的 JSON 新增兩個欄位，照 §5.6「新增欄位是相容的」：
+
+| 欄位 | 值 | 誰讀 |
+|---|---|---|
+| `cluster_arn` | `rds` 的 `arn`（Aurora 是 cluster ARN）；`deployment = "rds"` 時是 `null` | `agent`（KB 的 `aurora.cluster_arn`）、`iam-app`（KB role 的 Data API 權限） |
+| `data_api` | `true`／`false` | `agent` 的 precondition |
+
+**`agent`（新）**
+
+輸入（tfvars 只放這個 stack 自己的設定；其他 stack 的 id 一律從 SSM 讀）：
+
+```hcl
+variable "agent_runtimes" {
+  description = "key 必須等於 containerimage 發布的 agent_runtimes。預設空。"
+  type = map(object({
+    image_tag    = string                                  # 不得 latest
+    network_mode = optional(string, "VPC")                 # VPC | PUBLIC（PUBLIC 要明寫，決策 42）
+    subnet_tier  = optional(string, "app")                 # network 發布的 tier，不得是 public
+    protocol     = optional(string, "HTTP")
+    session_lifecycle = optional(object({
+      idle_session_timeout = optional(number, 900)
+      max_lifetime         = optional(number, 28800)
+    }), {})
+    models          = optional(list(string), [])           # var.models 的 key
+    memories        = optional(list(string), [])           # var.memories 的 key
+    guardrails      = optional(list(string), [])           # var.guardrails 的 key
+    knowledge_bases = optional(list(string), [])           # var.knowledge_bases 的 key
+    gateway         = optional(bool, false)                # 可以呼叫 var.agentcore_gateway
+    tracing         = optional(bool, false)                # Runtime 追蹤的單一決定點（J56）
+    environment     = optional(map(string), {})            # 專案自己的環境變數，不得跟範本產生的撞名
+    log_retention_days = optional(number, 30)
+  }))
+  default = {}
+}
+
+variable "models" {
+  description = "模型清單的單一決定點。key 是專案內的代號。"
+  type = map(object({
+    foundation_model_id      = string                      # 例：anthropic.claude-sonnet-4-5-20250929-v1:0
+    inference_profile_prefix = optional(string)            # 例：apac、global；null = 直接用 foundation model（on-demand）
+    tracked                  = optional(bool, false)       # true = 建 application inference profile，成本可依 tag 歸屬
+  }))
+  default = {}
+}
+
+variable "guardrails" {
+  description = "每個 key 一支 guardrail，傳給 bedrock-guardrail（§4.24）。tier 預設 STANDARD。"
+  type        = map(any) # 實作時寫成與 bedrock-guardrail 輸入相同的 object，這裡省略
+  default     = {}
+}
+
+variable "memories" {
+  type = map(object({
+    event_expiry_days = optional(number, 90)
+    strategies = optional(map(object({
+      type       = string
+      namespaces = list(string)
+    })), {})
+  }))
+  default = {}
+}
+
+variable "knowledge_bases" {
+  type = map(object({
+    embedding_model      = string                          # var.models 的 key，必須是 foundation model（沒有 prefix、不 tracked）
+    embedding_dimensions = number
+    table_name           = optional(string, "bedrock_integration.bedrock_kb")
+    field_mapping        = optional(map(string), {})       # 對應 bedrock-knowledge-base 的 field_mapping，空 = module 預設
+    data_sources = map(object({
+      bucket_arn         = string                          # 專案自己的 bucket（J50）
+      inclusion_prefixes = optional(set(string), [])
+    }))
+  }))
+  default = {}
+}
+
+variable "agentcore_gateway" {
+  description = "null = 不建 Gateway。target 只收 lambda 與 mcp_server（決策 40）。"
+  type = object({
+    targets = map(object({
+      type               = string
+      lambda_arn         = optional(string)
+      tool_schema_s3_uri = optional(string)
+      endpoint           = optional(string)
+    }))
+  })
+  default = null
+}
+
+variable "bedrock_invoke" {
+  description = "跨帳號呼叫模型（只做 A 側，決策 44）。null = 同帳號。"
+  type = object({
+    role_arn        = string                               # B 帳號裡、由 B 帳號擁有者建立的 role
+    session_seconds = optional(number, 3600)               # >= 900；0 不是「不限」
+  })
+  default = null
+}
+```
+
+`agent` 建什麼：
+
+| 東西 | module | 名稱 | 條件 |
+|---|---|---|---|
+| guardrail | `bedrock-guardrail`（`for_each = var.guardrails`） | `<project>-<env>-<key>` | `guardrails` 非空 |
+| application inference profile | `bedrock-inference-profile`（一次呼叫） | `<project>-<env>-<key>` | `models` 裡有 `tracked = true` 的 |
+| Memory | `agentcore-memory`（`for_each = var.memories`） | `<project>_<env>_<key>`（`-` 換 `_`） | `memories` 非空 |
+| Runtime | `agentcore-runtime`（`for_each = var.agent_runtimes`） | `<project>_<env>_<rt>` | `agent_runtimes` 非空 |
+| Runtime 的 application log group | `log-group`（`for_each`） | `/agentcore/<project>-<env>-<rt>` | 每個 Runtime 一個 |
+| vended log 與 trace | `log-delivery`（一次呼叫） | `<project>-<env>-<rt>-logs`、`-traces` | 每個 Runtime：`APPLICATION_LOGS` → 上面的 log group；`tracing = true` 時另加 `TRACES` → `XRAY` |
+| Gateway | `agentcore-gateway`（`for_each`，0 或 1 個） | `<project>-<env>-gateway` | `agentcore_gateway != null`；authorizer 固定 `AWS_IAM`（J58） |
+| KB | `bedrock-knowledge-base`（`for_each = var.knowledge_bases`） | `<project>-<env>-<key>` | `knowledge_bases` 非空 |
+
+KMS：guardrail 與 Memory 的 `kms_key_arn` 範本先傳 `null`（AWS 管的 key），不用 `foundation` 的專案 key：那把 key 的 `service_principals` 要給 Bedrock 與 AgentCore 什麼條件，沒有實測（J59、§7.3 第 22 項）。
+
+**Runtime 的環境變數由 `agent` 組，不收其他 stack 的 id**（修掉 project-a 把 Runtime ARN 寫在 tfvars 的坑）：
+
+| 環境變數 | 值 | 條件 |
+|---|---|---|
+| `AWS_REGION` | `var.aws_region` | 一律 |
+| `TRACELOOP_TRACE_CONTENT` | `"false"`，訊息內容不進 trace（決策 49） | 一律；`environment` 可以明寫 `"true"` 覆蓋，這是唯一能被覆蓋的範本變數 |
+| `MODEL_ID_<KEY>` | `models` 的呼叫用 id（見下 `models`） | Runtime 的 `models` 有列 |
+| `MEMORY_ID_<KEY>` | Memory id | Runtime 的 `memories` 有列 |
+| `GUARDRAIL_ID_<KEY>`、`GUARDRAIL_VERSION` | guardrail id；版本固定 `DRAFT`（決策 46） | Runtime 的 `guardrails` 有列 |
+| `KNOWLEDGE_BASE_ID_<KEY>` | KB id | Runtime 的 `knowledge_bases` 有列 |
+| `AGENTCORE_GATEWAY_URL` | Gateway URL | `gateway = true` |
+| `DB_HOST`、`DB_READER_HOST`、`DB_PORT`、`DB_NAME`、`DB_SECRET_ARN` | `data/database` 的 `app_endpoint` 等五個欄位，跟 ECS 服務同一組名稱（§4.22） | Runtime 在 `network/agent_data_access` 名單上 |
+| `BEDROCK_INVOKE_ROLE_ARN`、`BEDROCK_INVOKE_SESSION_SECONDS` | `var.bedrock_invoke` | `bedrock_invoke != null` 且 Runtime 有列 `models` |
+| `OTEL_*` | 照 `project-a/infra-v2/terraform/agent/runtime.tf:9-19` 的 OTEL 設定（exporter `otlp`、`http/protobuf`、traces endpoint 是 X-Ray 的 OTLP endpoint） | `tracing = true` |
+
+`<KEY>` 是 key 轉大寫、`-` 換 `_`。專案自己的 `environment` 不得使用上表的名稱（precondition，`TRACELOOP_TRACE_CONTENT` 除外）。
+
+**`models` 的 `invoke_arns` 由一個 local 統一組**（決策 50）。只有這個 local 會產生模型的 IAM Resource，`iam-app` 照讀，不自己拼：
+
+| 模型設定 | 呼叫用 id（`model_id`） | `invoke_arns` |
+|---|---|---|
+| 沒有 prefix | `<foundation_model_id>` | `arn:aws:bedrock:*::foundation-model/<foundation_model_id>` |
+| 有 prefix | `<prefix>.<foundation_model_id>` | `arn:aws:bedrock:<region>:<account>:inference-profile/<prefix>.<foundation_model_id>`、`arn:aws:bedrock:*::foundation-model/<foundation_model_id>`；prefix 是 `global` 時再加 `arn:aws:bedrock:::foundation-model/<foundation_model_id>`（region 與帳號都空白） |
+| `tracked = true` | application inference profile 的 ARN | 上一列（或第一列）再加 application inference profile 的 ARN |
+
+foundation-model 那條的 region 一律是 `*`：system inference profile 會把請求路由到其他 region，`global.` 前綴還會對空 region 的 ARN 授權；寫死 region 會間歇失敗（`project-a/docs/runbook/runbook-cross-account-bedrock.md` 第 4 節的實測）。`global` 另加空 region 那一條是保守做法：`*` 能不能涵蓋空 region，project-a 只在跨帳號的 B 側間接看到，自己的批次評分角色仍保留這一條並註明未實測（`project-a/infra-v2/terraform/iam/judge-batch-role.tf:71-78`）。§7.3 第 23 項實測後可以拿掉，拿掉是範本的變更，不影響 module。
+
+**precondition**（`terraform_data`，跟既有 stack 的 guard 同一種寫法）
+
+| 名稱 | 內容 |
+|---|---|
+| Runtime 清單一致 | `keys(var.agent_runtimes)` 等於 `containerimage/agent_runtimes` |
+| 參照存在 | 每個 Runtime 的 `models`、`memories`、`guardrails`、`knowledge_bases` 都是存在的 key；`gateway = true` 時 `agentcore_gateway != null`；KB 的 `embedding_model` 是沒有 prefix、沒有 tracked 的模型 |
+| `subnet_tier` | 存在於 `network` 發布的 tier，而且不是 `public` |
+| PUBLIC 模式 | `network_mode = "PUBLIC"` 的 Runtime 不得在 `network/agent_data_access` 上（PUBLIC 的 Runtime 不在 VPC 裡，連不到 isolated 的資料庫） |
+| 服務角色 | `knowledge_bases` 非空時 `iam-base/agent_service_roles` 含 `knowledge_base`；`agentcore_gateway != null` 時含 `gateway` |
+| KB 的資料庫 | `knowledge_bases` 非空時 `data/database` 是 `enabled = true`、`deployment != "rds"`、`data_api = true` |
+| 跨帳號 | `bedrock_invoke != null` 時 `role_arn` 是 IAM role ARN、不是本帳號、`session_seconds >= 900`；而且不得有 `tracked = true` 的模型（application inference profile 建在本帳號，B 帳號用不到）、KB 不得引用模型（KB 用本帳號的 KB role 呼叫嵌入模型） |
+| **沒有 NAT** | 有 `network_mode = "VPC"` 的 Runtime，而且 `network/nat` 的 `mode == "none"` 時，`network/interface_endpoints` 必須含 `bedrock-runtime`、`bedrock-agentcore`（決策 42）；另外依條件要求：`bedrock_invoke != null` 要 `sts`、有 Runtime `tracing = true` 要 `xray`、有 Runtime 列了 `knowledge_bases` 要 `bedrock-agent-runtime`、有 Runtime 列了 `guardrails` 要 `bedrock-runtime`（已涵蓋）。`mode = "external"` 不檢查（客戶的責任，比照決策 36） |
+| 沒有 NAT 時不准 Gateway | `nat.mode == "none"` 而且有 Runtime `gateway = true` 時擋下：Runtime 經 VPC 呼叫 Gateway 要哪個 endpoint 服務名稱，沒有查證（J57、§7.3 第 20 項） |
+
+**`agent` 發布的 key**（全部是 String；沒有東西時也發布，值是空的 JSON）
+
+| key | 內容 | 誰讀 |
+|---|---|---|
+| `agent_runtime_<rt>` | JSON：`{"arn":…,"id":…,"name":…,"execution_role_arn":…,"models":[…],"memories":[…],"guardrails":[…],"knowledge_bases":[…],"gateway":false,"tracing":false}`，清單是 key | `iam-app`（execution role 的權限）、`application`（Runtime ARN） |
+| `models` | JSON：`{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}`；**模型清單的單一決定點** | `iam-app`、`application` |
+| `guardrails` | JSON：`{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`；`CLASSIC` 時 `profile_id` 是 `null` | `iam-app`、`application` |
+| `agent_memories` | JSON：`{"<key>":{"id":…,"arn":…}}` | `iam-app` |
+| `knowledge_bases` | JSON：`{"<key>":{"id":…,"arn":…,"embedding_model":"<models 的 key>","bucket_arns":[…],"inclusion_prefixes":{…}}}` | `iam-app`、`application` |
+| `agentcore_gateway` | `{"enabled":false}` 或 `{"enabled":true,"arn":…,"url":…,"lambda_arns":[…]}` | `iam-app` |
+| `bedrock_invoke` | `{"enabled":false}` 或 `{"enabled":true,"role_arn":…,"session_seconds":3600}`；**跨帳號的單一決定點**（決策 44） | `iam-app`、`application` |
+
+`ssm-publish` 的 String 上限是 4096 字（Standard tier）。每個 Runtime 一個 key 就是為了這個上限；`models` 一個模型約 300 字，十個以內放得下，超過時 `ssm-publish` 的 validation 在 plan 就會擋（J61）。
+
+**`iam-app`**：見 §5.4 增補。新增 `var.agent_access`（**ECS 服務能呼叫什麼的單一決定點**）：
+
+```hcl
+variable "agent_access" {
+  description = "服務 => 它可以呼叫的 AgentCore／Bedrock 資源（agent 發布的 key）。沒列的服務沒有任何 bedrock 權限。"
+  type = map(object({
+    runtimes        = optional(list(string), [])
+    models          = optional(list(string), [])
+    guardrails      = optional(list(string), [])
+    knowledge_bases = optional(list(string), [])
+  }))
+  default = {}
+}
+```
+
+precondition：key 是 `containerimage/services` 的子集合；每個清單的值都是 `agent` 發布的 key。發布 `agent_access`（String，JSON，內容就是這個變數，沒有時 `{}`）。
+
+**`application`**：讀 `iam-app/agent_access`；有列的服務，主 container 加環境變數 `AGENTCORE_RUNTIME_ARN_<RT>`、`MODEL_ID_<KEY>`、`GUARDRAIL_ID_<KEY>` 與 `GUARDRAIL_VERSION`、`KNOWLEDGE_BASE_ID_<KEY>`；`bedrock_invoke` 啟用且服務有列 `models` 時加 `BEDROCK_INVOKE_ROLE_ARN`、`BEDROCK_INVOKE_SESSION_SECONDS`。`agent_access` 是空的時，第二個 `ssm-read` 的 key 清單是空的，task definition 跟加這個功能之前一樣（迴歸要求，比照決策 36）。沒有 NAT 時的 precondition：有服務列了 `runtimes` 要 `bedrock-agentcore`、列了 `models` 或 `guardrails` 要 `bedrock-runtime`、列了 `knowledge_bases` 要 `bedrock-agent-runtime`、`bedrock_invoke` 啟用要 `sts`。
+
+**interface endpoint 對照**（`network` 的 `interface_endpoints.services`，nat = `none` 時由上面的 precondition 強制）
+
+| 服務 | 誰需要 | 依據 |
+|---|---|---|
+| `bedrock-runtime` | 呼叫模型（`InvokeModel`／`Converse`）、`ApplyGuardrail` | `project-a/infra-v2/terraform/network/vpc-endpoints.tf:2`；`ApplyGuardrail` 走這個 endpoint 是依 SDK 的 client 分類，**未實測**（project-a ADR-0016 也列為未查證） |
+| `bedrock-agentcore` | ECS 服務 `InvokeAgentRuntime`、Runtime 讀寫 Memory | `project-a/infra-v2/terraform/network/vpc-endpoints.tf:2`、`project-a/docs/spec/agentcore-bedrock-integration.md` |
+| `bedrock-agent-runtime` | 查 KB（`Retrieve`） | 照 AWS 文件，**未實測** |
+| `sts` | 跨帳號 assume role | 推論：沒有 NAT 時 STS 公網端點連不到，**未實測** |
+| `xray` | Runtime 用 OTEL 直送 X-Ray | 推論，**未實測** |
+| `bedrock` | 控制面（`ListGuardrails` 這類）；範本直接注入 guardrail id，不需要 | project-a 有建，範本不要求 |
+| **不得建** `bedrock-agentcore-control` | — | `project-a/docs/spec/agentcore-bedrock-integration.md:49`；`network` validation 擋 |
+
+Runtime 拉映像是 AgentCore 服務端做的、還是經由 VPC 裡的 ENI，**未實測**；schema 的 `require_service_s3_endpoint` 是 computed，暗示服務需要 S3 gateway endpoint（自建 VPC 時 `vpc` 預設已有 `s3`）。AgentCore 的 VPC 模式是否限定特定 AZ ID、每個 Runtime 用掉多少 ENI，也**未查證**（§7.3 第 17 項）。
+
+**PUBLIC 模式的取捨**（決策 42）：Runtime 不在 VPC 裡，對外連線不經過 SG 與 interface endpoint，也連不到 isolated tier 的資料庫；好處是不佔 subnet 的 IP、不需要 NAT 或 endpoint。範本只在 `network_mode = "PUBLIC"` 明寫時才用，precondition 擋掉它跟 `agent_data_access` 同時出現。
+
+**跨帳號（A 側）**（決策 44）：專案帳號（A）的 Runtime 與服務 assume B 帳號的 role 呼叫模型。範本只做 A 側：`bedrock_invoke` 是唯一的設定點，`iam-app` 照讀，把列了 `models` 的 Runtime 與服務的 `bedrock:InvokeModel*` 換成 `sts:AssumeRole`（Resource 恰為那個 role），`agent` 與 `application` 注入環境變數。B 側的 role、它的 trust（信任 A 帳號的哪些 role）、B 帳號的模型使用權，由 B 帳號擁有者處理，寫在 guide（`project-a/docs/runbook/runbook-cross-account-bedrock.md:9-11,78-85`）。project-a 把同一個設定放在兩個 stack（`project-a/docs/runbook/runbook-cross-account-bedrock.md:87-100`），這裡收成一個。
+
+**範本會怎麼串**（`agent` 的主要呼叫，`source` 寫成複製出去之後的樣子，同 §4.22 的慣例）：
+
+```hcl
+module "runtime" {
+  source   = "git::.../modules/agentcore-runtime?ref=agentcore-runtime-v0.1.0"
+  for_each = var.agent_runtimes
+
+  name          = replace("${local.name_prefix}-${each.key}", "-", "_")
+  role_arn      = module.in_agents.strings["role_agent_${local.agent_key[each.key]}_execution_arn"]
+  container_uri = "${module.in_agents.strings["ecr_agent_${local.agent_key[each.key]}_url"]}:${each.value.image_tag}"
+
+  network = each.value.network_mode == "PUBLIC" ? { mode = "PUBLIC" } : {
+    mode               = "VPC"
+    subnet_ids         = module.in_tiers.lists["subnet_ids_${each.value.subnet_tier}"]
+    security_group_ids = [module.in_agents.strings["sg_agent_${local.agent_key[each.key]}_id"]]
+  }
+
+  session_lifecycle     = each.value.session_lifecycle
+  protocol              = each.value.protocol
+  environment_variables = local.runtime_environment[each.key] # 上表，由本 stack 組
+}
+
+module "agent_logs" {
+  source      = "git::.../modules/log-delivery?ref=log-delivery-v0.1.0"
+  name_prefix = local.name_prefix
+  sources     = local.delivery_sources      # 每個 Runtime 的 APPLICATION_LOGS；tracing 的再加 TRACES
+  destinations = merge(
+    { for rt, lg in module.runtime_log_group : rt => { type = "CWL", resource_arn = lg.arn } },
+    local.any_tracing ? { xray_traces = { type = "XRAY" } } : {}, # Runtime keys are kebab-case, so no clash
+  )
+  deliveries = local.deliveries
+}
+```
+
 #### stack 裡的原生資源（例外清單）
 
 範本的 stack 原則上只呼叫 module。下表是唯一允許的原生 resource（SG 已改由 `security-group` module 建，不在清單上），`scripts/validate.sh` 依這張表檢查（§5.6 S8）；要加新的例外，先改這張表並寫理由。
@@ -2914,7 +4004,7 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 | `iam` | `iam-base`、`iam-app` | 拆成兩個，讓 Proxy 的 role 能在資料庫建立前存在、讀 secret 的權限在資料庫建立後附加（§5.4） |
 | `bridge` | 刪除 | 只有一棵 SSM 樹，不需要轉寫 |
 | `loadbalancer` | `loadbalancer` | 改用 `alb` module；target group 改由 `ecs-service` 建 |
-| `agent`、`operation` | 不在範本 | project-a 特有（AgentCore、Lambda、跳板機），專案自己加 stack |
+| `agent`、`operation` | 不在範本（增補：`agent` 收進範本，決策 41） | project-a 特有（AgentCore、Lambda、跳板機），專案自己加 stack。增補之後 `agent` 由範本提供，`operation` 仍不在範本 |
 | `application` | `application` | 加上 autoscaling 與告警 |
 | `postdeploy` | 刪除 | autoscaling 收進 `ecs-service`、服務告警收進 `application`、ALB 與資料庫告警收進 `alb`、`rds` module |
 
@@ -2982,6 +4072,68 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 | `iam-app` | ECS Exec 一致 | `ecs_exec_services` 裡的服務有 `ssmmessages` 權限，且發布 `{"enabled":true}`；其他服務兩者都沒有 |
 | `iam-app` | 追蹤一致 | `tracing` 裡的服務恰好有 4 個 `xray:` 動作且發布的 JSON 陣列含它；沒列的服務沒有任何 `xray:` 動作；預設發布 `[]`；`tracing` 含 `containerimage/services` 以外的名稱時 plan 失敗 |
 
+#### 增補：AgentCore 與 Bedrock 的權限（決策 41、50）
+
+同一個兩段式：`iam-base` 在 `agent` 之前建 role（Runtime execution role 只有 ECR 拉取與 log，KB 與 Gateway role 只有 trust，見 §5.3 增補），`iam-app` 在 `agent` 之後用 `iam-role-policy` 附加指向確切 ARN 的權限。Resource 一律從 `agent` 發布的 JSON 取，`iam-app` 不自己拼 ARN（`models.invoke_arns` 由 `agent` 的一個 local 組，決策 50）。
+
+**Runtime execution role**（每個 Runtime 一個 `iam-role-policy` 呼叫，`role_arn` 是 `iam-base/role_agent_<rt>_execution_arn`，權限照 `agent/agent_runtime_<rt>` 的清單）
+
+| statement | 動作 | Resource | 條件 |
+|---|---|---|---|
+| 模型 | `bedrock:InvokeModel`、`bedrock:InvokeModelWithResponseStream`（`Converse` 與 `ConverseStream` 用的也是這兩個動作） | Runtime 列的 `models` 的 `invoke_arns` 聯集 | Runtime 有列 `models`，且 `bedrock_invoke` 沒有啟用 |
+| 跨帳號 | `sts:AssumeRole` | 恰為 `bedrock_invoke.role_arn` | Runtime 有列 `models`，且 `bedrock_invoke` 啟用（取代上一列） |
+| Memory | `bedrock-agentcore:CreateEvent`、`ListEvents`、`GetEvent`、`RetrieveMemoryRecords` | 列的 Memory 的 ARN | 有列 `memories`；動作照 `project-a/infra-v2/terraform/iam/agentcore-role.tf:126-134` |
+| guardrail | `bedrock:ApplyGuardrail` | 列的 guardrail 的 ARN，加上 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`（`STANDARD` 的才有） | 有列 `guardrails` |
+| KB | `bedrock:Retrieve`、`bedrock:RetrieveAndGenerate` | 列的 KB 的 ARN | 有列 `knowledge_bases`；`RetrieveAndGenerate` 還會呼叫模型，模型權限照上面「模型」那列另外給（**未實測**） |
+| Gateway | `bedrock-agentcore:InvokeGateway` | Gateway ARN | `gateway = true` |
+| DB secret | `secretsmanager:GetSecretValue`；`kms:Decrypt` 帶 `kms:ViaService` | 恰為 `database.secret_arn`；專案 key | Runtime 在 `network/agent_data_access` 上；寫法同 task role（§5.4） |
+| 追蹤 | `xray:PutTraceSegments`、`xray:PutTelemetryRecords`、`xray:PutSpans` | `*`（X-Ray 不支援 resource-level） | `tracing = true`；動作照 `project-a/infra-v2/terraform/iam/agentcore-role.tf`（`sid = "XRay"`） |
+
+**guardrail profile 的 ARN**：region 一律 `*`，profile id 一律是確切值、不得是 `*`。`STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，而 region 由 AWS 動態選（project-a 實際看到 `ap-south-1`），寫死 region 會變成間歇失敗（`project-a/docs/guide/guide-data-scientist.md:294-300`、`project-a/infra-v2/terraform/iam/ssm-inputs.tf:56-59`，決策 50）。
+
+**KB service role**（`agent_service_roles` 含 `knowledge_base` 時，一個 `iam-role-policy` 呼叫涵蓋所有 KB）
+
+| statement | 動作 | Resource |
+|---|---|---|
+| 嵌入模型 | `bedrock:InvokeModel` | 各 KB 的 `embedding_model` 的 `invoke_arns` |
+| Data API | `rds-data:ExecuteStatement`、`rds-data:BatchExecuteStatement` | 恰為 `database.cluster_arn` |
+| cluster 描述 | `rds:DescribeDBClusters` | 恰為 `database.cluster_arn` |
+| DB secret | `secretsmanager:GetSecretValue`；`kms:Decrypt` 帶 `kms:ViaService` | 恰為 `database.secret_arn`；專案 key |
+| 文件來源 | `s3:ListBucket`（帶 `s3:prefix` 條件，只有給了 `inclusion_prefixes` 時）、`s3:GetObject` | 各 data source 的 bucket ARN、`<bucket ARN>/<prefix>*`（沒給 prefix 時是 `<bucket ARN>/*`） |
+
+動作清單照 AWS 文件〈Create a service role for Knowledge Bases〉，**未實測**是否足夠（§7.3 第 21 項）。bucket 用 KMS 加密時要再加那把 key 的 `kms:Decrypt`，bucket 不是範本建的（J50），所以範本不加，guide 寫明。
+
+**Gateway role**（`agent_service_roles` 含 `gateway` 時）：`lambda:InvokeFunction`，Resource 是 Lambda target 的 ARN 與 `<arn>:*`（版本與別名，照 `project-b/infra/terraform/modules/agentcore/gateway.tf:34-50`）。沒有 Lambda target 時不附加（`iam-role-policy` 不收空的 `policies`）。
+
+**ECS task role**（`agent_access` 有列的服務，加在既有 task role 的 inline policy 裡）
+
+| statement | 動作 | Resource |
+|---|---|---|
+| Runtime | `bedrock-agentcore:InvokeAgentRuntime` | 列的 Runtime 的 ARN 與 `<ARN>/runtime-endpoint/*` |
+| 模型 | 同 Runtime execution role 的「模型」或「跨帳號」那列 | 同左 |
+| guardrail | 同 Runtime execution role | 同左 |
+| KB | `bedrock:Retrieve` | 列的 KB 的 ARN |
+
+沒列在 `agent_access` 的服務一個 `bedrock` 或 `bedrock-agentcore` 動作都沒有。project-a 的 task role 還有 `bedrock:ListGuardrails`（`Resource = "*"`，`project-a/infra-v2/terraform/iam/ecs-roles.tf:124-126`），因為程式用名稱查 guardrail；範本直接注入 guardrail id 與版本，不需要，所以 **`Resource = "*"` 的允許清單不因為 guardrail 而變長**。
+
+**`Resource = "*"` 允許清單的變化**：只多一個動作 `xray:PutSpans`，而且只出現在 `tracing = true` 的 Runtime execution role 上（J56）。§5.4〈最小權限的測試分兩層〉那張表的「兩者」那一列，Phase 14 照這個改；反向驗證：暫時給沒開追蹤的 Runtime 加 `xray:PutSpans`、或給任何 role 加 `bedrock:ListGuardrails` on `*`，測試要紅。
+
+**Runtime 建立時的權限：未驗證**。`agent` apply 時，Runtime 的 execution role 只有 trust、ECR 拉取與 log，還沒有模型、Memory、guardrail 的權限。我們的推論是 `CreateAgentRuntime` 只檢查 role 能不能被 assume、映像拉不拉得到（這兩樣 `iam-base` 都已經給了），其餘權限在 invoke 時才評估；**這沒有實測**，project-a 的 IAM 一直是在 `agent` 之前用萬用字元給齊的，沒有反例也沒有正例（§7.3 第 16 項）。這也是 ECR 與 log 放在 `iam-base` 而不是 `iam-app` 的原因。如果實測證明建立時就要模型或 Memory 的權限，Proxy 那種「先關掉再打開」的兩輪 apply 在這裡行不通（Runtime 的權限清單要等 `agent` 發布才讀得到），要回頭改設計，屆時再找使用者決定。
+
+**範本測試要鎖住的**（Phase 14，`iam-base/tests/`、`iam-app/tests/`）
+
+| stack | run | 斷言 |
+|---|---|---|
+| `iam-base` | Runtime execution role 的 trust | 只信任 `bedrock-agentcore.amazonaws.com`，帶 `aws:SourceAccount` |
+| `iam-base` | Runtime 只拉自己的映像 | ECR 拉取的 Resource 恰為 `ecr_agent_<rt>_arn` |
+| `iam-base` | KB、Gateway role 只有 trust | `inline_policies` 是空的；`agent_service_roles = []` 時兩個 role 都不存在 |
+| `iam-app` | Resource 恰為確切 ARN | 模型、Memory、guardrail、KB、Gateway、Runtime 的 Resource 都等於 `override_data` 餵進來的 ARN，沒有任何萬用字元（`*` 只出現在 `arn:aws:bedrock:*:` 與 `arn:aws:bedrock:*::foundation-model/` 的 region 欄） |
+| `iam-app` | guardrail profile | Resource 含 `arn:aws:bedrock:*:<account>:guardrail-profile/<id>`，`<id>` 不是 `*`；`CLASSIC` 的 guardrail 沒有 profile 那條 |
+| `iam-app` | 跨帳號 | `bedrock_invoke` 啟用時有 `sts:AssumeRole`、沒有 `bedrock:InvokeModel`；沒啟用時相反 |
+| `iam-app` | 沒列的服務沒有權限 | `agent_access` 沒列的服務，task role 沒有任何 `bedrock*` 動作 |
+| `iam-app` | 預設不變 | `agent_runtime_*` 不存在、`agent_access = {}` 時，既有 task role 的 policy 跟加這個功能之前完全相同 |
+| 兩者 | `Resource = "*"` 允許清單 | 見上〈允許清單的變化〉 |
+
 ### 5.5 state 的 bucket 與 key
 
 | 項目 | 規則 | 例 |
@@ -3011,7 +4163,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | key 命名 | snake_case；ARN 結尾 `_arn`、id 結尾 `_id`、清單用複數或 `_ids`；服務名稱裡的 `-` 轉成 `_`（服務 `order-api` 的 SG key 是 `sg_order_api_id`） |
 | 型別 | 純量用 `String`；清單用 `StringList`（逗號串接，元素不得含逗號）；多欄位或條件值用 `String` 裝 JSON |
 | 條件值 | SSM 不收空字串，可有可無的值一律包 JSON：`{"enabled":false}`／`{"enabled":true,...}`，讀取端 `jsondecode()` |
-| 單一決定點 | 兩個 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀，不在兩邊各放一個變數。例：`network/alb_https`、`network/db_proxy`、`network/data_access`、`containerimage/services`、`containerimage/mirrored_images`、`iam-app/ecs_exec_<service>`、`iam-app/tracing` |
+| 單一決定點 | 兩個 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀，不在兩邊各放一個變數。例：`network/alb_https`、`network/db_proxy`、`network/data_access`、`containerimage/services`、`containerimage/mirrored_images`、`iam-app/ecs_exec_<service>`、`iam-app/tracing`。增補：`containerimage/agent_runtimes`（Runtime 清單）、`network/agent_data_access`、`iam-base/agent_service_roles`、`data/database` 的 `data_api`、`agent/models`（模型清單）、`agent/bedrock_invoke`（跨帳號）、`agent/agent_runtime_<rt>` 的 `tracing`、`iam-app/agent_access`（服務能呼叫什麼） |
 | secret | **不進 SSM**。SSM 只放 secret 的 ARN，值在 Secrets Manager |
 | 寫入 | 只能透過 `ssm-publish`；其他地方不得宣告 `aws_ssm_parameter` |
 | 讀取 | 只能透過 `ssm-read`（裡面是 `data "aws_ssm_parameter"` 加 `for_each`、只讀 `insecure_value`）；key 清單寫在 `ssm-inputs.tf` 的 module 呼叫裡 |
@@ -3042,6 +4194,19 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `iam-app` | `ecs_exec_<service>` | String（JSON） | `{"enabled":false}` |
 | `iam-app` | `tracing` | String（JSON 陣列） | 要追蹤的服務名稱（已排序），沒有時 `[]`；`application` 照它掛 collector sidecar |
 | `loadbalancer` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` | String | `listener_arn` 有憑證時是 HTTPS listener，否則是 HTTP；`listener_protocol` 是 `HTTPS` 或 `HTTP` |
+| `containerimage` | `agent_runtimes` | String（JSON 陣列） | 增補（決策 41）。Runtime 名稱，已排序，沒有時 `[]`；Runtime 清單的單一決定點 |
+| `containerimage` | `ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` | String | 增補。Runtime 的 repository，只有設了 `agent_runtimes` 才存在 |
+| `network` | `sg_agent_<rt>_id` | String | 增補。Runtime 的 SG |
+| `network` | `agent_data_access` | String（JSON） | 增補。`{"db":["assistant"]}`，沒有時 `{}`；哪些 Runtime 能讀 DB secret、有連 DB 的 SG 規則 |
+| `iam-base` | `role_agent_<rt>_execution_arn` | String | 增補。Runtime execution role |
+| `iam-base` | `role_bedrock_kb_arn`、`role_agentcore_gateway_arn` | String | 增補。只有 `agent_service_roles` 含 `knowledge_base`／`gateway` 才存在 |
+| `iam-base` | `agent_service_roles` | String（JSON 陣列） | 增補。`["gateway","knowledge_base"]` 的子集合，已排序，沒有時 `[]` |
+| `agent` | `agent_runtime_<rt>` | String（JSON） | 增補。Runtime 的 ARN、id、名稱、execution role ARN 與它能用的 `models`／`memories`／`guardrails`／`knowledge_bases`（key 清單）、`gateway`、`tracing`（§5.3 增補） |
+| `agent` | `models` | String（JSON） | 增補。`{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}`；模型清單的單一決定點，`invoke_arns` 是唯一的模型 IAM Resource 來源 |
+| `agent` | `guardrails` | String（JSON） | 增補。`{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`，沒有時 `{}` |
+| `agent` | `agent_memories`、`knowledge_bases` | String（JSON） | 增補。`{"<key>":{"id":…,"arn":…}}`（KB 另有 `embedding_model`、`bucket_arns`、`inclusion_prefixes`），沒有時 `{}` |
+| `agent` | `agentcore_gateway`、`bedrock_invoke` | String（JSON） | 增補。`{"enabled":false}` 或 `{"enabled":true,...}`；`bedrock_invoke` 是跨帳號的單一決定點 |
+| `iam-app` | `agent_access` | String（JSON） | 增補。服務 → `{runtimes, models, guardrails, knowledge_bases}`，沒有時 `{}`；`application` 照它注入環境變數 |
 
 **`database` 的 JSON**
 
@@ -3064,6 +4229,8 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 ```
 
 沒有資料庫時：`{"enabled":false}`。
+
+增補（J64）：有資料庫時多兩個欄位，`"cluster_arn"`（Aurora 是 cluster ARN，`rds` 型態是 `null`）與 `"data_api"`（`true`／`false`），給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用（§5.3 增補）。
 
 | 欄位 | 誰讀 | 說明 |
 |---|---|---|
@@ -3144,6 +4311,9 @@ module "in_services" {
 | S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend | 修掉 project-a「key 寫錯讀到別的環境」 |
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` | 密碼一律由 RDS 管理 |
 | S8 | 範本 stack 裡的 `resource "<type>"` 只能是 §5.3 例外清單上的型別與 stack（目前只有 `foundation` 的 `aws_secretsmanager_secret`） | 「stack 只呼叫 module」的程式檢查 |
+| S9 | 增補（決策 46）：`resource "aws_bedrock_guardrail_version"` 不得出現在 `modules/` 與 `templates/` | 發佈過版本的 guardrail，之後的 apply 只改 `DRAFT`，實際生效的是舊版，plan 乾淨（`project-a/docs/guide/guide-data-scientist.md:268`）。本次只寫文件，`validate.sh` 在 Phase 12 實作 |
+
+增補後其他規則不變：7 個新 module 不建 IAM 由 S4 涵蓋；`agent` stack 只呼叫 module，S8 的例外清單不用加；S5 的「8 個 stack」在 Phase 14 變成 9 個（`agent` 的 `common.tf` 也要一字不差）。
 
 project-a 的 `project-a/infra-v2/terraform/check-ssm-contract.sh` 還有第三條「讀的 key 必須是 apply 順序更早的 stack 有發布的」。**這條第一版不做，列為之後要補的檢查。** 理由：第一版範圍要小；而且這條要解析每個 stack 的 HCL（`ssm-outputs.tf` 的 `strings`／`lists` 與 `ssm-inputs.tf` 的 key 清單）再做跨 stack 比對，project-a 用 awk 硬解，格式一變就會誤判。第一版靠兩件事補位：各 stack 的測試鎖住它讀取的 key 清單；`infra/README.md` 的合約表寫明每個 key 誰寫誰讀，PR 審查時對照。上表「方向」那一條仍然是規則，只是還沒有自動檢查。
 
@@ -3321,6 +4491,8 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 
 例：一般正式，max 40 task、2 個 AZ、5 個 interface endpoint → `ceil(40 × 2 ÷ 2) + 5 = 45`，加 50％ 約 68，加 5 約 73，`/25`（123 個可用）就夠；表上建議 `/22`，是留給服務數量成長，不是單一服務需要。project-a 的 app subnet 切到 `/19`（`ecs_app` 與 `agent_app` 都是），主要是為了 AgentCore 的 ENI；ECS 本身用不到那麼大（`project-a/infra-v2/terraform/network/subnets-app.tf`）。Proxy 每個 subnet 會用掉幾個 IP，AWS 沒有固定數字，**未驗證**。
 
+增補：VPC 模式的 AgentCore Runtime 也在 `agent_runtimes[*].subnet_tier` 指定的 tier 裡用 ENI，每個 Runtime 用掉幾個 IP、會不會隨 session 數增加，**未查證**（§7.3 第 17 項）。在量到之前，用到 Runtime 的專案照 project-a 的做法把那個 tier 切大（project-a 用 `/19`），或另開一個 `agent` tier 專給 Runtime。
+
 ## 6. 四個團隊在這個 repo 的責任
 
 ### 6.1 責任
@@ -3384,7 +4556,7 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | lint | `tflint`，第一版只用內建的 terraform ruleset（`recommended` preset） | 未使用的變數、缺型別、命名慣例之類 | 否（內建 ruleset 不用下載 plugin） | 否 |
 | 語法與型別 | `terraform init -backend=false`、`terraform validate` | HCL 語法、型別、引用、validation 的寫法本身 | 下載 provider | 否 |
 | 行為 | `terraform test`，全部 `mock_provider "aws"` | 資源有沒有建、數量、命名、條件建立、validation 會不會擋下錯誤輸入（`expect_failures`） | 下載 provider | 否 |
-| 靜態規則 | `scripts/validate.sh` | §5.6 的 S1–S8：每個 test 都用 `mock_provider`、SSM 寫入只在 `ssm-publish`、SSM 讀取只在 `ssm-read`、IAM 只在 `iam-role`、`common.tf` 一致、tfbackend key 格式、`rds` 沒有 password 變數、範本 stack 只有例外清單上的原生 resource | 否 | 否 |
+| 靜態規則 | `scripts/validate.sh` | §5.6 的 S1–S8（增補 S9，Phase 12）：每個 test 都用 `mock_provider`、SSM 寫入只在 `ssm-publish`、SSM 讀取只在 `ssm-read`、IAM 只在 `iam-role`、`common.tf` 一致、tfbackend key 格式、`rds` 沒有 password 變數、範本 stack 只有例外清單上的原生 resource | 否 | 否 |
 
 每個 module 的 `tests/` 至少要有：
 
@@ -3436,6 +4608,21 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 
 範例 tfvars 的驗證方式：`scripts/validate.sh` 對有 `envs/examples/` 的 stack（`network`、`data`、`loadbalancer`），除了一般的 `terraform test`，再對每個範例檔各跑一次 `terraform test -var-file=envs/examples/<x>.tfvars`。這類測試放在 `tests/examples/`（dev、prod 的 tfvars 放在 `tests/tfvars/`），用 `-test-directory` 指定，一般的 `terraform test` 不會跑到它們（Phase 0 已實測：子目錄不會被預設的 `terraform test` 掃到）。測試直接吃範例檔的值，不在 `tests/*.tftest.hcl` 裡再複製一份 `variables {}`：複製一份的話，範例檔改了測試不會跟著變，等於沒驗到範例。這要求這幾個 stack 的測試檔不在 `variables {}` 寫死會蓋掉範例值的變數（`-var-file` 的值會被測試檔的 `variables {}` 覆蓋），斷言也要寫成對任何合法輸入都成立的形式（例如「`nat_mode = per_az` 時 NAT 數等於 AZ 數」，而不是「NAT 數等於 2」）。
 
+**增補：7 個新 module 與 `rds` Data API 的測試清單**（決策 37 起；Phase 13 照這張表做，每條 validation 都要有「合法邊界值通過」的對照 run）
+
+| module | run（plan，除非另註） | `expect_failures`（反向：通過的那一側寫在括號裡） |
+|---|---|---|
+| `bedrock-guardrail` | 預設 tier 是 `STANDARD`，`content_policy_config` 與 `topic_policy_config` 兩塊都有 `tier_config = [{ tier_name = "STANDARD" }]`；`cross_region_config.guardrail_profile_identifier` 等於由 `override_data` 的 partition、region、account 組成的 ARN；明寫 `CLASSIC` 時兩塊的 tier 都是 `CLASSIC`、沒有 `cross_region_config`；只有 `words` 時只有 `word_policy_config`，其他 policy 區塊都不存在；`denied_topics` 為空時沒有 `topic_policy_config`；`version` 輸出是 `DRAFT`；`PROMPT_ATTACK` 的 `output_strength = "NONE"` 照輸入 | 名稱 51 字或含空白（50 字通過）；`STANDARD` 沒給 profile（給了通過）；`CLASSIC` 給了 profile（null 通過）；profile id 格式錯（`apac.guardrail.v1:0` 通過）；31 個 topic（30 個通過）；全部 policy 都空（只有一個 word 通過）；strength 給 `EXTREME`；content filter key 給 `SPAM`；`PROMPT_ATTACK` 的 `output_strength = "HIGH"`；PII action 給 `MASK`；grounding 門檻 1.0（0.99 通過）；tier 給 `PREMIUM` |
+| `bedrock-inference-profile` | 每個 `profiles` 一個 profile，名稱 `<name_prefix>-<key>`、`model_source.copy_from` 照輸入；`profiles = {}` 時 0 個；`foundation-model` 與 `inference-profile` 兩種 ARN 都通過 | `copy_from` 不是 ARN 或是 `provisioned-model`；名稱 65 字（64 字通過） |
+| `agentcore-runtime` | `network_mode = "VPC"`，subnet 與 SG 照輸入；`mode = "PUBLIC"` 時沒有 `network_mode_config`；`lifecycle_configuration` 兩欄都有、預設 900／28800；**只覆寫 `idle_session_timeout` 時 `max_lifetime` 仍是 28800**（這條是 project-a 那個 PUT 坑的迴歸測試）；`jwt_authorizer = null` 時沒有 `authorizer_configuration`；`request_header_allowlist` 為空時沒有那個區塊；`container_uri` 照輸入、沒有 `ignore_changes`（grep，不是 run） | 名稱含 `-`（底線通過）、49 字（48 字通過）、數字開頭；`:latest`（明確 tag 與 digest 都通過）；不是 ECR 的 URI；`idle_session_timeout` 59 或 1209601（60、1209600 通過）；`idle > max_lifetime`；`role_arn` 帶 path 或不是 role；`VPC` 只給 1 個 subnet（2 個通過）；`VPC` 沒給 SG；`PUBLIC` 卻給了 subnet；`mode = "PRIVATE"`；`protocol = "GRPC"`；JWT 的 `discovery_url` 是 http 或少了 well-known 結尾；JWT 的 audience 與 clients 都是空的 |
+| `agentcore-memory` | `event_expiry_duration` 照輸入、預設 90；`strategies = {}` 時 0 個 strategy；每個 strategy 的 `memory_id` 等於 Memory 的 id、`type` 與 `namespaces` 照輸入、沒有 `configuration` | `event_expiry_days` 2 或 366（3、365 通過）、2.5；strategy 型別給 `CUSTOM`；`namespaces` 為空或不以 `/` 開頭；名稱含 `-` |
+| `agentcore-gateway` | `protocol_type = "MCP"`；`AWS_IAM` 時沒有 `authorizer_configuration`；`CUSTOM_JWT` 時有 `discovery_url` 與 audience；Lambda target 的 `lambda_arn` 照輸入、有 `credential_provider_configuration.gateway_iam_role`；`tools` 寫法產生 `inline_payload`，每個 property 一個 `property` block；`tool_schema_s3_uri` 寫法產生 `tool_schema.s3.uri`、沒有 `inline_payload`；MCP server target 的 `endpoint` 照輸入、沒有 credential 區塊；`targets = {}` 時 0 個 target；`mcp.search_type = null` 時不送 | `authorizer.type = "NONE"`；`CUSTOM_JWT` 沒有 `discovery_url`；`AWS_IAM` 給了 `discovery_url`；target 型別 `open_api`；Lambda target 沒給 `lambda_arn`；Lambda target 同時給 `tools` 與 `tool_schema_s3_uri`、或兩個都沒給（各給一個都通過）；MCP server target 給了 `lambda_arn`；`endpoint` 是 http；`tool_schema_s3_uri` 不是 `s3://`；property 型別給 `date`；同一個 target 兩個工具同名 |
+| `log-delivery` | 每個 source／destination／delivery 一個資源；XRAY destination 的 `delivery_destination_type = "XRAY"` 且沒有 `delivery_destination_configuration`；CWL destination 只有 `destination_resource_arn`；delivery 的 `delivery_source_name` 與 `delivery_destination_arn` 對到正確的 key；三個 map 都空時什麼都不建；`replace_triggered_by` 存在（grep，不是 run） | delivery 指向不存在的 source 或 destination；XRAY 給了 `resource_arn`；CWL 沒給或給了 S3 ARN；`log_type = "ACCESS_LOGS"`；destination `type = "FIREHOSE"`；名稱 61 字（60 字通過） |
+| `bedrock-knowledge-base` | `knowledge_base_configuration.type = "VECTOR"`、`storage_configuration.type = "RDS"`；`rds_configuration` 的五個欄位照輸入；`field_mapping` 沒給時是 `id`／`embedding`／`chunks`／`metadata`、沒有 `custom_metadata_field`；`dimensions` 照輸入；每個 `data_sources` 一個 data source，`type = "S3"`、`bucket_arn`、`inclusion_prefixes` 照輸入、`data_deletion_policy` 預設 `RETAIN`；`chunking.strategy = "NONE"` 時沒有 `fixed_size_chunking_configuration` | `cluster_arn` 是 `:db:` 的 instance ARN（`:cluster:` 通過）；`table_name` 含大寫、雙引號或三段；兩個欄位同名；欄位名含 `-`；`embedding_dimensions` 0 或 1.5；`embedding_model_arn` 是 inference profile；`overlap_percentage` 0 或 100（1、99 通過）；`max_tokens = 0`；`strategy = "SEMANTIC"`；`data_deletion_policy = "PURGE"`；prefix 以 `/` 開頭 |
+| `rds`（Data API） | **既有 5 個測試檔一行不改全部通過**；新檔 `tests/data-api.tftest.hcl`：預設時 `aws_rds_cluster.this[0].enable_http_endpoint == false`（`aurora` 與 `aurora_serverless` 各一）；`data_api = true` 時是 `true` | `deployment = "rds"` 配 `data_api = true`（`aurora` 配 `true` 通過） |
+
+這 7 個 module 不得有任何 `aws_iam_*`（S4），整個 repo 不得有 `aws_bedrock_guardrail_version`（S9），這兩條由 `validate.sh` 擋，不寫成 run。
+
 `run` 的 `command`：預設用 `plan`。**只有在宣告了 `mock_provider "aws"` 的測試檔裡，才可以用 `command = apply`**（mock 下的 apply 不碰 AWS，用來讓 `arn`、`id` 這類 computed 值有假值可以斷言）。`scripts/validate.sh` 已經檢查每個測試檔都有 `mock_provider "aws"`，所以這條由同一個檢查保證。
 
 tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance type 這類錯）要 `tflint --init` 從 GitHub 下載 plugin，第一版不用，列為下一版。
@@ -3476,6 +4663,19 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 12. **KMS key policy**：CloudWatch Logs、CloudWatch 告警發布到加密的 SNS、ECR、Secrets Manager 用 `kms-key` 建的 key 都正常；`s3-bucket` 的 ALB access log 在舊 region（`ap-northeast-1`）寫得進去。
 13. **X-Ray 抽樣**：用 ADOT sidecar（或 X-Ray SDK）的 remote sampling 確認 `xray` 建的 sampling rule 真的生效（health check 不再進 trace、`fixed_rate` 接近設定值）；確認 SDK 端固定比例抽樣（project-a 的做法）不受 rule 影響；確認 `log-metric-alarm` 的告警在印出事件後一分鐘內轉 ALARM、且 email 收得到；確認範本接好的 collector（`application/adot-collector.yaml`、`/healthcheck` 與 `health_check` extension、`essential = false`）在真實 task 裡 healthy 且 X-Ray console 看得到 trace；沒有 NAT 的 VPC 用 mirror 映像加 `ecr.api`、`ecr.dkr`、`xray` endpoint 與 S3 gateway endpoint 真的拉得到映像、送得出 trace；`v0.43.1` 這個 tag 在 ECR Public 上存在。
 14. 把 module 版本從 v0.x 升到 v1.0.0（見 §3.5）。
+
+增補（決策 37 起）。下面每一項都對應到文中某個標了「未實測」或「未驗證」的地方；同樣只留給實際部署的 repo：
+
+15. **guardrail**：`STANDARD` 加 `cross_region_config` 對中文輸入真的會擋、`CLASSIC` 不擋（重現 project-a 的實測）；寫錯的 profile id 在 apply 時成功、第一次 `ApplyGuardrail` 才失敗；`ApplyGuardrail` 在沒有 NAT 時走 `bedrock-runtime` endpoint 呼叫得到；guardrail profile 的 IAM 用 region `*` 時不會間歇失敗；module 的名稱、profile id、PII action、grounding 門檻、「至少一種 policy」這幾條 validation 跟 API 的實際規則一致。
+16. **Runtime 建立時的權限**：execution role 只有 trust、ECR、log 時 `CreateAgentRuntime` 是否成功；`iam-app` apply 之後第一次 invoke 是否就能呼叫模型、Memory、guardrail（§5.4 增補）。
+17. **AgentCore 的 VPC 模式**：Runtime 拉映像走服務端還是 VPC 裡的 ENI；沒有 NAT 時只靠 S3 gateway endpoint、`bedrock-runtime`、`bedrock-agentcore` endpoint 能不能拉到映像、呼叫到模型與 Memory；VPC 模式是否限定特定 AZ ID；每個 Runtime 用掉多少 ENI 與 IP（project-a 為此把 app subnet 切到 `/19`，§5.11），把結果補進 §5.11 的 IP 規劃公式。
+18. **名稱與列舉值**：Runtime、Memory、Gateway、target、KB、log delivery 的名稱規則與長度；Runtime 的 `protocol`、Memory strategy 的 `type`、log delivery 的 `log_type` 允許值；Runtime 的 `idle_session_timeout <= max_lifetime`。module 的 validation 比 AWS 寬時會在 apply 才失敗，比 AWS 窄時會擋掉合法的輸入，兩種都要在第一次部署時記下來改。
+19. **log-delivery**：CWL 目的地的 log group resource policy 由 CloudWatch 自動加（部署者有 `logs:PutResourcePolicy` 時）；Runtime 的 `APPLICATION_LOGS` 與 `TRACES` 真的進 log group 與 X-Ray；Runtime 重建時 `replace_triggered_by` 讓 delivery 一起替換、沒有 `ConflictException`；trace 需要帳號層的 Transaction Search（`aws/spans` log group），被清掉時 span 全部遺失且不報錯（`project-a/docs/runbook/runbook-agentcore.md:276`），guide 要寫檢查方式。
+20. **Gateway**：Lambda target 用 `gateway_iam_role` 呼叫 Lambda（project-b 沒有實際用過）；**MCP server target 不帶 credential provider 時 AWS 收不收**；扁平的 `tools` 產生的 inline schema 被 Gateway 接受；Runtime 在 VPC 裡呼叫 Gateway 需要哪個 interface endpoint 服務名稱（查證之前 `agent` 在沒有 NAT 時擋下 Gateway，J57）。
+21. **Knowledge Base**：Aurora PostgreSQL 的哪些版本支援 Data API、附的 pgvector 是否 0.5.0 以上；§4.30 的 SQL（欄位型別、三個索引）是否就是 Bedrock 要的；KB 建立時是否檢查表與欄位（決定 apply 順序是否真的要先跑 migration）；KB role 的動作清單是否足夠（Data API、`DescribeDBClusters`、secret、S3、嵌入模型）；用 RDS 管理的 master secret 當 `credentials_secret_arn` 是否可行（輪替後 KB 是否自動讀新值）；`StartIngestionJob` 跑完向量確實寫進表；`rds` 對既有 Aurora cluster 換成 `rds-v0.2.0`、`data_api = false` 時 plan 零差異。
+22. **KMS**：guardrail、Memory、KB data source 改用 `foundation` 的專案 key 時，key policy 要給哪些 service principal 與條件（範本目前傳 `null`，J59）。
+23. **跨帳號（A 側）**：A 帳號的 Runtime 與 ECS 服務用 `sts:AssumeRole` 取得 B 帳號 role、呼叫 B 帳號的模型；沒有 NAT 時 `sts` endpoint 是否足夠；`models.invoke_arns` 的 foundation-model region `*` 對 `global.` 前綴與地區前綴都成立（project-a 的實測在 B 側，A 側沒有）；`*` 是否涵蓋空 region，涵蓋的話 `global` 那條空 region 的 ARN 可以拿掉。
+24. **Memory strategy**：`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` 不給 `memory_execution_role_arn` 能不能建、能不能產生長期記憶（三個參考專案都沒用過 strategy）。
 
 ## 8. 安全考量
 
@@ -3544,6 +4744,19 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 
 腳本一律 `set -euo pipefail`，所有變數加引號，不用 `eval`。
 
+### 8.8 增補：LLM 與 AgentCore（決策 37 起）
+
+- **IAM 指向確切 ARN**：模型、Memory、guardrail、KB、Gateway、Runtime 的權限都在 `iam-app` 用 `agent` 發布的 ARN 附加，不用名稱萬用字元（§5.4 增補）。例外只有兩種 region 欄的 `*`：foundation-model（system inference profile 會跨 region 路由）與 guardrail profile（AWS 動態選 region），兩者的 id 都是確切值。`Resource = "*"` 的允許清單只多 `xray:PutSpans`，而且只給開了追蹤的 Runtime。
+- **沒列的就沒有**：ECS 服務只有列在 `iam-app` 的 `agent_access` 才有任何 `bedrock`／`bedrock-agentcore` 動作；Runtime 只有它在 `agent_runtimes` 裡列的模型、Memory、guardrail、KB。
+- **guardrail 預設 `STANDARD`**：`CLASSIC` 只評估英文，非英文產品等於沒有護欄，而且看起來一切正常（`status: READY`、plan 乾淨）。module 不建 guardrail 版本，S9 擋整個 repo；實際生效的永遠是 `DRAFT`，apply 的改動就是線上的政策。
+- **資源與 IAM 就位不等於功能生效**：guardrail 建好、權限給了，應用程式沒有呼叫 `ApplyGuardrail` 就沒有效果（project-a 的輸出護欄就是這樣，`project-a/docs/guide/guide-data-scientist.md:262-264`）。guide 要寫「怎麼確認真的有在擋」。
+- **trace 不含訊息內容**：Runtime 預設 `TRACELOOP_TRACE_CONTENT=false`（決策 49），對話內容不進 X-Ray；要開必須在 tfvars 明寫，PR 審查看得到。
+- **Gateway 一定要認證**：`agentcore-gateway` 不收 `authorizer_type = "NONE"`；範本固定 `AWS_IAM`，只有列了 `gateway = true` 的 Runtime 的 execution role 能呼叫。
+- **PUBLIC 模式**：Runtime 的對外連線不經過 SG 與 interface endpoint，範本只在明寫時使用，而且不能同時連資料庫（決策 42）。
+- **Knowledge Base 用 master secret**：KB 經 Data API 連資料庫用的是 `data` 的 master secret（第一版只有這個帳號，§8.2、J14）。這讓 Bedrock 的 KB role 拿得到最大權限的資料庫帳號，影響範圍是整個資料庫，跟 §8.2 應用程式用 master secret 是同一個風險。緩解：KB role 只有 `agent_service_roles` 含 `knowledge_base` 時才存在，`rds-data` 權限只到那一個 cluster。之後要補：另建只對 KB 那張表有權限的資料庫帳號與 secret（guide 附 SQL），`knowledge_bases` 加一個可選的 `credentials_secret_arn` 覆蓋（MINOR）。
+- **環境變數不是 secret 的地方**：Runtime 的環境變數在 console、API 與 state 裡都看得到。範本只放 id、ARN、URL；DB 密碼一律是 `DB_SECRET_ARN`，由 Runtime 用 execution role 自己讀。module 不做「值看起來像 secret」的檢查（J62）。
+- **控制面 endpoint 不建**：`network` 拒收 `bedrock-agentcore-control`，VPC 內的程式碼不該能改 AgentCore 的設定（project-a 的規格同樣明訂）。
+
 ## 9. 決策與待補事項
 
 ### 9.1 我已判斷（附理由，不同意請提出）
@@ -3598,6 +4811,23 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J47 | `aws_default_security_group` 算不算 S4 的範圍 | 不算「新建 SG」，留在 `vpc`；S4 另外寫一條：它只准出現在 `modules/vpc/` | 它接管 VPC 本來就有的 default SG 並清空規則，跟 VPC 生命週期綁在一起；只准在 `vpc`，模式 A 就不會碰到客戶的 default SG |
 | J48 | interface endpoint 的 tier 檢查放哪裡 | 從 `vpc` 的 precondition 搬到 network stack 的 validation | module 改收 subnet id，已經不知道 tier；tier 是範本的語意 |
 | J49 | private DNS 的前提由誰檢查 | network stack 在模式 A 用 `data "aws_vpc"` 檢查客戶 VPC 有開 `enable_dns_support`、`enable_dns_hostnames`；module 不檢查 | module 拿不到 VPC 屬性；自建 VPC 時 `vpc` 已經固定開啟 |
+| J50 | Knowledge Base 的文件來源 bucket 誰建 | 範本不建；`agent` 的 `knowledge_bases[*].data_sources[*].bucket_arn` 由專案在 tfvars 給（跟 `loadbalancer` 的 `certificate_arn` 一樣是外部輸入），KB role 的 S3 權限只到這些 bucket 與 prefix | `s3-bucket` 一律帶 lifecycle 到期（`expiration_days` 1–3650，沒有「不過期」），拿它建語料 bucket，文件會被自動刪掉、KB 下一次同步就跟著清空。讓 `s3-bucket` 支援不過期是它的 MINOR，等第一個專案真的需要時再做 |
+| J51 | KB 連資料庫用哪個帳號 | 第一版用 `data` 的 master secret，風險寫在 §8.8 | 範本第一版只有 master 帳號（J14）；另建帳號要在資料庫執行 SQL 並多一個 secret，範本目前沒有放它的地方。之後補可選的 `credentials_secret_arn` 覆蓋（MINOR） |
+| J52 | `agentcore-memory` 第一版的範圍與預設 | 只收內建的 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` strategy，不收 `CUSTOM` 與 self-managed；`event_expiry_days` 預設 90 | `CUSTOM` 要自訂模型、`append_to_prompt` 與 Memory execution role，範本就得多一個 role 與權限；三個參考專案都沒用過 strategy。保留天數越長、留存的個資越多，預設取中間值；project-a 用 365 是它自己的取捨 |
+| J53 | `agentcore-runtime` 要不要建 endpoint | 不建，只用 AWS 自帶的 `DEFAULT` | project-a 只用 `DEFAULT`；多 endpoint（例如藍綠）沒有專案需要，之後加是 MINOR |
+| J54 | Lambda target 的工具定義怎麼收 | `tool_schema_s3_uri`（完整定義放 S3）或扁平的 `tools`（每個工具一層屬性），兩者恰好一個 | schema 的 inline 工具定義是多層 block，不是 JSON 字串，Terraform 寫不出任意深度（§9.4 D23）；project-b 的寫法是一層 |
+| J55 | KB 與 Gateway 的 service role 由誰決定要不要建 | `iam-base` 的 `agent_service_roles`（`set(string)`，預設空），`agent` 用 precondition 檢查一致 | role 要在 `agent` 之前存在，只有更早的 stack 能決定；照「上游決定、下游檢查」的單一決定點寫法（J21）。不一律建立：決策 41 要求沒有輸入就什麼都不建 |
+| J56 | Runtime 的追蹤開關放哪裡 | `agent` 的 `agent_runtimes[*].tracing`，發布在 `agent_runtime_<rt>`；`iam-app` 照讀給 execution role 三個 X-Ray 動作（多一個 `xray:PutSpans`），不併進 `iam-app/tracing` | `agent` 在 `iam-app` 之前，它要知道開不開才能建 `TRACES` delivery 與設 OTEL 環境變數；`iam-app/tracing` 的名單是 ECS 服務（collector sidecar 用），兩者機制不同。`xray:PutSpans` 是 OTEL 直送 X-Ray 需要的動作（`project-a/infra-v2/terraform/iam/agentcore-role.tf`），所以允許清單多一個動作 |
+| J57 | 沒有 NAT 時能不能用 Gateway | 擋下（`agent` 的 precondition） | Runtime 經 VPC 呼叫 Gateway 要哪個 interface endpoint 服務名稱沒有查證；放行的話症狀是工具呼叫逾時，看起來像 Gateway 或 Lambda 的問題。§7.3 第 20 項查證後改成檢查那個 endpoint |
+| J58 | 範本的 Gateway 認證 | 固定 `AWS_IAM`，module 另外支援 `CUSTOM_JWT` | 範本裡呼叫 Gateway 的只有自己的 Runtime，用 execution role 簽 SigV4 最單純；JWT 要 IdP，範本沒有 |
+| J59 | guardrail 與 Memory 的 KMS | 範本傳 `null`（AWS 管的 key）；module 收 `kms_key_arn` | `foundation` 的專案 key 要給 Bedrock 與 AgentCore 哪些 service principal 與條件沒有實測（§7.3 第 22 項）；給錯的症狀是建立或讀寫失敗 |
+| J60 | Runtime 連 ECS 服務的 SG 規則 | 第一版不做；Runtime SG 只有 443 egress 與 `data_access` | project-a 的 Runtime 只連資料庫與外部 API；需要時在 `network` 的 `agent_runtimes` 加 `calls`，展開方式同服務的 `callers` |
+| J61 | `agent` 發布的 JSON 太大怎麼辦 | 每個 Runtime 一個 key；project 層級的 `models` 等放在一個 key；超過 4096 字時 `ssm-publish` 的 validation 在 plan 擋下 | `ssm-publish` 寫死 Standard tier（上限 4096 字）；改 Advanced tier 有費用，等真的有專案超過再說 |
+| J62 | 要不要檢查環境變數「看起來像 secret」 | 不做 | 只能靠猜（名稱含 `PASSWORD`、值像金鑰），會漏也會誤擋，還會讓人以為有防線；規則改成文件與審查：環境變數只放 id、ARN、URL |
+| J63 | `models` 的介面 | `foundation_model_id` 加可選的 `inference_profile_prefix`，不從一個字串解析 | foundation model id 與 system inference profile id 都是點分隔，`anthropic.x` 與 `apac.anthropic.x` 只能靠猜哪一段是地區前綴；分成兩個欄位，`invoke_arns` 的組法就沒有歧義 |
+| J64 | `data` 發布的 `database` 要加什麼 | 加 `cluster_arn`、`data_api` 兩個欄位 | KB 與 KB role 需要 cluster ARN；照 §5.6「新增欄位是相容的」。附註：D21 的 `rds` 新增輸出（`deployment`、資料庫名稱）不併進 `rds-v0.2.0`，要併由使用者決定 |
+| J65 | `agent` 的 lock 檔怎麼產生 | 照 Phase 8〈lock 檔的產生方式〉原文，硬性限制第 9 條的例外延伸到 Phase 14 的 `agent` 一個 stack | 新 stack 是 root，要提交全平台雜湊的 lock 檔；跟其他 8 個 stack 同一個 aws 版本（6.69.0），新 module 的下限 `>= 6.69` 也剛好滿足 |
+| J66 | 跨帳號與其他設定的關係 | `bedrock_invoke` 啟用時：所有列了 `models` 的 Runtime 與服務都改成 `sts:AssumeRole`；不准有 `tracked` 模型；KB 不受影響（KB 用本帳號的 KB role 呼叫本帳號的嵌入模型） | 一個專案的模型不是全在本帳號、就是全在 B 帳號，最單純；application inference profile 建在本帳號，B 帳號的 role 用不到 |
 
 ### 9.2 已拍板決策
 
@@ -3639,6 +4869,20 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 34 | interface endpoint 從 `vpc` 拆出來，成為 `vpc-interface-endpoints` module（interface endpoint 加 endpoint 專用的 SG，SG 只允許指定 CIDR 連 443，規則用獨立 rule 資源）；module 總數 19 個。`vpc` 移除 `interface_endpoints` 變數、endpoint SG 與 `vpce_security_group_id` 輸出；subnet、route table、IGW、NAT、gateway endpoint、flow log 留在 `vpc`。名稱用 `vpc-interface-endpoints` 不用 `vpc-endpoints`，避免誤會 gateway endpoint 也在裡面。`vpc` 還沒打過 tag，這項併進 `v0.1.0`，不算破壞性變更 | 使用者決定。IGW、NAT、gateway endpoint 都是路由，要跟 `vpc` 建的 route table 在一起，拆開的話 `per_az` NAT 對錯表不會報錯、加 AZ 要改兩個 module；客戶自管 VPC 時路由歸客戶，我們不該碰（project-a 2026-09-04 報告）。interface endpoint 不碰路由，拆出來之後 network stack 在自建與客戶既有 VPC 兩種模式都能呼叫 | §1、§4.7、§4.21、§5.3、§5.6 S4、§5.8、§5.11、§7.1 |
 | 35 | `iam-role` 與 `iam-role-policy` 新增第四條 validation：Allow statement 不准搭配 `NotResource`（沒寫 `Effect` 視為 Allow，Deny 搭配 `NotResource` 照樣放行），兩個 module 一字不差 | 使用者同意比照 `NotAction`：`Allow` 加 `NotResource` 的效果接近 `Resource = "*"`，原本三條都擋不到 | §4.14、§4.15、§7.1 |
 | 36 | 範本把 X-Ray 追蹤完整接好，預設關閉：`iam-app` 新增 `tracing`（單一決定點，task role 的 X-Ray 四個動作、發布 `tracing`），`application` 照它掛 ADOT collector sidecar 並設 OTEL 環境變數（映像由 `adot_collector = { tag, source }` 決定），`network` 新增發布 `interface_endpoints`，沒有 NAT 時 `application` 用 precondition 要求 mirror 映像與 `xray`、`ecr.api`、`ecr.dkr` endpoint。範本預設不開追蹤，只有 `tracing` 列了服務才會建立任何東西。**推翻決策 32 的後半句**（「ADOT、collector 設定、task role 的 X-Ray 權限由專案在 `application` 與 `iam-app` 自己決定」）以及 §4.20 原本「範本的 stack 預設不開追蹤；放進範本會讓每個專案都背一個預設關閉的 sidecar」的理由：`ecs-service` 的 `sidecars` 仍然通用、不寫死 ADOT，只是範本不再留空；單一決定點從 `iam-app/tracing_<service>` 改成一個 `iam-app/tracing` 清單 | 使用者決定：「第一版就讓 X-Ray 能完整用起來」 | §4.20、§5.3、§5.4、§5.6 |
+| 37 | **LLM 增補**：新增 7 個 module：`bedrock-guardrail`、`bedrock-inference-profile`、`agentcore-runtime`、`agentcore-memory`、`agentcore-gateway`、`log-delivery`、`bedrock-knowledge-base`，各自從 `<module>-v0.1.0` 開始；既有 19 個 `v0.1.0` tag 不動；不做 `s3-vectors`。寫進 v1 當增補（決策 37 起、Phase 11–16），不開 v2 | 使用者決定 | §1、§3.2、§3.5、§4.23–§4.30 |
+| 38 | Knowledge Base 的向量儲存只收 Aurora PostgreSQL pgvector（`rds_configuration`）。`vector` extension、表與索引由專案的 migration 建，Terraform 不碰；module 只接線並驗名稱與欄位對應；guide 附可照抄的 SQL；apply 順序 `data` → migration → `agent`。data source 只收 S3 | 使用者決定 | §4.30、§5.3 |
+| 39 | `rds` 新增 `data_api`（`enable_http_endpoint`，預設 `false`，只限 Aurora），既有消費端 plan 零差異，屬於 MINOR，發 `rds-v0.2.0` | 使用者決定；Bedrock KB 的 Aurora 儲存只能經 Data API。semver 判斷見 §4.31 | §4.31、§5.3 |
+| 40 | Gateway 的 target 只收 Lambda 與 MCP server；不做 credential provider、OpenAPI、Smithy、VPC Lattice | 使用者決定；唯一的參考（project-b）OpenAPI 經 VPC Lattice 跨帳號走不通，credential provider 牽涉 secret | §4.28 |
+| 41 | 範本新增 `agent` stack，預設關閉（沒有輸入就什麼都不建）；順序 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `agent` → `iam-app` → `loadbalancer` → `application`；`iam-base` 建只有基本權限的 role，`iam-app` 在 `agent` 之後附加確切 ARN 的權限（同決策 20、28 的 Proxy 兩段式）；單一決定點清單與 §5.6 合約表照增補更新 | 使用者決定；修掉 project-a 的名稱萬用字元與 tfvars 寫死 Runtime ARN | §5.3、§5.4、§5.6 |
+| 42 | Runtime 的網路模式預設 `VPC`，`PUBLIC` 只在明寫時允許（validation 加文件寫取捨）；沒有 NAT 時用 precondition 要求 `bedrock-runtime`、`bedrock-agentcore` endpoint（比照決策 36 對 X-Ray 的做法）；永遠不建 `bedrock-agentcore-control` endpoint | 使用者決定 | §4.26、§5.3、§8.8 |
+| 43 | 新 module 的 aws provider 是 `>= 6.69, < 7.0`，記為 §4.1 的例外 | 使用者採納建議：6.0 沒有 `aws_bedrockagentcore_*`，寫 `>= 6.0` 是做不到的承諾；6.69.0 是唯一查過 schema 的版本 | §4.1、§4.23 |
+| 44 | 跨帳號呼叫模型只做 A 側，設定只有一個地方（`agent` 的 `bedrock_invoke`），`iam-app`、`application` 照讀 | 使用者採納建議；project-a 把同一個值放在兩個 stack。B 側 role 由 B 帳號擁有者負責 | §5.3、§5.4 |
+| 45 | Runtime 的映像 tag 由 Terraform 擁有：不用 `ignore_changes`，不准 `:latest` | 使用者採納建議；跟 `ecs-service` 一致，繞過 Terraform 換版會被下一次 apply 退版 | §4.26 |
+| 46 | guardrail 的 tier 預設 `STANDARD`，`STANDARD` 必須給 cross-region profile id；不建 guardrail 版本，新增靜態規則 S9（`aws_bedrock_guardrail_version` 不得出現在 `modules/` 與 `templates/`；本次只寫文件，`validate.sh` 在 Phase 12 實作） | 使用者採納建議；`CLASSIC` 只評估英文，發佈版本之後 apply 對執行中的版本無效，兩者都不報錯 | §4.24、§5.6、§8.8 |
+| 47 | Bedrock 告警不在這次範圍；`iam-role` 支援 `aws:SourceArn` 延後 | 使用者採納建議；告警的指標維度要先實測，`SourceArn` 只有 KB 與 Gateway 的 trust 用得到 | §5.3 |
+| 48 | Runtime 的 `idle_session_timeout` 與 `max_lifetime` 一律一起送，預設 900／28800 | 使用者採納建議；底層 API 是 PUT，少送一個會靜默回到 AWS 預設 | §4.26 |
+| 49 | 範本的 Runtime 預設 `TRACELOOP_TRACE_CONTENT=false` | 使用者採納建議；對話內容不進 trace | §5.3、§8.8 |
+| 50 | guardrail profile 的 IAM ARN region 用 `*`；`models.invoke_arns` 由 `agent` 的一個 local 組，foundation-model 的 region 用 `*` | 使用者採納建議；兩者的 region 都由 AWS 動態決定，寫死會間歇失敗 | §5.3、§5.4 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 
@@ -3674,3 +4918,11 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D19 | （Phase 7 完成）實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 新增第四條「Allow 不准 `NotResource`」（決策 35）；`log-group` 的 subscription filter 名稱用 `var.name`，`role_arn` 是 provider 的 optional 加 computed，Lambda 目的地時為 null 只能靠程式碼保證；`log-metric-alarm` 的 `default_value` 在 module 內 `tostring()`，metric filter 不帶 tag；`xray` 的 `version = 1`、`resource_arn = "*"` 寫死；ADOT 範例的 sidecar 改成 `essential = false`；`vpc-interface-endpoints` 的 ingress rule 加 `Name` tag。另外：`allowed_cidrs` 有多個時，每條 ingress rule 的 `Name` 都是同一個 `<name>-vpce-https`，不影響運作，只是在 console 分不出哪一條對應哪個 CIDR | 以程式碼為準；`Name` 相同這點建議下一個 PATCH 版改成帶 CIDR，列為待統一 |
 | D20 | （Phase 8 完成，`e71db48`）範本 8 個 stack 的實作與 design 的差異 | 已回寫：`network/nat` 在客戶自管模式 A 發布 `{"mode":"external","ids":[]}`（§5.6 合約表）；`ssm-inputs.tf` 一律先把 key 清單放進 local 再傳給 `module "in"`，因為 `terraform test` 讀不到 module 的輸入值；`iam-base` 與 `application` 多一個 `module "in_services"` 讀每個服務一組的 key（§5.6 讀取寫法）；SG 之間的每條連線展開成「來源 egress ＋ 目的 ingress」兩條，規則數等於展開後的數量（§5.3 規則表）。另外：規則 key 實作是 `alb_in_<port>_<來源>`、`<來源>_out_<目的>`、`<目的>_in_<來源>`，跟 §4.16 範例的 `alb_in_https`、`api_out_proxy`、`db_in_proxy` 寫法不同（範例的規則 key 把 `db_proxy` 簡寫成 `proxy`，實作一律用完整的 SG key，例如 `api_out_db_proxy`、`db_in_db_proxy`）；測試的寫法差異記在 implement-process 的 Phase 8 節與風險表 R15、R16 | 以程式碼為準；§4.16 的範例只示意展開方式，規則 key 不改 |
 | D21 | （Phase 8 發現）三個 module 的小問題，之後發版處理 | `ecs-service` 的 `cpu`、`memory`、`cpu_architecture`、`desired_count` 有預設值但沒有 `nullable = false`，呼叫端傳 `null` 時不會套預設（`cpu_architecture` 會直接被 validation 擋下），範本在 `application` 的 `optional(..., 預設)` 補上同樣的值；`rds` 的輸出沒有 `deployment` 與資料庫名稱，`data` stack 發布 `database` JSON 時只能取自己的 `var.db`；`vpc-interface-endpoints` 在 `services = []`、什麼都不建時仍然要求至少 2 個 subnet；範本兩種模式的 app tier 都至少有 2 個 subnet，目前不受影響，但其他呼叫端不建 endpoint 也得給 subnet | 列為待辦，等級照 §3.5：`ecs-service` 補 `nullable = false` 是 PATCH（修正傳 `null` 時沒套預設的行為）；`rds` 新增輸出、`vpc-interface-endpoints` 在 `services` 為空時不檢查 subnet 是 MINOR（向下相容的新功能與放寬 validation）。修之前範本的寫法不用改 |
+| D22 | （LLM 增補規劃稿）「19 個 `v0.1.0` tag 在 `3a15b26`」 | 2026-10-15 改寫 git 歷史之後，19 個 tag 在 `28a8647`（`git tag --points-at 28a8647` 是 19 個） | implement-process Phase 11–16 的驗收指令改用 `git rev-parse <module>-v0.1.0^{commit}`，不寫死 hash |
+| D23 | （規劃稿）Lambda target 的工具定義收 `tool_schema_json` 字串 | aws 6.69.0 的 schema：`target_configuration.mcp.lambda.tool_schema.inline_payload` 是多層 block（`input_schema` → `property` → `items` …，第三層之後才有 `properties_json`／`items_json` 字串），不是 JSON 字串；`tool_schema.s3.uri` 對 Lambda 是 optional、對 MCP server 是必填；MCP server 的 inline payload 才是字串 | `agentcore-gateway` 改收 `tool_schema_s3_uri` 或扁平的 `tools`（J54） |
+| D24 | （規劃稿）Memory 的自訂 strategy「各要 `model_id`」 | schema 的 `configuration.extraction`／`consolidation`／`reflection` 除了 `model_id` 還必填 `append_to_prompt`，`reflection` 另外必填 `namespace_templates` | 第一版不收自訂 strategy（J52），不影響介面 |
+| D25 | （規劃稿）KB 的 `rds_configuration.field_mapping` 有四個欄位 | schema 有五個：`primary_key_field`、`vector_field`、`text_field`、`metadata_field` 必填，另有 optional 的 `custom_metadata_field` | `bedrock-knowledge-base` 收五個，第五個預設 null（§4.30） |
+| D26 | （規劃稿）省略 `tier_config` 就是 `CLASSIC` | 確認，而且 schema 裡 `tier_config` 是 optional 加 **computed**：省略之後 AWS 回填 `CLASSIC`，之後的 plan 不會出現差異，事後也看不出來 | module 一律明寫（§4.24） |
+| D27 | （規劃稿）Gateway 的參考 project-b「OpenAPI 經 VPC Lattice 失敗」引用 `gateway.tf:105-110` | 註解在第 109–113 行；另外檔頭寫明 Lambda target 是「legacy, currently unused」，所以 Lambda target 也沒有部署過的證據 | §4.28 照實寫「沒有部署過的證據」 |
+| D28 | （規劃稿）`rds` 要為 KB 新增 cluster ARN 輸出 | 不用：既有的 `arn` 輸出在 Aurora 時就是 cluster ARN | `rds-v0.2.0` 只加 `data_api` 一個變數（§4.31） |
+| D29 | （規劃稿）`global.` 前綴的模型另外列一條空 region 的 foundation-model ARN | 保留。project-a 的跨帳號 runbook 寫「foundation-model 那條的 region 必須是 `*`」，但同一個專案的批次評分角色仍列了空 region 那一條，註解寫「`*` 能不能涵蓋空 region，沒有在這個角色上實測過」（`project-a/infra-v2/terraform/iam/judge-batch-role.tf:71-78`） | `invoke_arns` 對 `global` 前綴多一條空 region 的 ARN，標未實測（§5.3 增補、§7.3 第 23 項） |
