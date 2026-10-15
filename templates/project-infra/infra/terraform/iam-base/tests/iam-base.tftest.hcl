@@ -27,6 +27,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in_services.data.aws_ssm_parameter.this["containerimage/ecr_api_arn"]
   values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-api" }
 }
@@ -41,10 +46,10 @@ run "reads_only_listed_keys" {
 
   assert {
     condition = (
-      local.ssm_input_strings == { kms_key_arn = "foundation/kms_key_arn", app_secret_arn = "foundation/app_secret_arn", mirrored_images = "containerimage/mirrored_images" } &&
+      local.ssm_input_strings == { kms_key_arn = "foundation/kms_key_arn", app_secret_arn = "foundation/app_secret_arn", mirrored_images = "containerimage/mirrored_images", agent_runtimes = "containerimage/agent_runtimes" } &&
       local.ssm_input_lists == { services = "containerimage/services" }
     )
-    error_message = "iam-base must read the project key, the app secret, the mirror list and the service list"
+    error_message = "iam-base must read the project key, the app secret, the mirror list, the Runtime list and the service list"
   }
 
   assert {
@@ -61,8 +66,9 @@ run "publishes_under_stack_path" {
       role_ecs_execution_arn  = "/alpha/dev/iam-base/role_ecs_execution_arn"
       role_rds_proxy_arn      = "/alpha/dev/iam-base/role_rds_proxy_arn"
       role_rds_monitoring_arn = "/alpha/dev/iam-base/role_rds_monitoring_arn"
+      agent_service_roles     = "/alpha/dev/iam-base/agent_service_roles"
     }
-    error_message = "ssm-publish must write the three role ARNs under the iam-base path"
+    error_message = "ssm-publish must write the three role ARNs and the service role list under the iam-base path"
   }
 }
 
@@ -272,9 +278,28 @@ run "monitoring_scoped_to_rdsosmetrics" {
 run "wildcard_resource_allowlist" {
   command = plan
 
+  variables {
+    agent_service_roles = ["knowledge_base", "gateway"]
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_assistant_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-assistant" }
+  }
+
+  assert {
+    condition     = length(local.agent_runtime_roles) == 1 && length(local.agent_service_roles) == 2
+    error_message = "The allow-list check must also walk the Runtime and service roles"
+  }
+
   assert {
     condition = alltrue(flatten([
-      for r in values(local.roles) : [
+      for r in values(merge(local.roles, local.agent_runtime_roles, local.agent_service_roles)) : [
         for p in values(r.policies) : [
           for s in jsondecode(p).Statement : [
             for a in flatten([s.Action]) : contains([
@@ -325,8 +350,205 @@ run "publishes_role_arns" {
       role_ecs_execution_arn  = "arn:aws:iam::111111111111:role/alpha-dev-ecs-execution"
       role_rds_proxy_arn      = "arn:aws:iam::111111111111:role/alpha-dev-rds-proxy"
       role_rds_monitoring_arn = "arn:aws:iam::111111111111:role/alpha-dev-rds-monitoring"
+      agent_service_roles     = "[]"
     }
     error_message = "Each published ARN must come from its role"
+  }
+}
+
+# ---- AgentCore and Bedrock roles: trust and base permissions only ----
+
+run "agent_roles_absent_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.agent_runtime_role) == 0 && length(module.agent_service_role) == 0
+    error_message = "Without Runtimes and service roles no AgentCore or Bedrock role may exist"
+  }
+
+  assert {
+    condition     = local.ssm_agent_strings == {} && length(module.in_agents.strings) == 0
+    error_message = "Without Runtimes iam-base must read no Runtime repository ARN"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_service_roles"] == "[]" && !contains(keys(local.published_strings), "role_bedrock_kb_arn") && !contains(keys(local.published_strings), "role_agentcore_gateway_arn")
+    error_message = "The service role list must be published as [] and the service role ARNs must be absent"
+  }
+}
+
+run "agent_runtime_execution_role" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\",\"order-bot\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_assistant_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-assistant" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_order_bot_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-order-bot" }
+  }
+
+  assert {
+    condition = local.ssm_agent_strings == {
+      ecr_agent_assistant_arn = "containerimage/ecr_agent_assistant_arn"
+      ecr_agent_order_bot_arn = "containerimage/ecr_agent_order_bot_arn"
+    }
+    error_message = "iam-base must read one repository ARN per Runtime, with hyphens turned into underscores"
+  }
+
+  assert {
+    condition     = toset(keys(module.agent_runtime_role)) == toset(["agent_assistant_execution", "agent_order_bot_execution"]) && module.agent_runtime_role["agent_order_bot_execution"].name == "alpha-dev-agent-order-bot"
+    error_message = "Each Runtime must get an execution role named <project>-<env>-agent-<name>"
+  }
+
+  assert {
+    condition = alltrue([for r in values(local.agent_runtime_roles) :
+      r.trust.service_principals == ["bedrock-agentcore.amazonaws.com"] && r.trust.source_account == "111111111111"
+    ])
+    error_message = "A Runtime execution role must trust only bedrock-agentcore.amazonaws.com, limited to this account"
+  }
+
+  assert {
+    condition = [
+      for s in jsondecode(local.agent_runtime_roles["agent_order_bot_execution"].policies["pull-and-log"]).Statement : flatten([s.Resource])
+      if contains(flatten([s.Action]), "ecr:BatchGetImage")
+    ] == [["arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-order-bot"]]
+    error_message = "A Runtime may pull only from its own repository"
+  }
+
+  assert {
+    condition = [
+      for s in jsondecode(local.agent_runtime_roles["agent_order_bot_execution"].policies["pull-and-log"]).Statement : flatten([s.Resource])
+      if contains(flatten([s.Action]), "logs:PutLogEvents") || contains(flatten([s.Action]), "logs:CreateLogGroup")
+      ] == [
+      ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/bedrock-agentcore/runtimes/alpha_dev_order_bot-*"],
+      ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/bedrock-agentcore/runtimes/alpha_dev_order_bot-*:log-stream:*"],
+    ]
+    error_message = "Runtime logs must be limited to the log groups AgentCore names after this Runtime"
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(local.agent_runtime_roles["agent_assistant_execution"].policies["pull-and-log"]).Statement : s.Action
+      ])) == toset([
+      "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability", "ecr:GetAuthorizationToken",
+      "logs:CreateLogGroup", "logs:DescribeLogStreams", "logs:CreateLogStream", "logs:PutLogEvents",
+    ])
+    error_message = "The Runtime execution role gets only image pull and log permissions here; iam-app adds the rest"
+  }
+
+  assert {
+    condition     = length(module.role) == 3
+    error_message = "Adding a Runtime must not change the three base roles"
+  }
+}
+
+run "agent_service_roles_trust_only" {
+  command = plan
+
+  variables {
+    agent_service_roles = ["knowledge_base", "gateway"]
+  }
+
+  assert {
+    condition     = module.agent_service_role["bedrock_kb"].name == "alpha-dev-bedrock-kb" && module.agent_service_role["agentcore_gateway"].name == "alpha-dev-agentcore-gateway"
+    error_message = "The service roles must be named <project>-<env>-bedrock-kb and <project>-<env>-agentcore-gateway"
+  }
+
+  assert {
+    condition = (
+      local.agent_service_roles["bedrock_kb"].trust.service_principals == ["bedrock.amazonaws.com"] &&
+      local.agent_service_roles["agentcore_gateway"].trust.service_principals == ["bedrock-agentcore.amazonaws.com"] &&
+      alltrue([for r in values(local.agent_service_roles) : r.trust.source_account == "111111111111"])
+    )
+    error_message = "The knowledge base role must trust bedrock.amazonaws.com and the gateway role bedrock-agentcore.amazonaws.com, limited to this account"
+  }
+
+  assert {
+    condition     = alltrue([for r in values(local.agent_service_roles) : length(r.policies) == 0])
+    error_message = "The service roles must have no policy here; iam-app attaches their permissions after the agent stack"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_service_roles"] == "[\"gateway\",\"knowledge_base\"]"
+    error_message = "The service role list must be published as a sorted JSON array"
+  }
+}
+
+run "agent_service_role_only_listed" {
+  command = plan
+
+  variables {
+    agent_service_roles = ["gateway"]
+  }
+
+  assert {
+    condition     = keys(module.agent_service_role) == ["agentcore_gateway"]
+    error_message = "Only the listed service roles may be created"
+  }
+}
+
+run "agent_service_role_unknown_rejected" {
+  command = plan
+
+  variables {
+    agent_service_roles = ["memory"]
+  }
+
+  expect_failures = [var.agent_service_roles]
+}
+
+run "publishes_agent_role_arns" {
+  command = plan
+
+  variables {
+    agent_service_roles = ["knowledge_base", "gateway"]
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"order-bot\"]" }
+  }
+
+  override_data {
+    target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_order_bot_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-agent-order-bot" }
+  }
+
+  override_module {
+    target  = module.agent_runtime_role["agent_order_bot_execution"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/alpha-dev-agent-order-bot" }
+  }
+
+  override_module {
+    target  = module.agent_service_role["bedrock_kb"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/alpha-dev-bedrock-kb" }
+  }
+
+  override_module {
+    target  = module.agent_service_role["agentcore_gateway"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway" }
+  }
+
+  assert {
+    condition = (
+      local.published_strings["role_agent_order_bot_execution_arn"] == "arn:aws:iam::111111111111:role/alpha-dev-agent-order-bot" &&
+      local.published_strings["role_bedrock_kb_arn"] == "arn:aws:iam::111111111111:role/alpha-dev-bedrock-kb" &&
+      local.published_strings["role_agentcore_gateway_arn"] == "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway"
+    )
+    error_message = "role_agent_<runtime>_execution_arn, role_bedrock_kb_arn and role_agentcore_gateway_arn must come from their roles"
+  }
+
+  assert {
+    condition     = contains(keys(module.ssm_publish.names), "role_agent_order_bot_execution_arn") && contains(keys(module.ssm_publish.names), "role_bedrock_kb_arn")
+    error_message = "The Runtime and service role ARNs must be written under the iam-base path"
   }
 }
 

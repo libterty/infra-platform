@@ -4,6 +4,8 @@ locals {
     app_secret_arn = "foundation/app_secret_arn"
     # JSON array of mirror names; "[]" when containerimage has no mirror.
     mirrored_images = "containerimage/mirrored_images"
+    # JSON array of Runtime names; "[]" when containerimage has no Runtime.
+    agent_runtimes = "containerimage/agent_runtimes"
   }
   ssm_input_lists = {
     services = "containerimage/services"
@@ -25,6 +27,9 @@ locals {
 
   mirror_key         = { for m in jsondecode(module.in.strings["mirrored_images"]) : m => replace(m, "-", "_") }
   ssm_mirror_strings = { for m, k in local.mirror_key : "ecr_mirror_${k}_arn" => "containerimage/ecr_mirror_${k}_arn" }
+
+  agent_key         = { for r in jsondecode(module.in.strings["agent_runtimes"]) : r => replace(r, "-", "_") }
+  ssm_agent_strings = { for r, k in local.agent_key : "ecr_agent_${k}_arn" => "containerimage/ecr_agent_${k}_arn" }
 }
 
 module "in_services" {
@@ -39,4 +44,11 @@ module "in_mirrors" {
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_mirror_strings
+}
+
+module "in_agents" {
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+
+  ssm_prefix = local.ssm_prefix
+  strings    = local.ssm_agent_strings
 }
