@@ -4,7 +4,7 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 
 第一版做出最小三層架構：ALB 在 public subnet，ECS 服務與資料庫在 private subnet。內容是 19 個 module、1 份 8 個 stack 的專案 infra 範本，以及使用與發版文件。全部只做離線驗證，不做 `plan`／`apply`，也不碰任何 AWS 帳號。
 
-目前進度：19 個 module 已完成；專案範本與使用文件依 `docs/design/v1/implement-process.md` 的 Phase 8–10 進行。
+目前進度：19 個 module、8 個 stack 的專案範本、六份使用指南與 `scripts/vendor-modules.sh` 已完成（Phase 0–9）；剩下 Phase 10 整體驗收，見下方文件地圖的實作步驟。還沒有打任何 tag，第一次發版的步驟見 [`releasing-modules.md`](./docs/guides/releasing-modules.md)。
 
 ## module
 
@@ -40,7 +40,7 @@ module "api" {
 }
 ```
 
-`<org>`、`<repo>` 尚未決定，先用佔位符。
+`<org>`、`<repo>` 尚未決定，先用佔位符。認證、升版與從範本複製出去的改法見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。
 
 ## 四個團隊怎麼用
 
@@ -75,4 +75,9 @@ commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 是 modul
 | 為什麼這樣設計、module 介面、stack 清單、SSM 合約 | [`docs/design/v1/design-docs.md`](./docs/design/v1/design-docs.md) |
 | 實作步驟與每個 Phase 的驗收 | [`docs/design/v1/implement-process.md`](./docs/design/v1/implement-process.md) |
 | 架構決策 | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md) |
-| 使用指南（`docs/guides/`） | Phase 7 補：`consuming-modules.md`、`project-infra-standard.md`、`releasing-modules.md`、`delivering-to-customer.md`、`team-roles.md` |
+| 怎麼引用 module、私有 repo 認證、升版 | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md) |
+| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式 | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md) |
+| 怎麼改 module、semver、release-please、第一次手動打 tag | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md) |
+| ADOT sidecar、X-Ray 權限與抽樣、log 告警 | [`docs/guides/observability.md`](./docs/guides/observability.md) |
+| FDE 交付：vendoring、provider 鏡像、客戶自管的 SSM 合約 | [`docs/guides/delivering-to-customer.md`](./docs/guides/delivering-to-customer.md) |
+| 四個團隊的責任與交接點 | [`docs/guides/team-roles.md`](./docs/guides/team-roles.md) |
