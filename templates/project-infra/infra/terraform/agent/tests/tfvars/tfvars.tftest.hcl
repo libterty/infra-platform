@@ -1,6 +1,15 @@
 # Run by scripts/validate.sh with -var-file=envs/<env>.tfvars; it checks the tfvars files themselves.
 # The upstream values below stand in for what containerimage, network, iam-base and data publish.
-mock_provider "aws" {}
+mock_provider "aws" {
+  # The hardened modules compare ARNs with the current account and region.
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111111111111" }
+  }
+
+  mock_data "aws_region" {
+    defaults = { region = "ap-northeast-1" }
+  }
+}
 
 override_data {
   target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
@@ -33,6 +42,11 @@ override_data {
 }
 
 # Values for the Runtime "assistant"; read only by the runs that configure it.
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["foundation/kms_key_arn"]
+  values = { insecure_value = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
+}
+
 override_data {
   target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_assistant_url"]
   values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-agent-assistant" }
@@ -69,7 +83,7 @@ run "tfvars_create_what_they_list" {
   assert {
     condition = (
       length(module.runtime) == length(var.agent_runtimes) && length(module.memory) == length(var.memories) &&
-      length(module.guardrail) == length(var.guardrails) && length(module.corpus_bucket) == length(var.knowledge_bases) &&
+      length(module.guardrail) == length(var.guardrails) && length(module.corpus_bucket) == length(var.knowledge_bases) && length(aws_secretsmanager_secret.kb_db) == length(var.knowledge_bases) &&
       length(module.gateway) == (var.agentcore_gateway == null ? 0 : 1)
     )
     error_message = "Every Runtime, Memory, guardrail, knowledge base and gateway in tfvars must be created, and nothing else"

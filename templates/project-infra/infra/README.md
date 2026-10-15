@@ -46,14 +46,14 @@ infra/
 | 3 | `network` | foundation、containerimage | VPC、subnet、security group（含每個 Runtime 的 `sg_agent_<rt>_id`）、`nat`、`interface_endpoints`、`agent_data_access` 與三個決定點，見下表 |
 | 4 | `iam-base` | foundation、containerimage（含 `mirrored_images`、`agent_runtimes` 與各 mirror、各 Runtime 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn`、`role_agent_<rt>_execution_arn`、`role_bedrock_kb_arn`、`role_agentcore_gateway_arn`、`agent_service_roles` |
 | 5 | `data` | foundation、network、iam-base | `database` |
-| 6 | `agent` | containerimage、network、iam-base、data | `agent_runtime_<rt>`、`models`、`guardrails`、`agent_memories`、`knowledge_bases`、`agentcore_gateway`、`bedrock_invoke`（沒有東西時也發布，值是空的 JSON） |
+| 6 | `agent` | foundation、containerimage、network、iam-base、data | `agent_runtime_<rt>`、`models`、`guardrails`、`agent_memories`、`knowledge_bases`、`agentcore_gateway`、`bedrock_invoke`（沒有東西時也發布，值是空的 JSON） |
 | 7 | `iam-app` | foundation、containerimage、network、iam-base、data、agent | `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing`、`agent_access` |
 | 8 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
 | 9 | `application` | 前面的 stack（`iam-app/tracing`、`iam-app/agent_access` 一律讀；有服務被追蹤時才另讀 `network/nat`、`network/interface_endpoints`，映像用 mirror 時再讀 `containerimage/mirrored_images` 與 `ecr_mirror_adot_collector_url`；`agent_access` 有列服務時才讀 `agent/*` 與 `network/nat`、`network/interface_endpoints`） | 不發布 |
 
 `agent` 一定要在 `iam-app` 之前 apply，即使什麼都沒開：`iam-app` 讀 `agent` 發布的 key。Runtime、Memory、guardrail 的權限在 `iam-app` 才附加，指向 `agent` 建好的確切 ARN（跟 RDS Proxy 一樣是兩段式）。
 
-第一次部署有 Knowledge Base 時的順序：`data`（`db.data_api = true`）→ 專案建 KB 專用資料庫帳號的 Secrets Manager secret、跑 migration、設密碼 → 把 secret ARN 寫進 `agent` 的 `knowledge_bases[*].credentials_secret_arn` → `agent` → `iam-app` → …。沒有 Knowledge Base 時不用這幾步。
+第一次部署有 Knowledge Base 時要分兩段 apply `agent`，步驟見〈Knowledge Base 第一次部署：兩段式步驟〉。沒有 Knowledge Base 時不用。
 
 destroy 前要先處理三件事，否則會失敗：把 ALB 與資料庫的 `deletion_protection` 改成 `false` 並 apply；清空 ECR repository（`force_delete = false`）；清空兩個 log bucket（`force_destroy = false`）。
 
@@ -114,6 +114,8 @@ terraform plan -var-file=envs/dev.tfvars
 | `agent/models` | `agent` 的 `models` | `iam-app`、`application` | `invoke_arns` 是模型 IAM Resource 的唯一來源，`iam-app` 不自己拼 ARN |
 | `agent/bedrock_invoke` | `agent` 的 `bedrock_invoke` | `iam-app`、`application` | 啟用時模型權限換成 `sts:AssumeRole`，並注入 `BEDROCK_INVOKE_*` |
 | `agent/agent_runtime_<rt>` 的 `tracing` | `agent` 的 `agent_runtimes[*].tracing` | `iam-app` | 開了的 Runtime，execution role 才有 X-Ray 動作（含 `xray:PutSpans`） |
+| `agent/agent_runtime_<rt>` 的 `workload_identity` | `agent` 的 `agent_runtimes[*].workload_identity`（預設 `false`） | `iam-app` | 開了的 Runtime，execution role 才有 `bedrock-agentcore:GetWorkloadAccessToken*`；只有 Runtime 經 AgentCore Identity 呼叫外部服務時才開 |
+| `agent/knowledge_bases` 的 `ready` | `agent` 的 `knowledge_bases[*].database_user_ready` | `iam-app`、`application` | `false` 時只有 secret 與語料 bucket，`id`、`arn` 是 `null`；KB role 的權限照樣附加。`agent` 擋掉 Runtime 用還沒 ready 的 KB；`iam-app` 的 `agent_access` 在 ready 之前不要列它 |
 | `iam-app/agent_access` | `iam-app` 的 `agent_access` | `application` | 有列的服務 task role 才有 `bedrock`／`bedrock-agentcore` 動作，也才注入 Runtime ARN、模型 id、guardrail id、KB id |
 
 ## SSM 合約
@@ -150,11 +152,11 @@ terraform plan -var-file=envs/dev.tfvars
 | `iam-base` | `role_agent_<rt>_execution_arn` | String | Runtime execution role |
 | `iam-base` | `role_bedrock_kb_arn`、`role_agentcore_gateway_arn` | String | 只有 `agent_service_roles` 含 `knowledge_base`／`gateway` 才存在 |
 | `iam-base` | `agent_service_roles` | String（JSON 陣列） | `["gateway","knowledge_base"]` 的子集合（已排序），沒有時 `[]` |
-| `agent` | `agent_runtime_<rt>` | String（JSON） | Runtime 的 `arn`、`id`、`name`、`execution_role_arn` 與它能用的 `models`、`memories`、`guardrails`、`knowledge_bases`（key 清單）、`gateway`、`tracing` |
+| `agent` | `agent_runtime_<rt>` | String（JSON） | Runtime 的 `arn`、`id`、`name`、`execution_role_arn` 與它能用的 `models`、`memories`、`guardrails`、`knowledge_bases`（key 清單）、`gateway`、`tracing`、`workload_identity` |
 | `agent` | `models` | String（JSON） | `{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}` |
 | `agent` | `guardrails` | String（JSON） | `{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`，沒有時 `{}`；`CLASSIC` 的 `profile_id` 是 `null` |
 | `agent` | `agent_memories` | String（JSON） | `{"<key>":{"id":…,"arn":…}}`，沒有時 `{}` |
-| `agent` | `knowledge_bases` | String（JSON） | `{"<key>":{"id":…,"arn":…,"embedding_model":…,"bucket_name":…,"bucket_arn":…,"inclusion_prefixes":{…},"data_source_ids":{…},"credentials_secret_arn":…}}`，沒有時 `{}`；`data_source_ids` 是 data source key → id，跑 `StartIngestionJob` 用；`credentials_secret_arn` 是 ARN，不是 secret 的值 |
+| `agent` | `knowledge_bases` | String（JSON） | `{"<key>":{"ready":…,"id":…,"arn":…,"embedding_model":…,"bucket_name":…,"bucket_arn":…,"inclusion_prefixes":{…},"data_source_ids":{…},"credentials_secret_arn":…}}`，沒有時 `{}`；`tfvars` 裡每個 KB 都有一筆，`database_user_ready = false` 時 `ready` 是 `false`、`id` 與 `arn` 是 `null`、`data_source_ids` 是 `{}`；`data_source_ids` 是 data source key → id，跑 `StartIngestionJob` 用；`credentials_secret_arn` 是 `agent` 建的 `<project>-<env>-kb-<key>-db` 的 ARN，不是 secret 的值 |
 | `agent` | `agentcore_gateway`、`bedrock_invoke` | String（JSON） | `{"enabled":false}` 或 `{"enabled":true,...}`；Gateway 的 `lambda_arns` 與 `tool_schema_arns`（Lambda target 工具定義的 S3 物件 ARN）給 `iam-app` 附加權限 |
 | `iam-app` | `agent_access` | String（JSON） | 服務 → `{runtimes, models, guardrails, knowledge_bases}`，沒有時 `{}` |
 
@@ -257,6 +259,21 @@ RDS Proxy 建立時，它的 role 還沒有讀 secret 的權限（權限由 `iam
 第二輪 apply 之後，`database` JSON 的 `app_endpoint` 會換成 Proxy endpoint。應用程式如果已經部署，要重新 apply `application`，`DB_HOST` 才會跟著換。
 
 預設是 dev 不開 Proxy、prod 開。有 AWS 沙箱帳號之後，先驗證這一項，把結果寫回這一節。
+
+## Knowledge Base 第一次部署：兩段式步驟
+
+`agent` 替每個 KB 建一個 Secrets Manager secret `<project>-<env>-kb-<key>-db`，用 `foundation` 的專案 KMS key 加密，跟 `foundation` 的 `app` secret 一樣只建容器、不含值：帳密不進 tfvars、SSM 與 state。值由專案寫入。Bedrock 建立 KB 時會不會檢查資料庫帳號，**沒有實測過**，所以照「會檢查」排成兩段：`knowledge_bases[*].database_user_ready` 預設 `false`，只建 secret 與語料 bucket，不建 KB。
+
+| 步驟 | 誰 | 做什麼 |
+|---|---|---|
+| 1 | 範本 | `data` 設 `db.data_api = true`、`iam-base` 的 `agent_service_roles` 含 `knowledge_base`，照順序 apply 到 `data` |
+| 2 | 範本 | `agent` 的 `knowledge_bases` 加上這個 KB，`database_user_ready` 不寫（`false`），`agent_runtimes` 先不列它；apply `agent`，再 apply `iam-app`（KB role 拿到讀這個 secret、語料 bucket、Data API 的權限） |
+| 3 | 專案 | 寫入 secret 的值：`aws secretsmanager put-secret-value --secret-id <project>-<env>-kb-<key>-db --secret-string file://<檔案>`，內容是 `{"username":"bedrock_kb_user","password":"<隨機產生>"}`。密碼用 `aws secretsmanager get-random-password` 產生，經檔案傳入、用完刪掉，不進 shell history |
+| 4 | 專案 | 用 master 帳號跑 migration：建 `bedrock_kb_user`、schema、表與授權（design §4.30），再執行 `ALTER ROLE bedrock_kb_user PASSWORD '<secret 裡的值>'`。密碼從 secret 讀出來直接送進 psql，不寫進 migration 檔 |
+| 5 | 範本 | `database_user_ready = true`，要用它的 Runtime 在 `agent_runtimes[*].knowledge_bases` 列上；依序 apply `agent`（建 KB 與 data source）、`iam-app`（Runtime 與服務的 `bedrock:Retrieve*` 指向 KB 的 ARN）、`application` |
+| 6 | 專案 | 上傳文件到語料 bucket，呼叫 `StartIngestionJob` |
+
+換密碼時 `put-secret-value` 與 `ALTER ROLE` 要一起做，secret 沒有自動輪替。`agent` destroy 後 secret 會留在 7–30 天的復原期，期間重建同名 secret 會撞名。
 
 ## 驗證
 

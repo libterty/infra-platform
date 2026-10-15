@@ -23,6 +23,7 @@ tf_stack_glob="templates/project-infra/infra/terraform"
 # (native resources allowed in template stacks). Format: <stack>:<resource type>.
 s8_allowed=(
   "foundation:aws_secretsmanager_secret"
+  "agent:aws_secretsmanager_secret"
 )
 
 command -v terraform >/dev/null || { echo "找不到 terraform" >&2; exit 1; }
