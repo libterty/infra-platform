@@ -52,6 +52,8 @@ module "gateway" {
 - **名稱規則與 `discovery_url` 的格式檢查是照 API 文件寫的，未實測。** 名稱只收英數與單一 `-`，最多 100 字；target 名稱就是 `targets` 的 key。
 - **`CUSTOM_JWT` 要有 IdP。** `discovery_url` 必須是 `https://` 且以 `/.well-known/openid-configuration` 結尾，`allowed_audience` 與 `allowed_clients` 至少一個非空。
 - **`AWS_IAM` 時呼叫端要有 `bedrock-agentcore:InvokeGateway`**，resource 是 `gateway_arn`。
+- **Lambda target 預設只能在目前的帳號。** `lambda_arn` 的帳號不是目前帳號、也不在 `allowed_account_ids` 裡，plan 會被 precondition 擋下（帳號來自 `aws_caller_identity`，variable validation 讀不到 data source）。要接別的帳號的 Lambda，把那個帳號 ID 明寫進 `allowed_account_ids`。
+- **`tool_schema_s3_uri` 沒有帳號檢查。** S3 URI 不帶帳號，module 判斷不了 bucket 屬於誰；bucket 的歸屬由 Gateway role 的 `s3:GetObject` 範圍控制。
 
 ## 刻意不做
 
@@ -69,10 +71,11 @@ module "gateway" {
 |---|---|---|---|---|
 | `name` | `string` | 無 | 是 | Gateway 名稱。英數與單一 `-`，最多 100 字 |
 | `description` | `string` | `null` | 否 | Gateway 說明 |
-| `role_arn` | `string` | 無 | 是 | Gateway 的 service role ARN（不帶 path）。Lambda target 用這支 role 呼叫 |
-| `authorizer` | `object` | `{ type = "AWS_IAM" }` | 否 | `type`：`AWS_IAM` 或 `CUSTOM_JWT`。`CUSTOM_JWT` 時 `discovery_url` 必填、`allowed_audience`／`allowed_clients` 至少一個非空；`AWS_IAM` 時這三個不可給 |
+| `role_arn` | `string` | 無 | 是 | Gateway 的 service role ARN，可以帶 path。Lambda target 用這支 role 呼叫 |
+| `authorizer` | `object` | `{ type = "AWS_IAM" }` | 否 | `type`：`AWS_IAM` 或 `CUSTOM_JWT`。`CUSTOM_JWT` 時 `discovery_url` 必填、`allowed_audience`／`allowed_clients` 至少一個非空；`allowed_audience`／`allowed_clients` 不可有空字串或只有空白的項目；`AWS_IAM` 時這三個不可給 |
 | `mcp` | `object` | `{}` | 否 | `supported_versions`（預設 `["2025-03-26"]`）、`search_type`（`SEMANTIC` 開啟工具搜尋；預設 `null`，不送） |
-| `kms_key_arn` | `string` | `null` | 否 | 加密用的 customer managed key；`null` 用 AWS 管的 key |
+| `kms_key_arn` | `string` | `null` | 否 | 加密用的 customer managed key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，不收 alias 與單獨的 key id）；`null` 用 AWS 管的 key |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、Lambda target 可以在的帳號（12 位數字）。空的時候所有 Lambda target 都必須在目前帳號；`tool_schema_s3_uri` 與 MCP server target 不檢查 |
 | `targets` | `map(object)` | `{}` | 否 | key 是 target 名稱（規則同 `name`）。`type`：`lambda` 或 `mcp_server`；`description` 選填。`lambda`：`lambda_arn` 必填，`tool_schema_s3_uri`（`s3://bucket/key`）與 `tools` 恰好一個，不可給 `endpoint`。`tools` 每個元素有 `name`（同 target 內不重複）、`description`（不可空白）、`properties`（map，key 是屬性名稱；`type` 只收 `string`、`number`、`integer`、`boolean`、`object`、`array`，`description` 選填，`required` 預設 `false`）。`mcp_server`：`endpoint` 必填且是 `https://`，不可給 Lambda 的欄位 |
 | `tags` | `map(string)` | `{}` | 否 | 套用到 Gateway 的 tag，另外加 `Name` |
 

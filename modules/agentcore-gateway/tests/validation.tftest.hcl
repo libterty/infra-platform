@@ -1,5 +1,10 @@
 mock_provider "aws" {}
 
+override_data {
+  target = data.aws_caller_identity.current
+  values = { account_id = "111111111111" }
+}
+
 variables {
   name     = "alpha-dev-gateway"
   role_arn = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway"
@@ -58,11 +63,47 @@ run "name_underscore_rejected" {
   expect_failures = [var.name]
 }
 
-run "role_arn_with_path_rejected" {
+run "role_arn_with_path_accepted" {
   command = plan
 
   variables {
     role_arn = "arn:aws:iam::111111111111:role/service-role/alpha-dev-gateway"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway.this.role_arn == "arn:aws:iam::111111111111:role/service-role/alpha-dev-gateway"
+    error_message = "A role ARN with a path must pass"
+  }
+}
+
+run "role_arn_with_nested_path_accepted" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role/team/agents/alpha-dev-gateway"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway.this.role_arn == "arn:aws:iam::111111111111:role/team/agents/alpha-dev-gateway"
+    error_message = "A role ARN with a nested path must pass"
+  }
+}
+
+run "role_arn_trailing_slash_rejected" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role/service-role/"
+  }
+
+  expect_failures = [var.role_arn]
+}
+
+run "role_arn_empty_path_segment_rejected" {
+  command = plan
+
+  variables {
+    role_arn = "arn:aws:iam::111111111111:role//alpha-dev-gateway"
   }
 
   expect_failures = [var.role_arn]

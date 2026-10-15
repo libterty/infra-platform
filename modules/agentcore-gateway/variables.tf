@@ -19,8 +19,8 @@ variable "role_arn" {
   description = "Gateway service role. Lambda targets are invoked with this role, so it needs lambda:InvokeFunction on them."
 
   validation {
-    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
-    error_message = "role_arn must be an IAM role ARN without a path."
+    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role(/[A-Za-z0-9+=,.@_-]+)*/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
+    error_message = "role_arn must be an IAM role ARN; a path is allowed."
   }
 }
 
@@ -58,6 +58,11 @@ variable "authorizer" {
     )
     error_message = "AWS_IAM takes no discovery_url, allowed_audience or allowed_clients."
   }
+
+  validation {
+    condition     = alltrue([for v in setunion(var.authorizer.allowed_audience, var.authorizer.allowed_clients) : length(trimspace(v)) > 0])
+    error_message = "allowed_audience and allowed_clients must not contain empty or whitespace-only entries."
+  }
 }
 
 variable "mcp" {
@@ -73,7 +78,24 @@ variable "mcp" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key for the gateway. null uses an AWS owned key."
+  description = "Customer managed key ARN for the gateway. null uses an AWS owned key."
+
+  validation {
+    condition     = var.kms_key_arn == null ? true : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-f-]{36}$", var.kms_key_arn))
+    error_message = "kms_key_arn must be a KMS key ARN (arn:...:kms:<region>:<account>:key/<key id>); aliases and bare key ids are not accepted."
+  }
+}
+
+variable "allowed_account_ids" {
+  type        = set(string)
+  default     = []
+  nullable    = false
+  description = "Accounts other than the current one that Lambda targets may live in. Empty means every Lambda target must be in the current account. tool_schema_s3_uri carries no account and is not checked."
+
+  validation {
+    condition     = alltrue([for a in var.allowed_account_ids : can(regex("^[0-9]{12}$", a))])
+    error_message = "allowed_account_ids must contain 12-digit AWS account IDs."
+  }
 }
 
 variable "targets" {

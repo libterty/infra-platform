@@ -1,3 +1,9 @@
+data "aws_caller_identity" "current" {}
+
+locals {
+  trusted_account_ids = setunion([data.aws_caller_identity.current.account_id], var.allowed_account_ids)
+}
+
 resource "aws_bedrockagentcore_gateway" "this" {
   name            = var.name
   description     = var.description
@@ -33,6 +39,14 @@ resource "aws_bedrockagentcore_gateway_target" "this" {
   gateway_identifier = aws_bedrockagentcore_gateway.this.gateway_id
   name               = each.key
   description        = each.value.description
+
+  lifecycle {
+    # Variable validation cannot read data sources, so the account check lives here.
+    precondition {
+      condition     = each.value.type != "lambda" ? true : contains(local.trusted_account_ids, split(":", each.value.lambda_arn)[4])
+      error_message = "Lambda target ${each.key} is in account ${each.value.type == "lambda" ? split(":", each.value.lambda_arn)[4] : ""}, which is neither the current account nor listed in allowed_account_ids."
+    }
+  }
 
   # The gateway calls the Lambda with its own role. MCP server targets get no
   # outbound credential because credential providers are out of scope.
