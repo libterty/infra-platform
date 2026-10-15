@@ -1,5 +1,5 @@
 variable "db" {
-  description = "The database. null creates none and publishes {\"enabled\":false}. Set only the object that matches deployment (rds, aurora or serverless); alarm_config.connections_threshold is required for rds and aurora."
+  description = "The database. null creates none and publishes {\"enabled\":false}. Set only the object that matches deployment (rds, aurora or serverless); alarm_config.connections_threshold is required for rds and aurora. data_api turns on the RDS Data API (Aurora only); the agent stack needs it for Bedrock knowledge bases."
   type = object({
     deployment     = string # rds | aurora | aurora_serverless
     engine_version = string # PostgreSQL major.minor
@@ -29,6 +29,8 @@ variable "db" {
     alarm_config = optional(object({
       connections_threshold = optional(number)
     }), {})
+
+    data_api = optional(bool, false)
   })
   default = null
 }
