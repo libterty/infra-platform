@@ -41,6 +41,10 @@ locals {
       contains(local.tracing_enabled, s) ? {
         tracing = jsonencode({ Version = "2012-10-17", Statement = local.tracing_statements })
       } : {},
+      # Only services listed in agent_access get any bedrock or bedrock-agentcore action (agent-policies.tf).
+      length(lookup(local.service_agent_statements, s, [])) > 0 ? {
+        agent = jsonencode({ Version = "2012-10-17", Statement = local.service_agent_statements[s] })
+      } : {},
     )
   }
 }
