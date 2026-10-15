@@ -35,7 +35,7 @@ module "memory" {
 - 名稱只能用字母、數字、底線，字母開頭，最長 48 字。不能有 `-`，專案的命名前綴要先把 `-` 換成 `_`。provider 也會在 plan 階段擋同一條規則。
 - strategy 的名稱就是 `strategies` 的 key，規則跟 Memory 名稱相同（照 API 文件，**未實測**）。
 - strategy 只收內建的 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE`，每個至少一個 namespace，namespace 以 `/` 開頭（照 API 文件，**未實測**）。內建 strategy 不給 `memory_execution_role_arn` 能不能建、能不能產生長期記憶，也**未實測**。
-- `kms_key_arn` 給自管 key 時，key policy 要讓 AgentCore 使用這把 key；要給哪些 service principal 與條件**未實測**，範本目前傳 `null`。
+- `kms_key_arn` 只收 `arn:aws:kms:<region>:<account>:key/<uuid>` 或 multi-region key 的 `key/mrk-<32 碼>`，alias 與 `*` 都擋。給自管 key 時，key policy 要讓 AgentCore 使用這把 key；要給哪些 service principal 與條件**未實測**，範本目前傳 `null`。
 - Runtime 的 execution role 需要 `bedrock-agentcore:CreateEvent`、`ListEvents`、`GetEvent`、`RetrieveMemoryRecords`，Resource 用這裡輸出的 `memory_arn`。這個 module 不建 IAM。
 - strategy 沒有 tag，`tags` 只套用到 Memory。
 
@@ -56,7 +56,7 @@ module "memory" {
 | `description` | `string` | `null` | 否 | Memory 的說明 |
 | `event_expiry_days` | `number` | `90` | 否 | 短期事件保留天數，7–365 的整數 |
 | `strategies` | `map(object)` | `{}` | 否 | key 為 strategy 名稱（規則同 `name`）。欄位：`type`（`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE`，必填）、`namespaces`（至少一個、以 `/` 開頭，例如 `/actors/{actorId}/facts`，必填）、`description`（選填） |
-| `kms_key_arn` | `string` | `null` | 否 | 自管 KMS key 的 ARN；`null` 用 AWS 管的 key |
+| `kms_key_arn` | `string` | `null` | 否 | 自管 KMS key 的 ARN（`key/<uuid>`，不收 alias 與 `*`）；`null` 用 AWS 管的 key |
 | `tags` | `map(string)` | `{}` | 否 | 套用到 Memory 的 tag，另外自動加 `Name` |
 
 ## 輸出
