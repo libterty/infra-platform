@@ -10,8 +10,8 @@ infra-platform 是Terraform private registry 的範例 repo。它用「Git tag �
 
 第一版做出一個最小的三層架構：ALB 放 public subnet，ECS 服務（AP 層）與資料庫（DB 層）放 private subnet。內容是：
 
-- 18 個 module，起始版本都是 `v0.1.0`：
-  - 網路與入口：`vpc`、`alb`
+- 19 個 module，起始版本都是 `v0.1.0`：
+  - 網路與入口：`vpc`、`vpc-interface-endpoints`、`alb`
   - 資料：`rds`（一個 module 支援一般 RDS、Aurora、Aurora Serverless v2 三種型態，RDS Proxy 是選項）
   - 運算：`ecs-cluster`、`ecs-service`、`ecs-service-alarms`
   - 共用基礎：`kms-key`、`ecr-repository`、`s3-bucket`、`sns-alarm-topic`、`security-group`
@@ -53,6 +53,7 @@ infra-platform/
 │   └── vendor-modules.sh          # FDE 交付用：把指定 tag 的 module 複製進客戶 repo 並改寫 source
 ├── modules/
 │   ├── vpc/
+│   ├── vpc-interface-endpoints/
 │   ├── alb/
 │   ├── rds/
 │   ├── kms-key/
@@ -144,7 +145,7 @@ infra-platform/
 
 - 這是 release-please manifest 模式的預設格式（`<component>-v<version>`），也對得上 HCP Terraform private registry 的 Module Tag Prefix。
 - 不用帶斜線的 `ecs-service/v1.0.0`：HCP 是否支援沒有查證，斜線在 URL 的 `?ref=` 也容易出錯。
-- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|log-group|log-metric-alarm|xray|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
+- `scripts/vendor-modules.sh` 與 CI 用 `^(vpc|vpc-interface-endpoints|alb|rds|kms-key|ecr-repository|s3-bucket|iam-role|iam-role-policy|security-group|log-group|log-metric-alarm|xray|ssm-read|ecs-cluster|ecs-service|ecs-service-alarms|sns-alarm-topic|ssm-publish)-v[0-9]+\.[0-9]+\.[0-9]+$` 檢查 tag；module 名稱清單從 `modules/` 目錄讀，不手寫。
 
 ### 3.3 消費端寫法
 
@@ -183,8 +184,8 @@ module "api" {
 
 - **in-place 變更要寫進 CHANGELOG**。MINOR 版如果會讓既有資源 in-place 更新（例如告警門檻從 80 改 85），CHANGELOG 必須寫出消費端 plan 會看到哪幾個資源、哪個屬性變了。
 - **ECS task definition 的變更要特別標註**。task definition 只要內容變就會產生新 revision，ECS 會滾動部署。不會 replace 資源位址，算 MINOR，但 CHANGELOG 要寫「會觸發一次部署」。
-- **起始版本**：18 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
-- **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 18 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在整體驗收通過的 commit 上手動打 18 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
+- **起始版本**：19 個 module 都從 `v0.1.0` 開始（已拍板，§9.2），因為還沒在真實 AWS apply 過。0.x 期間 MINOR 可以有破壞性變更，CHANGELOG 要寫清楚。§7.3 的實環境驗證做完才升 `v1.0.0`。
+- **第一個 tag 由人手動打**：`.release-please-manifest.json` 把 19 個 module 都登記為 `0.1.0`，release-please 會把它當成已經發過，不會產生 `<module>-v0.1.0`。所以第一次發版前，由 platform team 在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag；之後的版本才交給 release-please。
 
 ### 3.6 升級到真 registry 的路徑
 
@@ -221,7 +222,7 @@ module 程式碼不用改。這是第一版就照 standard module structure（`m
 | 版本範圍 | module 用範圍（`>= 6.0, < 7.0`），root 用 `~> 6.x` 加 `.terraform.lock.hcl` 釘死實際版本 |
 | lock 檔 | **module 不提交 `.terraform.lock.hcl`**（Terraform 只採用 root module 的 lock，module 的 lock 對消費端沒有作用）；範本的每個 stack 是 root，要提交 |
 | 依賴 | 一律從外部傳入（cluster ARN、role ARN、subnet、SG、topic ARN），module 之間不互相呼叫，平坦組合 |
-| IAM | **只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（`aws_iam_role`、`aws_iam_role_policy`）。其他 13 個 module 不建任何 `aws_iam_*`，需要 role 的地方（ECS execution／task role、RDS Proxy role、Enhanced Monitoring role）一律收 ARN；範本的 stack 也一律透過這兩個 module（§5.4）。由 `scripts/validate.sh` 靜態檢查（§5.6 S4） |
+| IAM | **只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（`aws_iam_role`、`aws_iam_role_policy`）。其他 17 個 module 不建任何 `aws_iam_*`，需要 role 的地方（ECS execution／task role、RDS Proxy role、Enhanced Monitoring role）一律收 ARN；範本的 stack 也一律透過這兩個 module（§5.4）。由 `scripts/validate.sh` 靜態檢查（§5.6 S4） |
 | stack 只呼叫 module | 範本的 stack 不寫原生 AWS resource，只呼叫 module。例外要列在 §5.3〈stack 裡的原生資源〉並寫理由，`scripts/validate.sh` 依這份清單檢查。data source 不算（`data "aws_ssm_parameter"` 除外，只能在 `ssm-read` 裡） |
 | 註解與訊息的語言 | `modules/` 底下的 `.tf` 與 `.tftest.hcl`，所有註解、`description`、`error_message` 一律只用英文，不可中英混雜，禁止任何 icon／emoji。註解只寫「程式碼看不出來的原因」，不要寫多。`README.md`、`CHANGELOG.md` 不受這條限制。本文件 HCL 範例裡的中文註解只為了說明，實作時要改成英文或拿掉 |
 | inline 規則 | security group 與 route table 一律用獨立資源（`aws_vpc_security_group_ingress_rule`／`egress_rule`、`aws_route`），不用 inline `ingress {}`／`route {}`。inline 寫法對整個 SG／整張表有權威性，客戶在 console 加的規則與路由會在下一次 apply 被靜默刪除（`project-a/docs/reports/2026-09-04-customer-owned-network-and-terraform.md`、`project-a/infra-v2/terraform/network/nat.tf` 的註解） |
@@ -859,14 +860,13 @@ variable "lists" {
 
 ### 4.7 `vpc`
 
-**用途**：建一個 VPC 與它的 subnet、IGW、NAT、route table、VPC endpoint、flow log。tier 的數量與切法由呼叫端決定，module 不寫死「三層」。
+**用途**：建一個 VPC 與它的 subnet、IGW、NAT、route table、gateway endpoint、flow log。interface endpoint 不在這裡，由 `vpc-interface-endpoints`（§4.21）負責。tier 的數量與切法由呼叫端決定，module 不寫死「三層」。
 
 **參考來源**
 
 - subnet 依 tier 分、`cidrsubnet` 自動切：`project-a/infra-v2/terraform/network/vpc.tf`、`subnets-app.tf`
 - 三種 tier 的路由（public 走 IGW、private 走 NAT、db 只有 local）、S3 gateway endpoint 關聯全部私有路由表：`project-a/docs/spec/infra.md`〈網路網段與子網配置模型〉、`project-a/infra-v2/terraform/network/nat.tf`、`vpc-endpoints.tf`
 - 明確指定每個 subnet 的 CIDR、tier 名稱：`project-c-infra/environments/{uat,prod}/network/terraform.tfvars`（`ingress`／`ecs`／`db`／`egress` 四個 tier）
-- interface endpoint 清單：`project-c-infra/environments/uat/platform/terraform.tfvars`（`vpce_interface_config`）
 
 **要修掉的坑**：project-a 的 `ecs_app` 與 `agent_app` 用不同的 `newbits` 從同一個 VPC CIDR 切，只放得下兩個 AZ，第三個 AZ 會跟別的 subnet 靜默重疊，只能靠一條寫死的 precondition 擋（`project-a/infra-v2/terraform/network/subnets-app.tf` 的 `two_az_layout_ok`）。這裡改成把所有 subnet 的 CIDR 換成起訖整數，兩兩比對不重疊，不管怎麼切都擋得住。
 
@@ -884,8 +884,6 @@ variable "lists" {
 | `aws_route.private_nat` | private tier 的每張表，`nat_mode != "none"` | `single`：全部指向同一顆；`per_az`：指向同 AZ 那顆 |
 | （isolated tier） | — | 只有 local 路由 |
 | `aws_vpc_endpoint.gateway` | `for_each = gateway_endpoints` | 關聯所有 private 與 isolated tier 的路由表 |
-| `aws_security_group.vpce`、`aws_vpc_security_group_ingress_rule.vpce_https` | `interface_endpoints != null` | 只對 VPC CIDR 開 443 |
-| `aws_vpc_endpoint.interface` | `for_each = interface_endpoints.services` | `private_dns_enabled = true`，放在 `interface_endpoints.subnet_tier` 的每個 AZ |
 | `aws_flow_log.this` | `flow_log != null` | 只支援 S3，不需要 IAM role |
 
 路由一律用 `aws_route` 獨立資源，不寫 inline `route {}`（§4.1）。
@@ -964,18 +962,6 @@ variable "gateway_endpoints" {
   }
 }
 
-variable "interface_endpoints" {
-  type = object({
-    services    = set(string) # 例：["ecr.api", "ecr.dkr", "logs", "secretsmanager", "kms"]
-    subnet_tier = string
-  })
-  default = null
-  validation {
-    condition     = var.interface_endpoints == null ? true : alltrue([for s in var.interface_endpoints.services : can(regex("^[a-z0-9][a-z0-9.-]*$", s))])
-    error_message = "Service names are the part after com.amazonaws.<region>., e.g. ecr.api."
-  }
-}
-
 variable "flow_log" {
   type = object({
     destination_arn = string                  # S3 bucket ARN（可帶 /prefix）
@@ -1004,7 +990,6 @@ variable "tags" {
 | 某個 tier 用 `cidrs` 時，`keys(cidrs)` 必須等於 `azs` | 少給或多給 AZ |
 | 自動切時，`netnum_base + length(azs) <= pow(2, newbits)` | 槽位不夠 |
 | `nat_mode != "none"` 時必須有 public tier | NAT 沒地方放 |
-| `interface_endpoints.subnet_tier` 必須存在，且不是 public | endpoint 放錯 tier |
 | 所有 subnet 都在 VPC CIDR 內 | 切出界 |
 | 所有 subnet 的 CIDR 兩兩不重疊 | 把每個 CIDR 換成 `[起始整數, 結束整數]`（IP 四段乘 256 的冪次相加；結束 = 起始 + 2^(32−prefix) − 1），對每一對檢查 `end_a < start_b || end_b < start_a` |
 
@@ -1012,7 +997,7 @@ variable "tags" {
 
 **增減 AZ 時 CIDR 會不會變（實作確認）**：subnet 的 key 是 `"<tier>/<az>"`，增減 AZ 時既有的 key 不變。但自動切的槽位是照 AZ 在 `azs` 清單裡的**位置**算的（`cidrsubnet(cidr, newbits, netnum_base + index)`，`modules/vpc/locals.tf`）：在清單尾端加 AZ、或移除最後一個 AZ，其他 subnet 的 CIDR 不變；**移除中間的 AZ，後面 AZ 的 CIDR 會位移，subnet 會重建**。要固定每個 AZ 的 CIDR，就用明確指定的 `cidrs`。module README 已寫明。
 
-實作另外多了兩條檢查：`cidrs` 的值必須是合法 IPv4 CIDR；自動切時 `newbits >= 1`、`netnum_base >= 0`、切出的 subnet 不得小於 `/28`。interface endpoint 的服務名稱不得帶 `com.amazonaws.` 前綴。
+實作另外多了兩條檢查：`cidrs` 的值必須是合法 IPv4 CIDR；自動切時 `newbits >= 1`、`netnum_base >= 0`、切出的 subnet 不得小於 `/28`。
 
 **輸出**
 
@@ -1024,11 +1009,14 @@ variable "tags" {
 | `subnet_cidrs` | `map(list(string))` | 同上，CIDR |
 | `route_table_ids` | `map(list(string))` | 同上，route table id |
 | `nat_gateway_ids` | `list(string)` | 依 AZ 順序；`none` 時為 `[]`，`single` 時只有 1 個 |
-| `vpce_security_group_id` | `string` | 沒有 interface endpoint 時為 `null` |
 
 **範本固定的三個 tier 名稱**：`public`（type `public`）、`app`（type `private`）、`data`（type `isolated`；DB 需要對外連線時改 `private`）。這三個名稱寫進 SSM 合約（§5.6），不可更改；要加 tier 可以，名稱不能跟這三個衝突。
 
-**刻意不做**：IPv6、private NAT、Transit Gateway 與 VPC peering 的路由（§1）；NACL（用 SG 就夠，NACL 是無狀態的，調錯很難查）；flow log 送 CloudWatch Logs（要多一個 IAM role，而只有 `iam-role` 能建 IAM）；流量規格 preset（放範本的範例 tfvars，§5.11）。
+**為什麼 IGW、NAT、gateway endpoint 留在 `vpc`，interface endpoint 拆出去**（決策 34）：IGW、NAT、gateway endpoint 實際上都是路由，要跟 `vpc` 自己建的 route table 放在一起。拆出去的話，`per_az` 的 NAT 對應到錯的 route table 也不會報錯，加 AZ 時要同時改兩個 module。客戶自管 VPC 時，路由由客戶管，我們不該碰：project-a 的 public route table 用 inline `route {}`，每次 apply 都把客戶加的 peering 路由刪掉（`project-a/docs/reports/2026-09-04-customer-owned-network-and-terraform.md`）。interface endpoint 不碰路由，拆成 `vpc-interface-endpoints`（§4.21）之後，network stack 在自建 VPC 與客戶已建好的 VPC 兩種情況都能呼叫它。
+
+**default SG**：`aws_default_security_group.this` 留在 `vpc`。它不是新建的 SG，而是接管這個 VPC 本來就有的那一個並清空規則，生命週期跟 VPC 綁在一起，而且只有建 VPC 的 module 該碰它。§5.6 S4 把它單獨列出：`aws_default_security_group` 只准出現在 `modules/vpc/`；客戶自管 VPC（模式 A）時，我們不呼叫 `vpc`，也就不會去清空客戶 VPC 的 default SG。
+
+**刻意不做**：interface endpoint 與它的 SG（拆到 `vpc-interface-endpoints`，§4.21）；IPv6、private NAT、Transit Gateway 與 VPC peering 的路由（§1）；NACL（用 SG 就夠，NACL 是無狀態的，調錯很難查）；flow log 送 CloudWatch Logs（要多一個 IAM role，而只有 `iam-role` 能建 IAM）；流量規格 preset（放範本的範例 tfvars，§5.11）。
 
 ### 4.8 `alb`
 
@@ -2346,7 +2334,87 @@ variable "sidecars" {
 collector 設定用 `environment` 帶，不學 project-c 存成 SSM parameter 再用 `secrets` 讀：設定檔不是機密，而範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（§5.6 S2）。設定檔太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
 
 
-### 4.21 module 怎麼串：完整三層
+### 4.21 `vpc-interface-endpoints`
+
+**用途**：建 interface endpoint（PrivateLink）與它們共用的 SG。名稱刻意寫成 `vpc-interface-endpoints` 而不是 `vpc-endpoints`：這個 module 只負責 interface endpoint，gateway endpoint（S3、DynamoDB）留在 `vpc`，名稱不寫清楚會讓人以為兩種都在這裡。從 `vpc` 拆出來（決策 34），因為 interface endpoint 不碰路由：只要給 VPC id、subnet id 與允許的 CIDR，就能放進我們自己建的 VPC，也能放進客戶已經建好的 VPC（§5.8 模式 A）。
+
+**參考來源**
+
+- endpoint SG 只對 VPC CIDR 開 443、`private_dns_enabled = true`：原本在 `modules/vpc/endpoints.tf`（拆出前的實作）、`project-a/infra-v2/terraform/network/vpc-interface-endpoints.tf`
+- 服務清單：`project-c-infra/environments/uat/platform/terraform.tfvars`（`vpce_interface_config`）
+
+**資源**：`aws_security_group.this`、`aws_vpc_security_group_ingress_rule.https`（`for_each = allowed_cidrs`）、`aws_vpc_endpoint.this`（`for_each = services`）。`services` 是空集合時三種資源都不建。規則是獨立的 rule 資源，沒有 inline；SG 沒有任何 egress 規則（interface endpoint 只需要被連入）。
+
+**輸入**
+
+```hcl
+variable "name" {
+  type        = string
+  description = "Prefix for the security group and endpoint Name tags."
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,47}$", var.name))
+    error_message = "name must be 2-48 chars of lowercase letters, digits or hyphens, starting with a letter."
+  }
+}
+
+variable "vpc_id" {
+  type = string
+  validation {
+    condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
+    error_message = "vpc_id must look like vpc-0123456789abcdef0."
+  }
+}
+
+variable "allowed_cidrs" {
+  type        = list(string)
+  description = "IPv4 CIDRs allowed to reach the endpoints on 443, usually [vpc_cidr]."
+  validation {
+    condition = length(var.allowed_cidrs) > 0 && alltrue([for c in var.allowed_cidrs :
+      can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}/[0-9]{1,2}$", c)) && can(cidrnetmask(c)) && c != "0.0.0.0/0"
+    ])
+    error_message = "allowed_cidrs needs at least one valid IPv4 CIDR and must not contain 0.0.0.0/0."
+  }
+}
+
+variable "subnet_ids" {
+  type        = list(string)
+  description = "One subnet per AZ for the endpoint network interfaces."
+  validation {
+    condition     = length(distinct(var.subnet_ids)) >= 2
+    error_message = "Give at least two subnets in different AZs."
+  }
+}
+
+variable "services" {
+  type        = set(string)
+  default     = []
+  description = "Service names after com.amazonaws.<region>., e.g. ecr.api. Empty creates nothing."
+  validation {
+    condition     = alltrue([for s in var.services : can(regex("^[a-z0-9][a-z0-9.-]*$", s)) && !startswith(s, "com.amazonaws.")])
+    error_message = "Service names are the part after com.amazonaws.<region>., e.g. ecr.api."
+  }
+}
+
+variable "private_dns_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+```
+
+**輸出**：`endpoint_ids`（`map(string)`，key 是服務名稱）、`security_group_id`（`services` 為空時是 `null`）。
+
+**`allowed_cidrs` 而不是 `vpc_cidr`**：大多數時候給 `[vpc_cidr]` 就好，但客戶自管的 VPC 可能有 secondary CIDR，或要讓 peering 過來的網段也用這些 endpoint。收清單不會讓呼叫端變複雜，又不用之後為了這個改介面（§9.1 J45）。
+
+**private DNS 的前提**：`private_dns_enabled = true` 需要 VPC 開啟 `enableDnsSupport` 與 `enableDnsHostnames`。我們自己建的 VPC 由 `vpc` module 固定開啟；客戶的 VPC 要由 network stack 檢查（§5.8）。module 本身不檢查，因為它拿不到 VPC 的屬性，讀 `data "aws_vpc"` 會讓 module 多一個 data source 的依賴。
+
+**刻意不做**：gateway endpoint（它們是路由，留在 `vpc`，§4.7）、endpoint policy、一個服務一個 SG、自己決定放哪個 tier（subnet 由呼叫端決定，tier 的檢查在 network stack）。這個 module 不建 IAM。
+
+### 4.22 module 怎麼串：完整三層
 
 下面依 apply 順序列出每個 stack 裡的 module 呼叫，示範一個 module 的輸出怎麼變成下一個 module 的輸入。同一個 stack 內直接引用 module 輸出；跨 stack 一律經過 SSM：寫用 `ssm-publish`，讀用 `ssm-read`（`module.in.strings`、`module.in.lists`，寫法見 §5.6）。stack 裡唯一的原生 resource 是 `foundation` 的 secret 容器（§5.3 例外清單）。
 
@@ -2395,9 +2463,18 @@ module "vpc" {
   azs                 = var.vpc.azs
   nat_mode            = var.vpc.nat_mode
   subnets             = var.vpc.subnets # 範例 tfvars 見 §5.11；tier 名稱 public／app／data 固定
-  interface_endpoints = var.vpc.interface_endpoints
   flow_log            = var.vpc.flow_log ? { destination_arn = module.in.strings["flow_log_bucket_arn"] } : null
 }
+
+module "vpce" {
+  source        = "git::.../modules/vpc-interface-endpoints?ref=vpc-interface-endpoints-v0.1.0"
+  name          = local.name_prefix
+  vpc_id        = module.vpc.vpc_id
+  allowed_cidrs = [module.vpc.vpc_cidr]
+  subnet_ids    = module.vpc.subnet_ids[var.interface_endpoints.subnet_tier]
+  services      = var.interface_endpoints.services # 模式 A 也照樣呼叫，改用 existing 的值（§5.8）
+}
+
 module "sg" {
   source          = "git::.../modules/security-group?ref=security-group-v0.1.0"
   vpc_id          = module.vpc.vpc_id
@@ -2602,7 +2679,8 @@ infra/
         │   ├── dev.tfvars          # 非機密值，進版控
         │   ├── dev.tfbackend       # bucket／key／region／use_lockfile，進版控
         │   ├── prod.tfvars
-        │   └── prod.tfbackend
+        │   ├── prod.tfbackend
+        │   └── examples/{poc,standard,high}.tfvars   # log 告警與 X-Ray 抽樣的範例（§5.11）
         └── .terraform.lock.hcl     # 進版控
 ```
 
@@ -2632,7 +2710,7 @@ infra/
 - **相對路徑 → `git::...?ref=`**：專案 app team 複製範本時手動改，一個 module 一行。改法與一次改完的指令寫在 `docs/guides/consuming-modules.md`。改完要跑 `terraform init -backend=false` 確認抓得到 tag。
 - **`git::...?ref=` → vendored 相對路徑**：由 `scripts/vendor-modules.sh` 負責（§8.7）。這支腳本**只做這個方向**，不處理本 repo 範本的相對路徑；FDE 的輸入是一個已經釘好 tag 的專案 repo。
 
-範本裡的 `git::` 範例（例如 §4.21）都是「複製出去之後」的樣子，文件出現時要標明。
+範本裡的 `git::` 範例（例如 §4.22）都是「複製出去之後」的樣子，文件出現時要標明。
 
 ### 5.2 state 拆分原則
 
@@ -2651,7 +2729,7 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 |---|---|---|---|---|---|---|---|
 | 1 | `foundation` | 告警 SNS、專案共用 KMS key、Secrets Manager secret 容器（不含值）、flow log bucket、ALB access log bucket | `kms-key`、`sns-alarm-topic`、`s3-bucket` ×2、`ssm-publish`（另有一個原生 resource，見下） | 專案 app team；客戶自管時為客戶 | 低 | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
 | 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
-| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、ALB／各服務／DB／Proxy 的 SG | `vpc`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
+| 3 | `network` | VPC（預設建立；模式 A 改登記既有）、interface endpoint、ALB／各服務／DB／Proxy 的 SG | `vpc`、`vpc-interface-endpoints`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
 | 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | `iam-role` ×3、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | `rds`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`network`、`iam-base` | `database`（JSON） |
 | 6 | `iam-app` | Proxy role 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低～中（新增服務、調權限時） | `foundation`、`containerimage`、`network`、`iam-base`、`data` | `role_<service>_task_arn`、`ecs_exec_<service>` |
@@ -2685,6 +2763,8 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 
 `network` 預設呼叫 `vpc` module 建 VPC（模式 A 改成登記既有 VPC，見 §5.8），再呼叫 `security-group` module（§4.16）一次建 ALB、各服務、DB、Proxy 的 SG 與規則。stack 自己不寫任何 SG resource，只負責把一份服務清單在 locals 展開成 `security_groups` 與 `rules` 兩個 map 傳進 module。
 
+`network` 在兩種模式下都呼叫 `vpc-interface-endpoints`（§4.21）：自建 VPC 時 `vpc_id`、`allowed_cidrs = [vpc_cidr]`、`subnet_ids` 來自 `vpc` 的輸出；模式 A 時來自 `existing` 與 `data "aws_vpc"`（`allowed_cidrs` 用 `data.aws_vpc.this.cidr_block_associations` 的全部 CIDR）。`subnet_tier` 必須存在而且不是 public，這條檢查從 `vpc` module 搬到 network stack 的 validation。`sg_vpce_id` 由 `vpc-interface-endpoints` 的 `security_group_id` 發布；`services` 是空集合時不發布（跟之前一樣，下游不讀這個 key）。
+
 ```hcl
 variable "vpc" {
   description = "建立 VPC（預設）。與 existing 二選一。"
@@ -2693,13 +2773,18 @@ variable "vpc" {
     azs      = list(string)
     subnets  = map(object({ type = string, newbits = optional(number), netnum_base = optional(number), cidrs = optional(map(string)) }))
     nat_mode = optional(string, "single")
-    interface_endpoints = optional(object({
-      services    = set(string)
-      subnet_tier = optional(string, "app")
-    }))
     flow_log = optional(bool, false) # true 時送到 foundation 的 flow log bucket
   })
   default = null
+}
+
+variable "interface_endpoints" {
+  description = "兩種模式都會建立。services 為空時不建任何 endpoint。"
+  type = object({
+    services    = optional(set(string), []) # 例：["ecr.api", "ecr.dkr", "logs", "secretsmanager", "kms"]
+    subnet_tier = optional(string, "app")
+  })
+  default = {}
 }
 
 variable "existing" {
@@ -2761,7 +2846,7 @@ variable "alb_ingress" {
 | 服務 SG | Proxy SG | data store 的 `port` | `data_access` 且 `proxy = true` |
 | 服務 SG | DB SG | data store 的 `port` | `data_access` 且 `proxy = false` |
 | Proxy SG | DB SG | data store 的 `port` | `proxy = true` |
-| VPC CIDR | VPC endpoint SG | 443 | 由 `vpc` module 建 |
+| `allowed_cidrs`（通常是 VPC CIDR） | VPC endpoint SG | 443 | 由 `vpc-interface-endpoints` module 建 |
 
 Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`proxy = false` 時它沒有任何規則。ALB 的 egress 只開到各服務 SG 的服務 port，不開全網。
 
@@ -2802,7 +2887,7 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 
 ### 5.4 `iam-base` 與 `iam-app` 的寫法
 
-**只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（已拍板，§9.2）。範本的 stack 也不直接寫 `aws_iam_*`，一律呼叫這兩個 module；其他 13 個 module 都不建 IAM，只收 ARN。IAM 集中在兩個 stack，原因：權限審查只要看兩個地方；客戶自管 IAM 時只要接這兩個 stack，而且在客戶的部署 role 不能改 IAM 的環境（例如 project-a prod b2c 的 deploy role 明確 Deny `iam:Put*`），module 自建 role 根本 apply 不過。
+**只有 `iam-role` 與 `iam-role-policy` 兩個 module 建 IAM**（已拍板，§9.2）。範本的 stack 也不直接寫 `aws_iam_*`，一律呼叫這兩個 module；其他 17 個 module 都不建 IAM，只收 ARN。IAM 集中在兩個 stack，原因：權限審查只要看兩個地方；客戶自管 IAM 時只要接這兩個 stack，而且在客戶的部署 role 不能改 IAM 的環境（例如 project-a prod b2c 的 deploy role 明確 Deny `iam:Put*`），module 自建 role 根本 apply 不過。
 
 拆成兩個是因為依賴方向：RDS Proxy 建立時要給 role ARN（role 要在 `data` 之前存在），但 role 讀 secret 的權限要指到 master secret 的 ARN（secret 要等 `data` 建好才有）。
 
@@ -2909,7 +2994,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `network` | `azs` | StringList | AZ 順序，所有 `subnet_*` 清單都照這個順序 |
 | `network` | `subnet_ids_public`、`subnet_ids_app`、`subnet_ids_data` | StringList | 依 AZ 排序。新增其他 tier 時多發布 `subnet_ids_<tier>`，只有需要它的 stack 才去讀 |
 | `network` | `subnet_cidrs_<tier>` | StringList | 同上 |
-| `network` | `sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id` | String | 沒有 interface endpoint 時 `sg_vpce_id` 不發布 |
+| `network` | `sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id` | String | `sg_vpce_id` 來自 `vpc-interface-endpoints` 的 `security_group_id`；沒有 interface endpoint 時不發布 |
 | `network` | `nat` | String（JSON） | `{"mode":"per_az","ids":["nat-...","nat-..."]}`；`none` 時 `ids` 為 `[]` |
 | `network` | `alb_https`、`db_proxy` | String（JSON） | `{"enabled":true}` |
 | `network` | `data_access` | String（JSON） | `{"db":["api"]}` |
@@ -2991,8 +3076,8 @@ locals {
 |---|---|---|
 | S1 | 每個 `*.tftest.hcl` 都宣告 `mock_provider "aws"` | 測試不得需要 AWS 憑證 |
 | S2 | `resource "aws_ssm_parameter"` 只能出現在 `modules/ssm-publish/` | 只能透過 `ssm-publish` 寫入；範圍含 `modules/` 與 `templates/` |
-| S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 只讀 `insecure_value`，不得出現 `.value` | 範本 stack 改用 `ssm-read`，原本「`ssm-inputs.tf` 不讀 `.value`」改由這條涵蓋 |
-| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`），範本的 stack 也不例外；`resource "aws_security_group"`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc/`（endpoint SG），範本的 stack 不得出現 | 「只有兩個 IAM module 建 IAM」「SG 一律透過 module」的程式檢查 |
+| S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 只讀 `insecure_value`，不得出現 `.value`（`each.value` 是例外：那是 `for_each` 的迭代變數，不是參數的值） | 範本 stack 改用 `ssm-read`，原本「`ssm-inputs.tf` 不讀 `.value`」改由這條涵蓋 |
+| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`），範本的 stack 也不例外；`resource "aws_security_group"`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`，`modules/vpc/` 與範本的 stack 都不得出現；`resource "aws_default_security_group"` 只能出現在 `modules/vpc/`（§4.7） | 「只有兩個 IAM module 建 IAM」「SG 一律透過 module」的程式檢查。`scripts/validate.sh` 現在的 S4 允許 `modules/vpc`，要跟著改 |
 | S5 | 範本 8 個 stack 的 `common.tf` 雜湊相同 | 修掉 project-a「common.tf 多版本漂移」 |
 | S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend | 修掉 project-a「key 寫錯讀到別的環境」 |
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` | 密碼一律由 RDS 管理 |
@@ -3063,7 +3148,7 @@ locals {
 | | 模式 A：客戶管 VPC、我們管 SG | 模式 B：network 整個由客戶管 |
 |---|---|---|
 | 適用 | 客戶有既有 VPC 規範，但讓我們開 SG | 客戶的網路團隊連 SG 都要自己管 |
-| `network` stack | 照跑，`vpc = null`、改給 `existing = { vpc_id, subnet_ids }`；用 data source 驗證 id 存在後，發布**同一組 key**，SG 仍由我們建 | 該環境**不放** `network/envs/<env>.tfbackend` 與 tfvars，我們不跑 |
+| `network` stack | 照跑，`vpc = null`、改給 `existing = { vpc_id, subnet_ids }`；用 data source 驗證 id 存在後，發布**同一組 key**，SG 與 interface endpoint 仍由我們建（`vpc-interface-endpoints` 的 `allowed_cidrs` 用客戶 VPC 的全部 CIDR、`subnet_ids` 用 `existing.subnet_ids[subnet_tier]`）；用 `data "aws_vpc"` 檢查客戶 VPC 有開 `enable_dns_support` 與 `enable_dns_hostnames`，沒開時 `private_dns_enabled = true` 的 endpoint 無法解析；路由、IGW、NAT、gateway endpoint、default SG 一律不碰 | 該環境**不放** `network/envs/<env>.tfbackend` 與 tfvars，我們不跑 |
 | 誰發布 `network/*` 的 key | `network` stack（我們） | 客戶，照 §5.6 合約表發布全部 key，包括 `sg_*`、`alb_https`、`db_proxy`、`data_access` 這些 JSON |
 | 下游 | 不變 | 不變 |
 
@@ -3132,12 +3217,14 @@ locals {
 | VPC CIDR | /20：public /26、app /24、data /27 | /19～/16，app /22 起跳 | /16，app /20 起跳 |
 | AZ | 2 | 2 | 3 |
 | NAT | `single`（沒有對外流量時可用 `none`） | `per_az` | `per_az` |
-| interface endpoint | 無（只開 S3 gateway） | `ecr.api`、`ecr.dkr`、`logs`、`secretsmanager`、`kms` | 上一欄再加 `ssm`、`ssmmessages`、`xray`；需要時加 `bedrock-runtime` |
+| interface endpoint（`vpc-interface-endpoints` 的 `services`；S3 gateway 是 `vpc` 的 `gateway_endpoints`） | 無（只開 S3 gateway） | `ecr.api`、`ecr.dkr`、`logs`、`secretsmanager`、`kms` | 上一欄再加 `ssm`、`ssmmessages`、`xray`；需要時加 `bedrock-runtime` |
 | flow log | 關 | 開（S3） | 開（S3） |
 | RDS | `rds`、`db.t4g.micro`／`small`、單一 AZ；或 `aurora_serverless` 0.5～4 ACU | `aurora_serverless` 2～16 ACU 加 1 個 reader；或 `aurora` `db.r7g.large` 加 1 個 reader；或 `rds` 加 `multi_az` | `aurora` `db.r7g.xlarge` 以上、2 個以上 reader、開 Proxy |
 | 備份／刪除保護 | 1～7 天、`false` | 7～14 天、`true` | 14 天以上、`true` |
 | ALB | 可以只開 HTTP（SG 要收窄）、idle 60、不開 access log、不掛 WAF | HTTPS、access log、WAF | 同一般正式；SSE 這類長連線服務 idle 設 300 |
 | RDS Proxy（`network` 的 `data_stores.db.proxy`） | 不開 | 開 | 開 |
+| 追蹤抽樣（`xray` 的 sampling rule，或 SDK 端的 `traceidratio`） | 100％（project-b dev 用 `fixed_rate = 1.0` 的全抽樣規則，`project-b/infra/terraform/deploy/dev/main.tf`；project-a 範本預設 `otel_traces_sampler_arg = 1.0`，`project-a/infra-v2/terraform/envs/_template/application.tfvars.example`） | 每秒 1 筆加 5％（等於 AWS 帳號預設的 `Default` 規則；project-b 非 dev 環境就是沿用它，`project-b/infra/terraform/modules/agentcore/variables.tf` 的說明）。**無實測依據**：沒有專案在正式流量下量過這個比例的成本與可用度 | 每秒 1 筆加 1～5％，health check 規則設 0。**無實測依據** |
+| log 告警（`log-metric-alarm`） | 不開 | 開。project-a 的正式站開了 audit 寫入失敗、rate limit fail-open 這類事件告警（`project-a/infra-v2/terraform/postdeploy/alarms-persistence.tf`、`envs/prod.tfvars` 的 `alarms_enabled = true`） | 開，同一般正式 |
 
 **依據**
 
@@ -3247,7 +3334,8 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 
 | module | run（plan，除非另註） | `expect_failures` |
 |---|---|---|
-| `vpc` | 2 AZ 與 3 AZ 的自動切；明確 `cidrs`；`nat_mode` 三種各一（`single` 只有 1 顆 NAT、`per_az` 每個 AZ 一顆且 private route 指向同 AZ、`none` 沒有 NAT 也沒有 `0.0.0.0/0` 路由）；isolated tier 沒有任何 `0.0.0.0/0` 路由；gateway endpoint 關聯所有 private／isolated 路由表；interface endpoint 與它的 SG 只對 VPC CIDR 開 443；`flow_log = null` 時 0 個；subnet key 是 `"<tier>/<az>"`；沒有任何 inline `route`／`ingress` | CIDR 不是 /16～/24 或不是網路位址；AZ 少於 2、多於 4 或重複；tier 同時給 `newbits` 與 `cidrs`；兩個 public tier；`cidrs` 少一個 AZ；**兩個 tier 重疊**（含「第三個 AZ 才重疊」這個 project-a 案例）；subnet 超出 VPC；`nat_mode != "none"` 卻沒有 public tier；gateway endpoint 給 `ec2` |
+| `vpc` | 2 AZ 與 3 AZ 的自動切；明確 `cidrs`；`nat_mode` 三種各一（`single` 只有 1 顆 NAT、`per_az` 每個 AZ 一顆且 private route 指向同 AZ、`none` 沒有 NAT 也沒有 `0.0.0.0/0` 路由）；isolated tier 沒有任何 `0.0.0.0/0` 路由；gateway endpoint 關聯所有 private／isolated 路由表；default SG 沒有任何規則；不再有 interface endpoint 與任何 `aws_security_group`；`flow_log = null` 時 0 個；subnet key 是 `"<tier>/<az>"`；沒有任何 inline `route`／`ingress` | CIDR 不是 /16～/24 或不是網路位址；AZ 少於 2、多於 4 或重複；tier 同時給 `newbits` 與 `cidrs`；兩個 public tier；`cidrs` 少一個 AZ；**兩個 tier 重疊**（含「第三個 AZ 才重疊」這個 project-a 案例）；subnet 超出 VPC；`nat_mode != "none"` 卻沒有 public tier；gateway endpoint 給 `ec2` |
+| `vpc-interface-endpoints` | 每個 `services` 一個 `Interface` endpoint，`private_dns_enabled` 預設 `true`，`subnet_ids` 與 `security_group_ids` 照輸入；每個 `allowed_cidrs` 一條 443/tcp 的 ingress rule，沒有 egress、沒有 inline 規則；`services = []` 時三種資源都是 0 個且 `security_group_id = null`；`private_dns_enabled = false` 照輸入 | 服務名稱帶 `com.amazonaws.` 前綴；`allowed_cidrs` 為空、含 `0.0.0.0/0` 或不是 CIDR；`subnet_ids` 少於 2；`vpc_id` 格式錯 |
 | `alb` | 有憑證：HTTPS listener 用 `ELBSecurityPolicy-TLS13-1-2-2021-06`、預設 404，HTTP listener 預設 301；沒有憑證：只有 HTTP listener、預設 404，`listener_protocol = "HTTP"`；`drop_invalid_header_fields = true`；`access_logs`、`web_acl_arn` 為 null 時對應資源 0 個；ELB 5xx 告警的 `alarm_actions`、`ok_actions` 都是 `sns_topic_arns` | 名稱超過 32 字或以 `internal-` 開頭；subnet 少於 2；`idle_timeout` 0 或 4001；`certificate_arn` 不是 ACM ARN；有 `additional_certificate_arns` 卻沒有 `certificate_arn`；`sns_topic_arns` 為空 |
 | `rds` | 三種型態各自的 basic；`{rds, aurora, serverless} × {proxy_off, proxy_on}` 共 6 個；`aurora_proxy_ro`（Aurora 有 reader 時有 read-only endpoint）；`rds_proxy_no_ro`（一般 RDS 沒有）；`proxy_role_passed_through`（`aws_db_proxy.role_arn` 等於輸入）；`no_password_all_modes`（`manage_master_user_password == true`，`password`、`password_wo` 都是 null）；`final_snapshot`（名稱帶 `random_id` 後綴）；`alarms_per_deployment`（rds 沒有 replica lag 告警、Aurora 有 reader 才有、Proxy 開才有兩條 Proxy 告警）；三種型態的輸出格式一致（`app_endpoint`、`identifier_type` 等） | 型態物件不符；`aurora` 用 `db.serverless`；ACU 超出 0～256、min > max 或不是 0.5 的倍數；`reader_count = 16`；`rds` 填了 `cluster_parameters`；proxy 缺 `role_arn` 或格式錯；`rds`／`aurora` 沒給 `connections_threshold`；`sns_topic_arns` 為空 |
 
@@ -3268,6 +3356,19 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | `log-metric-alarm` | 每個 `alarms` 項目一個 metric filter 與一個 alarm，名稱 `<name_prefix>-<key 的 _ 換成 ->`；filter 的 `metric_transformation` 是 `value = "1"`、`default_value = 0`；alarm 的預設是 `Sum`、60 秒、1 期、`>= 1`、`notBreaching`；**每個 alarm 的 `alarm_actions` 與 `ok_actions` 都等於 `sns_topic_arns`**（反向驗證：拿掉一個的 `ok_actions` 測試要紅）；`alarms = {}` 時兩種資源都是 0 個 | `sns_topic_arns = []`；key 不是 snake_case；`pattern` 或 `description` 是空字串；`statistic = "p99"`；`period = 45`；`datapoints_to_alarm` 大於 `evaluation_periods`；`namespace` 以 `AWS/` 開頭 |
 | `xray` | 每個 `sampling_rules` 一個 rule，名稱 `<name_prefix>-<key>`、沒給的欄位是 `*`；每個 `groups` 一個 group，`insights_configuration` 照輸入；兩個 map 都空時什麼都不建 | 名稱超過 32 字；`priority = 0` 或 `10000`；`fixed_rate = 1.5`；兩條 rule 的 `priority` 相同；group 的 `filter_expression` 空字串；`notifications_enabled = true` 但 `insights_enabled = false` |
 | `ecs-service` 的 `sidecars` | **迴歸要求：`sidecars = []` 時，`aws_ecs_task_definition.this.container_definitions` 跟加這個變數之前完全相同**：`jsondecode` 後長度是 1、主 container 沒有 `dependsOn` 欄位，而且既有的 `ecs-service` 測試檔一行都不改就全部通過。另外：一個 sidecar 時長度是 2、順序是 `app` 在前；sidecar 的 `logConfiguration` 用同一個 log group、`awslogs-stream-prefix` 是 sidecar 名稱（或 `log_stream_prefix`）；有 `app_depends_on = "START"` 時主 container 才有 `dependsOn = [{ containerName = <sidecar>, condition = "START" }]`；sidecar 的 `secrets` 轉成 `valueFrom` | sidecar 名稱是 `app` 或重複；sidecar 映像用 `:latest`；`app_depends_on = "READY"`；`app_depends_on = "HEALTHY"` 卻沒有 `health_check`；sidecar 的 port 跟主 container 撞號；secret 不是 ARN |
+
+`modules/vpc/tests/endpoints.tftest.hcl` 拆分後的去向：
+
+| run | 去向 | 說明 |
+|---|---|---|
+| `s3_gateway_by_default`、`gateway_endpoint_ec2_fails`、`gateway_endpoint_s3_and_dynamodb_pass` | 留在 `vpc` | gateway endpoint 留在 `vpc` |
+| `no_flow_log_by_default`、`flow_log_to_s3`、`flow_log_cloudwatch_arn_fails`、`flow_log_bad_traffic_type_fails`、`flow_log_accept_passes` | 留在 `vpc` | flow log 留在 `vpc` |
+| `no_interface_endpoints_by_default` | 搬到 `vpc-interface-endpoints`，改寫 | 改成 `services = []` 時不建任何資源、`security_group_id = null`；原本斷言的 `output.vpce_security_group_id` 已經不存在 |
+| `interface_endpoints_in_tier` | 搬到 `vpc-interface-endpoints`，改寫 | subnet 改由 `subnet_ids` 直接給，斷言改成「endpoint 的 subnet 等於輸入」；443 規則的 CIDR 改成來自 `allowed_cidrs` |
+| `interface_service_with_region_prefix_fails`、`interface_service_short_name_passes` | 搬到 `vpc-interface-endpoints` | `expect_failures` 從 `var.interface_endpoints` 改成 `var.services` |
+| `interface_tier_missing_fails`、`interface_tier_public_fails`、`interface_tier_isolated_passes` | 從 `vpc` 刪除 | module 不再有 tier 的概念（呼叫端直接給 subnet）。同樣的檢查搬到範本 network stack 的測試：`interface_endpoints.subnet_tier` 不存在或是 public 時被擋、是 isolated 時通過 |
+
+`vpc` 另外要拿掉 `main.tf` 裡 `interface_endpoints.subnet_tier` 的 precondition、`variables.tf` 的 `interface_endpoints`、`outputs.tf` 的 `vpce_security_group_id`，`endpoints.tf` 只留 gateway endpoint。
 
 範本 stack 的測試要用 `override_data` 餵 `ssm-read` 裡的 `data.aws_ssm_parameter`（target 寫成 `module.in.data.aws_ssm_parameter.this["<stack>/<key>"]`），否則 mock 產生的隨機字串會被下游的 ARN validation 擋掉。IAM 的最小權限測試分兩層：`iam-role`、`iam-role-policy` module 鎖「沒有萬用動作、沒有 managed policy」；範本的 `iam-base`、`iam-app` 鎖「Resource 恰為該給的 ARN、execution role 沒有 DB secret 權限」（§5.4）。「只有兩個 IAM module 建 IAM」「SG 只在 `security-group` 與 `vpc`」由 S4 保證，因為 `terraform test` 無法列舉資源型別。範本另外要測：`network` 在 `alb_ingress.https = false` 且 `cidrs` 含 `0.0.0.0/0` 時被擋；`vpc` 與 `existing` 同時給時被擋；`loadbalancer` 在 `alb_https` 與 `certificate_arn` 不一致時被擋；`data` 在 `db_proxy` 為 false 時不傳 `proxy`。
 
@@ -3401,7 +3502,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J14 | 應用程式的 DB 帳號 | 第一版用 master secret，風險寫在 §8.2，之後補應用程式專用帳號或 Proxy IAM 認證 | 先讓三層架構跑起來；另建帳號需要在資料庫裡執行 SQL，Terraform 的 AWS provider 做不到，要另一套機制 |
 | J15 | WAF | 只收 `web_acl_arn` 做關聯，Web ACL 由專案自己建 | 規則每個專案不同 |
 | J16 | log bucket | ALB access log 與 flow log 各一個 bucket，都建在 `foundation`；ALB 那個只能 SSE-S3 | 兩者的 bucket policy 不同；ALB 不支援 CMK，用了 log 會無聲遺失（project-a `loadbalancer/access-logs.tf`） |
-| J17 | SG 的規則怎麼寫 | 規則由 `services`、`data_stores`、`alb_ingress` 在 network stack 的 locals 展開，交給 `security-group` module（決策 29）；一律獨立規則資源、來源用同一次呼叫裡的 SG、CIDR 或 prefix list；ALB egress 只到各服務的 port；DB 與 Proxy 的 SG 都在 `network`（app → proxy → db，沒開 Proxy 時 app → db）；VPC endpoint 的 SG 由 `vpc` module 建、只對 VPC CIDR 開 443 | inline 規則會洗掉客戶加的規則（project-a 客戶自管網路報告）；SG 跟服務拓樸綁在一起，所以展開邏輯留在 stack、建立交給 module |
+| J17 | SG 的規則怎麼寫 | 規則由 `services`、`data_stores`、`alb_ingress` 在 network stack 的 locals 展開，交給 `security-group` module（決策 29）；一律獨立規則資源、來源用同一次呼叫裡的 SG、CIDR 或 prefix list；ALB egress 只到各服務的 port；DB 與 Proxy 的 SG 都在 `network`（app → proxy → db，沒開 Proxy 時 app → db）；VPC endpoint 的 SG 由 `vpc-interface-endpoints` module 建、只對 `allowed_cidrs` 開 443 | inline 規則會洗掉客戶加的規則（project-a 客戶自管網路報告）；SG 跟服務拓樸綁在一起，所以展開邏輯留在 stack、建立交給 module |
 | J18 | 客戶自管模式 | 模式 A（客戶管 VPC、我們管 SG，`existing` 與 `vpc` 二選一）與模式 B（`network` 整個由客戶管，照合約發布全部 key）（§5.8） | 兩種情況都遇過；下游不用改 |
 | J19 | 網路第一版不做的 | IPv6、private NAT、Transit Gateway、VPC peering | 範圍控制 |
 | J20 | 補一條靜態檢查 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；整個 `modules/` 不得出現 `random_password` | 讓「密碼不進 Terraform」由程式擋，不靠審查 |
@@ -3428,17 +3529,22 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | J42 | `sidecars` 的欄位 | name、image、essential、command、cpu、memory_reservation、environment、secrets、port_mappings、health_check、`app_depends_on`、`log_stream_prefix`；log 走同一個 log group、只換 stream 前綴 | ADOT 需要 command／health check／資源保留，`app_depends_on` 讓主 container 等 collector；不收 volume、`dependsOn` 任意組合、`firelensConfiguration`，等真的有專案需要再加（MINOR） |
 | J43 | ADOT 範例放哪裡 | `modules/ecs-service/examples/adot-sidecar/`（CI 會驗）加 `docs/guides/observability.md`（整套做法）；範本 stack 預設不放 | 範本預設不開追蹤，放進範本會讓每個專案背一個關著的 sidecar；guide 才寫得下跨三個 stack 的做法。這會在 `docs/guides/` 多一份檔案（§1.1） |
 | J44 | ADOT collector 的設定怎麼帶 | 用 `environment` 的 `AOT_CONFIG_CONTENT`，不學 project-c 存成 SSM parameter | 設定不是機密；範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（S2） |
+| J45 | `vpc-interface-endpoints` 收 `allowed_cidrs` 還是 `vpc_cidr` | `allowed_cidrs = list(string)`，範本給 `[vpc_cidr]`；不准 `0.0.0.0/0` | 客戶 VPC 可能有 secondary CIDR、或要讓 peering 網段使用；收清單不增加呼叫端負擔，也不用之後改介面 |
+| J46 | `services` 為空時 | 不建任何資源，`security_group_id = null` | 範本預設的 PoC 規格沒有 interface endpoint，stack 不需要為了它加 `count` |
+| J47 | `aws_default_security_group` 算不算 S4 的範圍 | 不算「新建 SG」，留在 `vpc`；S4 另外寫一條：它只准出現在 `modules/vpc/` | 它接管 VPC 本來就有的 default SG 並清空規則，跟 VPC 生命週期綁在一起；只准在 `vpc`，模式 A 就不會碰到客戶的 default SG |
+| J48 | interface endpoint 的 tier 檢查放哪裡 | 從 `vpc` 的 precondition 搬到 network stack 的 validation | module 改收 subnet id，已經不知道 tier；tier 是範本的語意 |
+| J49 | private DNS 的前提由誰檢查 | network stack 在模式 A 用 `data "aws_vpc"` 檢查客戶 VPC 有開 `enable_dns_support`、`enable_dns_hostnames`；module 不檢查 | module 拿不到 VPC 屬性；自建 VPC 時 `vpc` 已經固定開啟 |
 
 ### 9.2 已拍板決策
 
 | # | 決策 | 理由 | 影響的章節 |
 |---|---|---|---|
 | 1 | ~~module 一律不建 IAM~~ → 由決策 25、28 修改：**只有 `iam-role` 與 `iam-role-policy` 建 IAM**。`ecs-service`、`rds` 等其他 module 只收 role ARN；role 在範本的 `iam-base`／`iam-app` 透過這兩個 module 建好，ARN 經 SSM 傳到使用端 | 集中審查；客戶自管 IAM 時接得上（例如 project-a prod b2c 的 deploy role 不能改 IAM）。policy 用 `jsonencode()` 寫，mock 下測得到內容 | §4.1、§4.2、§4.3、§4.14、§4.15、§5.4、§7.1、§8.1 |
-| 2 | 範本在本 repo 內用相對路徑引用 module（`../../../../../modules/<name>`）；複製到專案 repo 時改成 `git::...?ref=<module>-v<semver>`，改法寫在 `consuming-modules.md`；`vendor-modules.sh` 只負責 `git::` → vendored 相對路徑 | 本 repo 在 tag 不存在、repo 未上 GitHub 時也要能跑 `init -backend=false`、`validate`、`test`（與 implement-process U3 一致） | §1.1、§4.21、§5.1、§5.8、§8.7 |
+| 2 | 範本在本 repo 內用相對路徑引用 module（`../../../../../modules/<name>`）；複製到專案 repo 時改成 `git::...?ref=<module>-v<semver>`，改法寫在 `consuming-modules.md`；`vendor-modules.sh` 只負責 `git::` → vendored 相對路徑 | 本 repo 在 tag 不存在、repo 未上 GitHub 時也要能跑 `init -backend=false`、`validate`、`test`（與 implement-process U3 一致） | §1.1、§4.22、§5.1、§5.8、§8.7 |
 | 3 | 新增 `containerimage` stack（ECR），排在 `foundation` 之後 | ECR 的擁有者與變動頻率跟 SNS／KMS 不同，客戶自管時也常分開；execution role 要用 ECR 的 ARN 限縮權限 | §5.1、§5.3、§5.4、§5.8 |
 | 4 | 每個 Phase 一個 commit；含多個 module 的 Phase 改成一個 module 一個 commit；直接 commit 在 `main`，不 push；author `<author-email>`；Conventional Commits | 使用者決定。一個 commit 只動一個 module 目錄，release-please 依路徑歸屬才不會互相污染 CHANGELOG | 實作流程見 `implement-process.md` |
 | 5 | 起始版本 `v0.1.0` | 還沒在真實 AWS apply 過；§7.3 驗完再升 `v1.0.0` | §3.5 |
-| 6 | 服務告警放在 `application` stack | 告警直接吃 service 與 target group 的輸出，避免 project-a `postdeploy` 在 tfvars 寫死 id；代價是調門檻也要動高頻變動的 stack | §4.21、§5.3 |
+| 6 | 服務告警放在 `application` stack | 告警直接吃 service 與 target group 的輸出，避免 project-a `postdeploy` 在 tfvars 寫死 id；代價是調門檻也要動高頻變動的 stack | §4.22、§5.3 |
 | 7 | ~~SG 由 `network` stack 建；`network` 不建 VPC，只登記既有 VPC／subnet 的 id~~ | **已作廢，由決策 18 取代。** SG 仍由 `network` 建；VPC 改成預設建立 | — |
 | 8 | 資料層 stack 命名為 `data` | 涵蓋資料庫與快取 | §5.3 |
 | 9 | 不提供 `stacks.sh` | project-a 的那支已經失效；八個 stack 照 `infra/README.md` 的順序手動跑，比一支沒人維護的腳本可靠 | §5.10 |
@@ -3449,7 +3555,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 14 | SSM 合約的靜態檢查第一版只做兩條（只有 `ssm-publish` 可宣告 `aws_ssm_parameter`；`data "aws_ssm_parameter"` 只能出現在 `ssm-read`，且只讀 `insecure_value`）；「讀的 key 必須是更早的 stack 發布的」之後再補 | 第一版範圍要小；第三條要解析 HCL 做跨 stack 比對 | §5.6、§7.1 |
 | 15 | ECR 預設 `IMMUTABLE`、`scan_on_push = true`、`force_delete = false` | 同一個 tag 不能被覆蓋，部署才可追溯；推上去就掃描；有映像時 destroy 會失敗，不會誤刪 | §5.3 |
 | 16 | ECS Exec 的開關由 IAM stack（現在是 `iam-app`）發布到 SSM，`application` 讀同一個 key | 只有一個地方決定，不會出現 exec 開了卻沒有權限 | §5.4、§5.6 |
-| 17 | 第一版 module 從 5 個變成 8 個，新增 `vpc`、`rds`、`alb`，做出最小三層架構（ALB 在 public，AP 與 DB 在 private） | 使用者決定：沒有網路與資料庫，範本示範不了完整的專案 | §1、§4.7–§4.21 |
+| 17 | 第一版 module 從 5 個變成 8 個，新增 `vpc`、`rds`、`alb`，做出最小三層架構（ALB 在 public，AP 與 DB 在 private） | 使用者決定：沒有網路與資料庫，範本示範不了完整的專案 | §1、§4.7–§4.22 |
 | 18 | `network` stack 預設用 `vpc` module 建立 VPC；客戶自管時改為登記既有 VPC（模式 A）或整個交給客戶（模式 B）。取代決策 7 | 使用者決定；subnet 調整時 SSM key 名稱不變（§5.6） | §5.3、§5.6、§5.8 |
 | 19 | `rds` 支援一般 RDS、Aurora、Aurora Serverless v2 三種型態，由一個變數選擇；RDS Proxy 是 module 內的選項 | 使用者決定 | §4.9 |
 | 20 | `iam` 拆成 `iam-base` 與 `iam-app`，範本從 7 個 stack 變 8 個，順序 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `iam-app` → `loadbalancer` → `application`。`iam-base` 建 execution role、Proxy role（只有 trust）、Enhanced Monitoring role；`data` 把 role ARN 傳進 `rds`；`iam-app` 讀 `database.secret_arn`，用 `iam-role-policy` 對 Proxy role 附加讀 secret 的 policy（決策 28），並建 task role | Proxy 建立時要 role，role 的權限又要等 secret 存在。Proxy 在 role 尚無權限時能不能建立**未驗證**，兩種結果的對策見 §5.4 | §5.3、§5.4、§7.3 |
@@ -3459,19 +3565,20 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 24 | 第一版再加 5 個 module，從 8 個變 13 個（決策 28、29 之後再加 2 個，共 15 個）：`kms-key`（CMK、key policy、alias、自動輪替，`foundation` 呼叫）、`ecr-repository`（一個 repository 一次呼叫，`containerimage` 用 `for_each`）、`s3-bucket`（log bucket，`foundation` 建 flow log 與 ALB access log 兩個）、`ssm-read`（跟 `ssm-publish` 配對，`ssm-inputs.tf` 改呼叫它）、`iam-role`（trust 加 inline policy） | 使用者決定：每個 AWS 服務一個 module，stack 只負責呼叫 module | §1、§4.10–§4.14、§5.3、§5.6 |
 | 25 | 「module 不建任何 IAM」改成「只有 `iam-role` module 建 IAM」（決策 28 再放寬為 `iam-role` 與 `iam-role-policy`）；其他 module 仍不建 IAM，範本 stack 也一律透過 IAM module | 使用者決定 | §4.1、§4.14、§5.4、§5.6 S4、§8.1 |
 | 26 | `modules/` 底下的 `.tf` 與 `.tftest.hcl`，所有註解、`description`、`error_message` 一律只用英文，不可中英混雜，禁止任何 icon／emoji；註解只寫程式碼看不出來的原因。`README.md`、`CHANGELOG.md` 不受限制 | 使用者決定 | §4.1、§4.10–§4.14 的介面範例 |
-| 27 | 第一個版本 tag `<module>-v0.1.0` 由人手動打（18 個），manifest 維持登記 `0.1.0`；之後的版本交給 release-please | 使用者決定 | §3.5、`docs/guides/releasing-modules.md` |
+| 27 | 第一個版本 tag `<module>-v0.1.0` 由人手動打（19 個），manifest 維持登記 `0.1.0`；之後的版本交給 release-please | 使用者決定 | §3.5、`docs/guides/releasing-modules.md` |
 | 28 | 新增 `iam-role-policy` module（只建 `aws_iam_role_policy`，附加到既有 role），維持 RDS Proxy 的兩段式：`iam-base` 用 `iam-role` 建只有 trust 的 Proxy role，`iam-app` 在 secret 存在後用 `iam-role-policy` 附加讀 secret 的 policy，Resource 恰為那個 secret ARN。IAM 規則改成「只有 `iam-role` 與 `iam-role-policy` 建 IAM」；`iam-role-policy` 同樣擋掉 `*` 與 `:*` 動作。不採用命名樣式加 tag 條件的寫法（原 P1 選項 c） | 使用者決定（原待拍板 P1）。Resource 是確切的 ARN，權限最精確；代價是恢復「role 沒權限時能否建立 Proxy」這個未驗證項目，對策見 §5.4 | §4.14、§4.15、§5.4、§5.6 S4、§5.11、§7.3、§8.1 |
 | 29 | SG 做成 `security-group` module，一次呼叫建一組互相引用的 SG 與規則；`network` stack 改成呼叫它，例外清單拿掉 SG。規則一律用獨立的 `aws_vpc_security_group_*_rule` 加 `for_each`，不准 inline。「沒有憑證時 ALB SG 不准對 0.0.0.0/0 開 80」放在 network stack，module 只負責通用的「ingress 對全網開放必須明寫 `allow_internet`」 | 使用者決定（原待拍板 P2）。放置位置的理由見 §4.16 | §4.16、§5.3、§5.6 S4、§8.4 |
 | 30 | `foundation` 的 secret 容器不做成 module，留在例外清單 | 使用者採納建議（原待拍板 P3）：只有一個 resource，包成 module 省不到東西 | §5.3 |
 | 31 | 再加 3 個觀測性 module，從 15 個變 18 個：`log-group`（保留天數只收 AWS 允許的值、可選 KMS、可選 subscription filter，目的地以 ARN 傳入）、`log-metric-alarm`（metric filter 加 alarm，一次呼叫多組，`sns_topic_arns` 必填，`alarm_actions`、`ok_actions` 都接）、`xray`（sampling rule 與 group，控制追蹤成本） | 使用者決定（Phase 7E） | §1、§4.17–§4.19、§5.3、§7.1 |
 | 32 | `ecs-service` 新增通用的 `sidecars`（MINOR），不寫死 ADOT；`sidecars = []` 時結果跟現在完全一致，列為迴歸測試要求。ADOT、collector 設定、task role 的 X-Ray／CloudWatch 權限由專案在 `application` 與 `iam-app` 自己決定 | 使用者決定（Phase 7E） | §4.20、§7.1 |
 | 33 | 這 3 個新 module 都不建 IAM；既有的 `ecs-service`、`rds`、`ecs-service-alarms` 不改成呼叫 `log-group` 或 `log-metric-alarm` | 主 agent 判斷，見 §9.1 J38 | §4.17、§4.18 |
+| 34 | interface endpoint 從 `vpc` 拆出來，成為 `vpc-interface-endpoints` module（interface endpoint 加 endpoint 專用的 SG，SG 只允許指定 CIDR 連 443，規則用獨立 rule 資源）；module 總數 19 個。`vpc` 移除 `interface_endpoints` 變數、endpoint SG 與 `vpce_security_group_id` 輸出；subnet、route table、IGW、NAT、gateway endpoint、flow log 留在 `vpc`。名稱用 `vpc-interface-endpoints` 不用 `vpc-endpoints`，避免誤會 gateway endpoint 也在裡面。`vpc` 還沒打過 tag，這項併進 `v0.1.0`，不算破壞性變更 | 使用者決定。IGW、NAT、gateway endpoint 都是路由，要跟 `vpc` 建的 route table 在一起，拆開的話 `per_az` NAT 對錯表不會報錯、加 AZ 要改兩個 module；客戶自管 VPC 時路由歸客戶，我們不該碰（project-a 2026-09-04 報告）。interface endpoint 不碰路由，拆出來之後 network stack 在自建與客戶既有 VPC 兩種模式都能呼叫 | §1、§4.7、§4.21、§5.3、§5.6 S4、§5.8、§5.11、§7.1 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 
 | 項目 | 目前的佔位符 | 出現在 |
 |---|---|---|
-| GitHub org | `<org>` | §3.3、§3.6、§4.21、§5.1、§8.7 的 source 範例 |
+| GitHub org | `<org>` | §3.3、§3.6、§4.22、§5.1、§8.7 的 source 範例 |
 | repo 名稱 | `<repo>` | 同上 |
 | CODEOWNERS 的 team slug | `@<org>/platform-team`、`@<org>/core-app-team`、`@<org>/project-app-reps`、`@<org>/fde-team` | §6.3 |
 | state bucket 命名，以及由誰建立 | `<state-bucket>` | §5.5 |
