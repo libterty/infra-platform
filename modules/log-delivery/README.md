@@ -38,6 +38,8 @@ module "runtime_logs" {
 
 ## 注意
 
+- **source 與 `CWL` 目的地預設只能在目前的帳號。** source 的 `resource_arn` 必須是帶 12 位數帳號的 ARN；它的帳號、以及 `CWL` 目的地 log group 的帳號，不是目前帳號也不在 `allowed_account_ids` 裡時，plan 會被 precondition 擋下。`S3` 目的地的 bucket ARN 不帶帳號，module 判斷不了 bucket 屬於誰，不檢查；`XRAY` 沒有 ARN。
+
 - 名稱是 `<name_prefix>-<key>`，最多 60 字（照 API 文件，**未實測**）。
 - `USAGE_LOGS` 照 AWS 文件放行，**未實測**；`APPLICATION_LOGS`、`TRACES` 有部署過的參考。
 - `CWL` 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
@@ -58,8 +60,9 @@ module "runtime_logs" {
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
 | `name_prefix` | `string` | 無 | 是 | source 與 destination 的名稱是 `<name_prefix>-<key>`，最多 60 字 |
-| `sources` | `map(object)` | `{}` | 否 | `resource_arn`（產生 log 的資源）、`log_type`（`APPLICATION_LOGS`／`TRACES`／`USAGE_LOGS`） |
-| `destinations` | `map(object)` | `{}` | 否 | `type`（`CWL`／`XRAY`／`S3`）、`resource_arn`（`CWL` 是 log group ARN、`S3` 是 bucket ARN、`XRAY` 必須是 null） |
+| `sources` | `map(object)` | `{}` | 否 | `resource_arn`（產生 log 的資源，必須是帶帳號的 ARN，帳號是目前帳號或在 `allowed_account_ids` 裡）、`log_type`（`APPLICATION_LOGS`／`TRACES`／`USAGE_LOGS`） |
+| `destinations` | `map(object)` | `{}` | 否 | `type`（`CWL`／`XRAY`／`S3`）、`resource_arn`（`CWL` 是 log group ARN，帳號是目前帳號或在 `allowed_account_ids` 裡；`S3` 是 bucket ARN，不檢查帳號；`XRAY` 必須是 null） |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、source 與 `CWL` 目的地可以在的帳號（12 位數字）。空的時候兩者都必須在目前帳號 |
 | `deliveries` | `map(object)` | `{}` | 否 | `source`、`destination`，分別是 `sources`、`destinations` 裡存在的 key；同一組不能接兩次 |
 | `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；source 與 destination 另外加 `Name` |
 
