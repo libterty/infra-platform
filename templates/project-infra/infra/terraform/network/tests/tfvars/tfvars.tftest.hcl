@@ -68,3 +68,12 @@ run "alb_exposure_matches_certificate_decision" {
     error_message = "An ALB without a certificate must not be open to the world"
   }
 }
+
+run "published_interface_endpoints_follow_the_input" {
+  command = plan
+
+  assert {
+    condition     = length(jsondecode(local.published_strings["interface_endpoints"])) == length(var.interface_endpoints.services) && alltrue([for e in var.interface_endpoints.services : contains(jsondecode(local.published_strings["interface_endpoints"]), e)])
+    error_message = "The published interface_endpoints must list exactly the requested services"
+  }
+}

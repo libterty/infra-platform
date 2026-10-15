@@ -19,3 +19,7 @@ services = {
     desired_count  = 1
   }
 }
+
+# Needed only once iam-app traces a service (its tracing list). The tag is explicit, never latest. Use source = "mirror"
+# when network has no NAT (nat mode none); see infra/README.md.
+# adot_collector = { tag = "v0.43.1", source = "public" }

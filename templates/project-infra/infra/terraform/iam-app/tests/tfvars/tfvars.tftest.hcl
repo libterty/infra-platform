@@ -42,3 +42,17 @@ run "tfvars_create_a_task_role_per_service" {
     error_message = "ecs_exec_services in tfvars must name known services"
   }
 }
+
+run "tfvars_tracing_names_known_services" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for s in var.tracing : contains(["api", "worker"], s)])
+    error_message = "tracing in tfvars must name known services"
+  }
+
+  assert {
+    condition     = local.published_strings["tracing"] == jsonencode(sort(tolist(var.tracing)))
+    error_message = "The published tracing list must follow the tfvars"
+  }
+}

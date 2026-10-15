@@ -8,6 +8,8 @@ locals {
     database               = "data/database"
     alb_arn_suffix         = "loadbalancer/alb_arn_suffix"
     listener_arn           = "loadbalancer/listener_arn"
+    # JSON array of the services iam-app traces; "[]" when none.
+    tracing = "iam-app/tracing"
   }
   ssm_input_lists = {
     services       = "containerimage/services"

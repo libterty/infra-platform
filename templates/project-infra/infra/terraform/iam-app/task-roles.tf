@@ -5,6 +5,7 @@ locals {
   data_access      = jsondecode(module.in.strings["data_access"])
   secret_readers   = toset(try(local.data_access["db"], []))
   ecs_exec_enabled = toset(var.ecs_exec_services)
+  tracing_enabled  = var.tracing
 
   # The database secret statements (proxy-policy.tf) are also what the task roles of data_access services get: the
   # secret is read by the task role, not injected through the shared execution role (design section 8.2).
@@ -19,6 +20,16 @@ locals {
     },
   ]
 
+  tracing_statements = [
+    {
+      # These X-Ray actions do not support resource-level permissions; "*" is the only valid Resource.
+      Sid      = "XRayTracesAndSampling"
+      Effect   = "Allow"
+      Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"]
+      Resource = "*"
+    },
+  ]
+
   task_policies = {
     for s in local.services : s => merge(
       local.database.enabled && contains(local.secret_readers, s) ? {
@@ -26,6 +37,9 @@ locals {
       } : {},
       contains(local.ecs_exec_enabled, s) ? {
         ecs-exec = jsonencode({ Version = "2012-10-17", Statement = local.ecs_exec_statements })
+      } : {},
+      contains(local.tracing_enabled, s) ? {
+        tracing = jsonencode({ Version = "2012-10-17", Statement = local.tracing_statements })
       } : {},
     )
   }

@@ -126,7 +126,7 @@ provider_installation {
 | 其他 | 我們 | 放 |
 
 - **模式 A**（客戶管 VPC、我們管 SG）：`network` 照跑，tfvars 改給 `existing = { vpc_id, subnet_ids }`。客戶 VPC 要開 `enable_dns_support` 與 `enable_dns_hostnames`，三個 tier 的 subnet 數量相同、AZ 順序一致（程式只檢查數量）。我們不碰路由、IGW、NAT、gateway endpoint、default SG；`network/nat` 發布 `{"mode":"external","ids":[]}`。
-- **模式 B**（整個 stack 由客戶管）：我們的 repo 在那個環境不放這個 stack 的 tfbackend 與 tfvars，沒有檔案就無法 init。客戶照 `infra/README.md` 的 SSM 合約表，在 `/<project>/<env>/<stack>/<key>` 發布**全部** key，包括 JSON 值（`alb_https`、`db_proxy`、`data_access`、`nat`、`database`、`ecs_exec_<service>`）。路徑裡的 `<stack>` 照寫，即使客戶那邊沒有叫這個名字的東西。
+- **模式 B**（整個 stack 由客戶管）：我們的 repo 在那個環境不放這個 stack 的 tfbackend 與 tfvars，沒有檔案就無法 init。客戶照 `infra/README.md` 的 SSM 合約表，在 `/<project>/<env>/<stack>/<key>` 發布**全部** key，包括 JSON 值（`alb_https`、`db_proxy`、`data_access`、`nat`、`interface_endpoints`、`database`、`ecs_exec_<service>`、`tracing`）。路徑裡的 `<stack>` 照寫，即使客戶那邊沒有叫這個名字的東西。
 - 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要用模式 B 交給客戶。
 - 建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter` 於客戶擁有的路徑。
 

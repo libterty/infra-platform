@@ -8,13 +8,15 @@ locals {
 
   published_strings = merge(
     {
-      vpc_id      = local.vpc_id
-      vpc_cidr    = local.vpc_cidr
-      sg_alb_id   = module.sg.security_group_ids["alb"]
-      nat         = jsonencode(local.nat)
-      alb_https   = local.alb_https
-      db_proxy    = local.db_proxy
-      data_access = local.data_access
+      vpc_id    = local.vpc_id
+      vpc_cidr  = local.vpc_cidr
+      sg_alb_id = module.sg.security_group_ids["alb"]
+      nat       = jsonencode(local.nat)
+      # SSM rejects an empty list, so this is JSON in a String; it is "[]" when no endpoint is created. application checks it when tracing runs without a NAT.
+      interface_endpoints = jsonencode(sort(tolist(local.interface_endpoints.services)))
+      alb_https           = local.alb_https
+      db_proxy            = local.db_proxy
+      data_access         = local.data_access
     },
     { for s, k in local.service_key : "sg_${k}_id" => module.sg.security_group_ids[k] },
     { for d in keys(var.data_stores) : "sg_${d}_id" => module.sg.security_group_ids[d] },

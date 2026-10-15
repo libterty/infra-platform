@@ -48,6 +48,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/subnet_ids_app"]
   values = { insecure_value = "subnet-0app1,subnet-0app2" }
 }
@@ -121,5 +126,43 @@ run "example_log_alarms_notify_the_foundation_topic" {
   assert {
     condition     = alltrue([for s, alarms in var.log_alarms : length(module.log_alarms[s].alarm_names) == length(alarms)])
     error_message = "One alarm per entry"
+  }
+}
+
+# The example services are traced here (iam-app decides that, not this stack), so a port or name in an example cannot clash with the collector.
+run "example_services_can_be_traced" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "public" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\",\"worker\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"per_az\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"ecr.api\",\"ecr.dkr\",\"xray\"]" }
+  }
+
+  assert {
+    condition     = alltrue([for s in values(local.service_inputs) : length(s.sidecars) == 1 && s.environment["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://localhost:4317"])
+    error_message = "Every traced example service must get the collector and the OTLP endpoint"
+  }
+}
+
+run "example_collector_setting_is_valid_when_given" {
+  command = plan
+
+  assert {
+    condition     = var.adot_collector == null || (var.adot_collector.tag != "latest" && contains(["public", "mirror"], var.adot_collector.source))
+    error_message = "An example that sets adot_collector must use an explicit tag and a known source"
   }
 }

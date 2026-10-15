@@ -70,6 +70,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["network/subnet_ids_app"]
   values = { insecure_value = "subnet-0app1,subnet-0app2" }
 }
@@ -128,6 +133,7 @@ run "reads_only_listed_keys" {
         database               = "data/database"
         alb_arn_suffix         = "loadbalancer/alb_arn_suffix"
         listener_arn           = "loadbalancer/listener_arn"
+        tracing                = "iam-app/tracing"
       } &&
       local.ssm_input_lists == {
         services       = "containerimage/services"
@@ -564,6 +570,390 @@ run "xray_rules_and_groups_wired" {
   assert {
     condition     = toset(keys(module.xray.sampling_rule_arns)) == toset(["all"]) && toset(keys(module.xray.group_arns)) == toset(["errors"])
     error_message = "Every rule and group must reach the xray module"
+  }
+}
+
+# ---- tracing: the ADOT collector sidecar follows the list published by iam-app ----
+
+run "tracing_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for s in values(local.service_inputs) : length(s.sidecars) == 0])
+    error_message = "Without tracing no service may get a sidecar, so the task definitions stay as they were"
+  }
+
+  assert {
+    condition     = length(local.service_inputs["worker"].environment) == 0 && !contains(keys(local.service_inputs["api"].environment), "OTEL_EXPORTER_OTLP_ENDPOINT")
+    error_message = "Without tracing no service may get an OTEL variable"
+  }
+
+  assert {
+    condition     = length(module.in_tracing.strings) == 0 && var.adot_collector == null
+    error_message = "Without tracing nothing about the network or the mirror may be read, and adot_collector must default to null"
+  }
+}
+
+run "tracing_mounts_collector_only_for_traced_services" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "public" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  assert {
+    condition = (
+      length(local.service_inputs["api"].sidecars) == 1 &&
+      local.service_inputs["api"].sidecars[0].name == "adot-collector" &&
+      local.service_inputs["api"].sidecars[0].image == "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.1" &&
+      local.service_inputs["api"].sidecars[0].essential == false &&
+      local.service_inputs["api"].sidecars[0].app_depends_on == "START" &&
+      local.service_inputs["api"].sidecars[0].health_check.command == ["CMD", "/healthcheck"] &&
+      local.service_inputs["api"].sidecars[0].environment == { AOT_CONFIG_CONTENT = file("${path.module}/adot-collector.yaml") }
+    )
+    error_message = "A traced service must get the collector sidecar as in the ecs-service adot-sidecar example"
+  }
+
+  assert {
+    condition     = local.service_inputs["api"].environment["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://localhost:4317" && local.service_inputs["api"].environment["OTEL_SERVICE_NAME"] == "alpha-dev-api"
+    error_message = "A traced service must send to the local collector and report the same service name the sampling rules use"
+  }
+
+  assert {
+    condition     = local.service_inputs["api"].environment["DB_NAME"] == "app"
+    error_message = "The OTEL variables must be added to the database variables, not replace them"
+  }
+
+  assert {
+    condition     = length(local.service_inputs["worker"].sidecars) == 0 && length(local.service_inputs["worker"].environment) == 0
+    error_message = "A service that is not traced must keep exactly its previous definition"
+  }
+}
+
+run "collector_config_has_the_pipeline_parts" {
+  command = plan
+
+  assert {
+    condition = (
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).receivers), "otlp") &&
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).processors), "memory_limiter") &&
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).processors), "batch") &&
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).processors), "filter/health") &&
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).exporters), "awsxray") &&
+      contains(keys(yamldecode(file("${path.module}/adot-collector.yaml")).extensions), "health_check")
+    )
+    error_message = "The collector config needs the OTLP receiver, memory_limiter, batch, the health check filter, the awsxray exporter and the health_check extension"
+  }
+
+  assert {
+    condition = (
+      yamldecode(file("${path.module}/adot-collector.yaml")).service.pipelines.traces.receivers == ["otlp"] &&
+      yamldecode(file("${path.module}/adot-collector.yaml")).service.pipelines.traces.processors == ["memory_limiter", "filter/health", "batch"] &&
+      yamldecode(file("${path.module}/adot-collector.yaml")).service.pipelines.traces.exporters == ["awsxray"] &&
+      contains(yamldecode(file("${path.module}/adot-collector.yaml")).service.extensions, "health_check")
+    )
+    error_message = "The traces pipeline must be wired to those parts, and the health_check extension must be enabled"
+  }
+}
+
+run "mirror_image_comes_from_containerimage" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "mirror" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[\"adot-collector\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_url"]
+    values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" }
+  }
+
+  assert {
+    condition     = local.service_inputs["api"].sidecars[0].image == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector:v0.43.1"
+    error_message = "With source = mirror the image must be the mirror repository URL of containerimage plus the tag"
+  }
+}
+
+run "mirror_must_be_published_by_containerimage" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "mirror" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_url"]
+    values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" }
+  }
+
+  expect_failures = [terraform_data.adot_mirror_is_published]
+}
+
+run "tracing_needs_a_collector_image" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"single\",\"ids\":[\"nat-0123456789abcdef0\"]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  expect_failures = [terraform_data.tracing_has_collector_image]
+}
+
+run "collector_tag_latest_rejected" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "latest", source = "public" }
+  }
+
+  expect_failures = [var.adot_collector]
+}
+
+run "collector_tag_empty_rejected" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "", source = "public" }
+  }
+
+  expect_failures = [var.adot_collector]
+}
+
+run "collector_source_unknown_rejected" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "dockerhub" }
+  }
+
+  expect_failures = [var.adot_collector]
+}
+
+run "no_nat_needs_the_mirror" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "public" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"ecr.api\",\"ecr.dkr\",\"xray\"]" }
+  }
+
+  expect_failures = [terraform_data.no_nat_collector_from_mirror]
+}
+
+run "no_nat_needs_the_endpoints" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "mirror" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"ecr.api\",\"ecr.dkr\",\"logs\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[\"adot-collector\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_url"]
+    values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" }
+  }
+
+  expect_failures = [terraform_data.no_nat_endpoints_exist]
+}
+
+run "no_nat_needs_the_ecr_endpoints_for_the_mirror" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "mirror" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"xray\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[\"adot-collector\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_url"]
+    values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" }
+  }
+
+  expect_failures = [terraform_data.no_nat_endpoints_exist]
+}
+
+run "no_nat_with_mirror_and_endpoints_passes" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "mirror" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"none\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[\"ecr.api\",\"ecr.dkr\",\"logs\",\"xray\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[\"adot-collector\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_url"]
+    values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" }
+  }
+
+  assert {
+    condition     = length(local.service_inputs["api"].sidecars) == 1
+    error_message = "Without a NAT, the mirror image with the xray and ECR endpoints must pass"
+  }
+}
+
+# The NAT of a customer VPC is the customer's to provide, so the guard does not apply.
+run "external_nat_is_not_checked" {
+  command = plan
+
+  variables {
+    adot_collector = { tag = "v0.43.1", source = "public" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["iam-app/tracing"]
+    values = { insecure_value = "[\"api\"]" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/nat"]
+    values = { insecure_value = "{\"mode\":\"external\",\"ids\":[]}" }
+  }
+
+  override_data {
+    target = module.in_tracing.data.aws_ssm_parameter.this["network/interface_endpoints"]
+    values = { insecure_value = "[]" }
+  }
+
+  assert {
+    condition     = length(local.service_inputs["api"].sidecars) == 1
+    error_message = "A customer-managed NAT must not be second-guessed"
   }
 }
 

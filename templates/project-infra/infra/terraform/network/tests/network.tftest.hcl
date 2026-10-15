@@ -62,6 +62,7 @@ run "publishes_under_stack_path" {
       vpc_id              = "/alpha/dev/network/vpc_id"
       vpc_cidr            = "/alpha/dev/network/vpc_cidr"
       nat                 = "/alpha/dev/network/nat"
+      interface_endpoints = "/alpha/dev/network/interface_endpoints"
       alb_https           = "/alpha/dev/network/alb_https"
       db_proxy            = "/alpha/dev/network/db_proxy"
       data_access         = "/alpha/dev/network/data_access"
@@ -102,6 +103,7 @@ run "create_mode_publishes_keys" {
       "vpc_id",
       "vpc_cidr",
       "nat",
+      "interface_endpoints",
       "alb_https",
       "db_proxy",
       "data_access",
@@ -222,6 +224,7 @@ run "existing_mode_publishes_same_keys" {
       "vpc_id",
       "vpc_cidr",
       "nat",
+      "interface_endpoints",
       "alb_https",
       "db_proxy",
       "data_access",
@@ -934,6 +937,36 @@ run "endpoints_none_by_default" {
   assert {
     condition     = !contains(keys(local.published_strings), "sg_vpce_id")
     error_message = "sg_vpce_id must not be published without endpoints"
+  }
+}
+
+run "interface_endpoints_published_empty_by_default" {
+  command = plan
+
+  assert {
+    condition     = local.published_strings["interface_endpoints"] == "[]"
+    error_message = "Without endpoints the published list must be an empty JSON array, so a reader can tell none from not-yet-applied"
+  }
+}
+
+run "interface_endpoints_published_sorted" {
+  command = plan
+
+  variables {
+    interface_endpoints = { services = ["xray", "ecr.dkr", "ecr.api"] }
+  }
+
+  override_module {
+    target = module.vpce
+    outputs = {
+      security_group_id = "sg-0123456789abcdef0"
+      endpoint_ids      = { "ecr.api" = "vpce-0123456789abcdef0", "ecr.dkr" = "vpce-0123456789abcdef1", xray = "vpce-0123456789abcdef2" }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["interface_endpoints"]) == ["ecr.api", "ecr.dkr", "xray"]
+    error_message = "The published endpoint services must be a sorted JSON array of the requested services"
   }
 }
 

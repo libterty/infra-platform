@@ -73,3 +73,12 @@ run "contract_tiers_present" {
     error_message = "Examples must contain the tiers public, app and data"
   }
 }
+
+run "published_interface_endpoints_follow_the_input" {
+  command = plan
+
+  assert {
+    condition     = length(jsondecode(local.published_strings["interface_endpoints"])) == length(var.interface_endpoints.services) && alltrue([for e in var.interface_endpoints.services : contains(jsondecode(local.published_strings["interface_endpoints"]), e)])
+    error_message = "The published interface_endpoints must list exactly the requested services"
+  }
+}
