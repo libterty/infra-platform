@@ -41,7 +41,56 @@ locals {
         startPeriod = var.container_health_check.start_period
       }
     },
+    # Only added when a sidecar asks, so a single-container task definition stays byte-identical.
+    length(local.app_dependencies) == 0 ? {} : { dependsOn = local.app_dependencies },
   )
+
+  app_dependencies = [
+    for s in var.sidecars : { containerName = s.name, condition = s.app_depends_on }
+    if s.app_depends_on != null
+  ]
+
+  sidecar_definitions = [
+    for s in var.sidecars : merge(
+      {
+        name      = s.name
+        image     = s.image
+        essential = s.essential
+
+        environment = [for k in sort(keys(s.environment)) : { name = k, value = s.environment[k] }]
+        secrets     = [for k in sort(keys(s.secrets)) : { name = k, valueFrom = s.secrets[k] }]
+
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            "awslogs-group"         = aws_cloudwatch_log_group.this.name
+            "awslogs-region"        = local.region
+            "awslogs-stream-prefix" = coalesce(s.log_stream_prefix, s.name)
+            "mode"                  = "non-blocking"
+            "max-buffer-size"       = "25m"
+          }
+        }
+
+        stopTimeout     = 120
+        linuxParameters = { initProcessEnabled = true }
+      },
+      s.command == null ? {} : { command = s.command },
+      s.cpu == null ? {} : { cpu = s.cpu },
+      s.memory_reservation == null ? {} : { memoryReservation = s.memory_reservation },
+      length(s.port_mappings) == 0 ? {} : {
+        portMappings = [for p in s.port_mappings : { containerPort = p.container_port, protocol = p.protocol }]
+      },
+      s.health_check == null ? {} : {
+        healthCheck = {
+          command     = s.health_check.command
+          interval    = s.health_check.interval
+          timeout     = s.health_check.timeout
+          retries     = s.health_check.retries
+          startPeriod = s.health_check.start_period
+        }
+      },
+    )
+  ]
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -66,7 +115,7 @@ resource "aws_ecs_task_definition" "this" {
     cpu_architecture        = var.cpu_architecture
   }
 
-  container_definitions = jsonencode([local.container_definition])
+  container_definitions = jsonencode(concat([local.container_definition], local.sidecar_definitions))
 
   tags = local.tags
 }

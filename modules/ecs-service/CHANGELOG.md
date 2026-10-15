@@ -10,4 +10,5 @@
 - 兩種 policy：`target_tracking`（CPU，可加請求數）與 `step`（CPU、記憶體各一組，+1／+2／+3 與 −1，加 4 個 CloudWatch alarm）。
 - load balancer 三種接法：不接、傳 `target_group_arn`、傳 `listener_arn` 由 module 建 target group 與 listener rule。
 - 可選 Service Connect、container health check、ECS Exec。
-- 不建 IAM 與 security group；不支援 sidecar、排程擴縮、自訂指標 step scaling、`readonlyRootFilesystem`。
+- 新增 `sidecars`（預設 `[]`，task definition 與單一 container 完全一致）：在 task 裡加額外 container，log 共用同一個 log group、只換 stream prefix，可用 `app_depends_on` 讓 `app` 等 sidecar；介面通用，不寫死 ADOT。範例見 `examples/adot-sidecar/`。
+- 不建 IAM 與 security group；不支援排程擴縮、自訂指標 step scaling、`readonlyRootFilesystem`。

@@ -46,6 +46,20 @@ module "worker" {
 - `autoscaling != null` 時 `desired_count` 必須落在 `min_capacity` 與 `max_capacity` 之間。
 - 排程擴縮與自訂指標的 policy 不在 module 內；用輸出的 `autoscaling_resource_id` 在 module 外自己加。
 
+## Sidecars
+
+`sidecars` 預設是空 list，此時 task definition 與沒有這個變數之前完全一致（只有一個 container `app`，沒有 `dependsOn`），不會產生新的 revision。
+
+- `container_definitions` 是 `app` 加上所有 sidecar，`app` 永遠排第一個且是 essential。
+- sidecar 的 log 寫進同一個 log group、同一組 awslogs 設定，只有 `awslogs-stream-prefix` 換成 `log_stream_prefix`（預設為 sidecar 名稱）。
+- sidecar 固定 `initProcessEnabled = true`、`stopTimeout = 120`；`essential` 預設 `false`。
+- 只有當某個 sidecar 設了 `app_depends_on`，`app` 才會加 `dependsOn`。可用值：`START`、`HEALTHY`、`COMPLETE`、`SUCCESS`；`HEALTHY` 時該 sidecar 必須有 `health_check`。
+- 名稱要符合 `^[a-z][a-z0-9-]{0,62}$`、不可重複、不可是 `app`；映像要帶明確 tag（不可 `latest`）或 digest；`secrets` 的值要是 ARN；`container_port` 不可跟 `app` 或其他 sidecar 重複（awsvpc 共用一張網卡）。
+- sidecar 的 CPU 與記憶體是從 task 的 `cpu`、`memory` 裡分，module 不檢查總和，超過時 Fargate 在 API 端才會拒絕。
+- 拉 sidecar 映像與讀它的 `secrets` 都用 execution role，權限要由呼叫端補上。
+
+範例見 `examples/adot-sidecar/`。
+
 ## 呼叫端要準備的
 
 module 不建 IAM 與 security group，兩者都由呼叫端傳入。
@@ -63,7 +77,7 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 ## 刻意不做
 
 - 不建 security group、不建 IAM。
-- 不支援多 container 或 sidecar。
+- 不寫死任何 sidecar 產品（ADOT、log router 等）；`sidecars` 只負責把額外 container 放進 task，映像、設定與權限由呼叫端決定。
 - 不做排程擴縮、自訂指標 step scaling、`readonlyRootFilesystem`。
 
 ## 輸入
@@ -91,6 +105,7 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 | `health_check_grace_period_seconds` | `number` | `180` | 否 | 只在有 LB 時套用 |
 | `container_health_check` | `object` | `null` | 否 | `command` 必填，其餘有預設 |
 | `service_connect` | `object` | `null` | 否 | `namespace_arn` 必填，`dns_name` 預設為 `name` |
+| `sidecars` | `list(object)` | `[]` | 否 | 主 container `app` 以外的 container，見下方 Sidecars |
 | `enable_execute_command` | `bool` | `false` | 否 | ECS Exec |
 | `log_group_name` | `string` | `null` | 否 | `null` 時為 `/ecs/<name>` |
 | `log_retention_days` | `number` | `30` | 否 | log 保留天數 |
