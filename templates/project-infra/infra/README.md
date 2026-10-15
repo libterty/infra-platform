@@ -180,6 +180,10 @@ terraform plan -var-file=envs/dev.tfvars
 
 沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個，有沒有開 Proxy 與資料庫型態由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。`cluster_arn`（`rds` 型態是 `null`）與 `data_api` 給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
 
+## 開啟 LLM 與 AgentCore
+
+範本預設什麼都不建：`agent` stack 沒有任何 Runtime、模型、guardrail、Memory、Gateway、Knowledge Base 時，只發布空的 SSM key。怎麼開一個 Runtime、guardrail 為什麼要用 STANDARD tier、Knowledge Base 的資料庫帳號與 migration SQL，見 [`docs/guides/llm-agentcore.md`](../../../docs/guides/llm-agentcore.md)。
+
 ## 開啟 X-Ray 追蹤
 
 範本預設不開追蹤：`iam-app` 的 `tracing` 是空集合，沒有服務被追蹤時，`application` 的 task definition 沒有 sidecar、沒有 OTEL 環境變數，task role 沒有任何 `xray:` 動作。開法分三步，順序就是 apply 順序。

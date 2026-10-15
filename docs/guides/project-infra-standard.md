@@ -210,6 +210,10 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 
 交付到連不到我們 GitHub 的客戶環境，見 [`delivering-to-customer.md`](./delivering-to-customer.md)。
 
+## LLM 與 AgentCore
+
+`agent` stack 排在 `data` 與 `iam-app` 之間，預設不建任何東西。開 Runtime、guardrail、Memory、Gateway 或 Knowledge Base 的步驟與坑，見 [`llm-agentcore.md`](./llm-agentcore.md)。
+
 ## 跟 project-a infra-v2 的對照
 
 | project-a stack | 範本 | 差別 |
