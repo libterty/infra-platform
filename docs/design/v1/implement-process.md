@@ -2,7 +2,7 @@
 
 > 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `28a8647`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
-> 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 與兩個新輸出、`s3-bucket` 的不過期選項排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11（設計文件）進行中，12–16 未開始。
+> 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 與兩個新輸出、`s3-bucket` 的不過期選項排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11–14 已完成，15–16 未開始。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
@@ -37,7 +37,7 @@
 | 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 已完成 | 2：`66d41d0`、`da991f7` |
 | 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`） | 已完成 | 3：`fdcaf99`、`8ca62c5`、`7324c41` |
 | 13 | 增補：7 個新 module | 已完成：7 個 module 共 262 個測試，主 agent 逐一重跑 `validate.sh` 通過；差異記在 design §9.4 D30–D36 | 7：`0c79364`、`ea0a365`、`71e7550`、`8708820`、`1948aba`、`4048dbf`、`36d6ee5` |
-| 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 未開始 | 1 |
+| 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 已完成：9 個 stack 共 462 個 run（Phase 14 之前 310），主 agent 對 9 個 stack 重跑 `validate.sh` 全綠、9 份 `common.tf` 一致；含安全審查後的修正；差異記在 design §9.4 D37–D46 | （commit 見 git log） |
 | 15 | 增補：`docs/guides/llm-agentcore.md` 與相關文件 | 未開始 | 1 |
 | 16 | 增補：整體驗收、manifest 登記 `rds` 與 `s3-bucket` 0.2.0、人手動打 9 個 tag | 未開始 | 0–1 |
 
@@ -1073,7 +1073,31 @@ git show --stat HEAD                               # 只動 modules/<name>/
 
 **不在本次範圍**：任何範本 stack；credential provider、OpenAPI／Smithy target、`s3-vectors`、Bedrock 告警、`iam-role` 的 `aws:SourceArn`（design 決策 40、47）。
 
-#### Phase 14：範本接線
+#### Phase 14：範本接線（已完成，commit 見 git log）
+
+| stack | run 區塊數（Phase 14 之前） | 這次動到什麼 |
+|---|---|---|
+| `agent`（新） | 91（—） | 整個 stack：`agent.tftest.hcl` 86、`tests/tfvars/` 1、`tests/examples/` 4 |
+| `containerimage` | 48（38） | Runtime 清單與每個 Runtime 一個 repository |
+| `network` | 89（78） | Runtime 的 SG、`agent_data_access`、拒收 `bedrock-agentcore-control` |
+| `iam-base` | 32（25） | Runtime execution role、KB 與 Gateway role（只有 trust）、`agent_service_roles` |
+| `data` | 33（28） | `data_api`、`database` JSON 的 `cluster_arn`、`data_api`，`deployment`、`name` 改取 `rds` 輸出 |
+| `iam-app` | 53（35） | Runtime、KB、Gateway role 的權限，task role 的 `agent` policy，`agent_access` |
+| `application` | 67（57） | 注入 Runtime ARN 與模型、guardrail、KB 的 id，沒有 NAT 時的 endpoint 檢查 |
+| `foundation`、`loadbalancer` | 22、27（不變） | 沒有改 |
+
+run 區塊數是數各 stack `tests/**/*.tftest.hcl` 裡的 `run "` 區塊，9 個 stack 共 462 個；`validate.sh` 回報的 `n passed` 比這個多，因為 `tests/tfvars/` 對 dev、prod 各跑一次、`tests/examples/` 對每個範例各跑一次。主 agent 對 9 個 stack 重跑 `scripts/validate.sh`，全部通過；9 份 `common.tf` 一字不差（S5）。
+
+跟計畫的差異（設計面的細節回寫在 design §5.3、§5.4、§5.6、§7.1、§7.3、§8.8，總表在 design §9.4 D37–D46）：
+
+- `agent/knowledge_bases` 每個 KB 多發布 `data_source_ids`（data source key → id），給 `StartIngestionJob` 用（D39）。
+- design 的 precondition 表多數實作成變數 validation，`guards.tf` 只留要讀 SSM 才判斷得了的；`subnet_tier` 存不存在由讀 `subnet_ids_<tier>` 失敗擋下；design 那句「跨帳號時 KB 不得引用模型」跟 J66 矛盾，照 J66 不擋（D37）。
+- `agent` 不讀 `foundation`；Runtime 的 `OTEL_*` 固定六個；log delivery 的 destination 名稱是 `<project>-<env>-<rt>` 與 `<project>-<env>-xray_traces`（D38）。
+- `iam-base` 的 Runtime log 權限拆成 log group 與 log stream 兩條；Runtime 的 DB 權限與 `DB_*` 只看 `agent_data_access` 的 `db`；沒有任何權限的 Runtime 不附加 policy；`application` 只在 `agent_access` 有列服務時才讀 `agent`（D40）。
+- 安全審查後的修正：`agent/agentcore_gateway` 多發布 `tool_schema_arns`，Gateway role 多 `ReadToolSchemas`（D42）；KB 的 `credentials_secret_arn` 必須是帶 6 字元後綴的完整 ARN，`iam-app` 在授權端再檢查一次（D43）；沒有 NAT 時連 DB 的 VPC Runtime 要 `secretsmanager` endpoint（D44，未實測）；範本 README 寫了已部署環境的升級順序（D45）。審查列出但這一輪不修的 M1、M4、L1–L5 記在 design §8.8（D46）。
+- 計畫裡的單一 run 多半拆成「被擋」與「通過」兩個 run，名稱照程式碼列在 design §7.1〈增補：範本 Phase 14 的測試〉（D41）。
+
+以下是當時的計畫，保留作為對照。
 
 照 design §5.3〈增補：`agent` stack〉與 §5.4 增補。新增 `templates/project-infra/infra/terraform/agent/`，檔案同其他 stack（`versions.tf`、`providers.tf`、一字不差的 `common.tf`、`variables.tf`、`ssm-inputs.tf`、`ssm-outputs.tf`、依主題拆的 `.tf`、`outputs.tf`、`guards.tf`、`envs/{dev,prod}.{tfvars,tfbackend}`、`envs/examples/{poc,standard,high}.tfvars`、`tests/`、`tests/tfvars/`、`tests/examples/`）。lock 檔照 Phase 8〈lock 檔的產生方式〉原文產生（硬性限制第 9 條的例外延伸到這一個 stack，design J65），產生後確認 aws 版本跟其他 8 個 stack 相同。
 
