@@ -42,15 +42,20 @@ override_data {
   values = { insecure_value = "api,worker" }
 }
 
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+  values = { insecure_value = "[]" }
+}
+
 run "reads_only_listed_keys" {
   command = plan
 
   assert {
     condition = (
-      local.ssm_input_strings == { flow_log_bucket_arn = "foundation/flow_log_bucket_arn" } &&
+      local.ssm_input_strings == { flow_log_bucket_arn = "foundation/flow_log_bucket_arn", agent_runtimes = "containerimage/agent_runtimes" } &&
       local.ssm_input_lists == { services = "containerimage/services" }
     )
-    error_message = "network must read the flow log bucket from foundation and the service list from containerimage, nothing else"
+    error_message = "network must read the flow log bucket from foundation and the service and Runtime lists from containerimage, nothing else"
   }
 }
 
@@ -66,6 +71,7 @@ run "publishes_under_stack_path" {
       alb_https           = "/alpha/dev/network/alb_https"
       db_proxy            = "/alpha/dev/network/db_proxy"
       data_access         = "/alpha/dev/network/data_access"
+      agent_data_access   = "/alpha/dev/network/agent_data_access"
       sg_alb_id           = "/alpha/dev/network/sg_alb_id"
       sg_api_id           = "/alpha/dev/network/sg_api_id"
       sg_worker_id        = "/alpha/dev/network/sg_worker_id"
@@ -107,6 +113,7 @@ run "create_mode_publishes_keys" {
       "alb_https",
       "db_proxy",
       "data_access",
+      "agent_data_access",
       "sg_alb_id",
       "sg_api_id",
       "sg_worker_id",
@@ -228,6 +235,7 @@ run "existing_mode_publishes_same_keys" {
       "alb_https",
       "db_proxy",
       "data_access",
+      "agent_data_access",
       "sg_alb_id",
       "sg_api_id",
       "sg_worker_id",
@@ -1687,6 +1695,229 @@ run "no_flow_log_by_default" {
   assert {
     condition     = local.vpc_flow_log == null
     error_message = "flow_log = false must pass no flow log to the vpc module"
+  }
+}
+
+# ---- AgentCore Runtimes: security groups and data access ----
+
+run "agent_runtimes_default_empty" {
+  command = plan
+
+  assert {
+    condition     = length([for k in keys(local.security_groups) : k if startswith(k, "agent_")]) == 0
+    error_message = "Without Runtimes no Runtime security group may exist"
+  }
+
+  assert {
+    condition     = local.published_strings["agent_data_access"] == "{}" && length([for k in keys(local.published_strings) : k if startswith(k, "sg_agent_")]) == 0
+    error_message = "Without Runtimes agent_data_access must be published as {} and no sg_agent_* key may be published"
+  }
+}
+
+run "agent_sg_rules_expand" {
+  command = plan
+
+  variables {
+    services = {
+      api    = { port = 8080, from_alb = true, data_access = ["db"] }
+      worker = { port = 9000, callers = ["api"] }
+    }
+    data_stores    = { db = { port = 5432, proxy = false } }
+    agent_runtimes = { assistant = { data_access = ["db"] }, order-bot = {} }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\",\"order-bot\"]" }
+  }
+
+  assert {
+    condition = toset(keys(local.sg_rules)) == toset([
+      "alb_in_443_cidr_0_0_0_0_0",
+      "alb_in_80_cidr_0_0_0_0_0",
+      "alb_out_api",
+      "api_in_alb",
+      "api_out_worker",
+      "worker_in_api",
+      "api_out_https",
+      "worker_out_https",
+      "api_out_db",
+      "db_in_api",
+      "agent_assistant_out_https",
+      "agent_order_bot_out_https",
+      "agent_assistant_out_db",
+      "db_in_agent_assistant",
+    ])
+    error_message = "Each Runtime must add one 443 egress rule, and a Runtime with data_access the egress and ingress pair to the data store"
+  }
+
+  assert {
+    condition = (
+      local.security_groups["agent_assistant"].name == "alpha-dev-agent-assistant" &&
+      local.security_groups["agent_order_bot"].name == "alpha-dev-agent-order-bot"
+    )
+    error_message = "Each Runtime must get a security group keyed agent_<name> and named <project>-<env>-agent-<name>"
+  }
+
+  assert {
+    condition = (
+      local.sg_rules["agent_assistant_out_https"].type == "egress" && local.sg_rules["agent_assistant_out_https"].from_port == 443 &&
+      local.sg_rules["agent_assistant_out_https"].cidr_ipv4 == "0.0.0.0/0" && local.sg_rules["agent_assistant_out_https"].allow_internet == false
+    )
+    error_message = "The Runtime egress must be 443 to 0.0.0.0/0 for AWS APIs"
+  }
+
+  assert {
+    condition     = length([for r in values(local.sg_rules) : r if r.type == "ingress" && startswith(r.security_group, "agent_")]) == 0
+    error_message = "A Runtime security group must have no ingress rule"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["agent_data_access"]) == { db = ["assistant"] }
+    error_message = "agent_data_access must list the Runtimes that reach each data store"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["data_access"]) == { db = ["api"] }
+    error_message = "Runtimes must not be mixed into data_access, which lists services only"
+  }
+
+  assert {
+    condition     = contains(keys(local.published_strings), "sg_agent_assistant_id") && contains(keys(local.published_strings), "sg_agent_order_bot_id")
+    error_message = "Each Runtime must publish sg_agent_<name>_id with hyphens turned into underscores"
+  }
+}
+
+run "agent_data_access_through_proxy" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = { data_access = ["db"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  assert {
+    condition = (
+      local.sg_rules["agent_assistant_out_db_proxy"].peer_group == "db_proxy" &&
+      local.sg_rules["db_proxy_in_agent_assistant"].from_port == 5432 &&
+      !contains(keys(local.sg_rules), "agent_assistant_out_db")
+    )
+    error_message = "With a Proxy the Runtime must reach the Proxy, never the database directly"
+  }
+}
+
+run "publishes_agent_data_access" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(local.published_strings["agent_data_access"]) == {}
+    error_message = "agent_data_access must be published as {} by default"
+  }
+}
+
+run "agent_runtimes_must_match_containerimage_extra_rejected" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = {} }
+  }
+
+  expect_failures = [terraform_data.agent_runtimes_match_containerimage]
+}
+
+run "agent_runtimes_must_match_containerimage_missing_rejected" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  expect_failures = [terraform_data.agent_runtimes_match_containerimage]
+}
+
+run "agent_runtimes_matching_containerimage_passes" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = {} }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  assert {
+    condition     = contains(keys(local.security_groups), "agent_assistant")
+    error_message = "Runtime keys equal to containerimage/agent_runtimes must pass"
+  }
+}
+
+run "agent_data_access_unknown_store_rejected" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = { data_access = ["cache"] } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "agent_sg_key_clash_with_service_rejected" {
+  command = plan
+
+  variables {
+    services = {
+      api       = { port = 8080, from_alb = true }
+      worker    = { port = 9000 }
+      agent-bot = { port = 7000 }
+    }
+    agent_runtimes = { bot = {} }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/services"]
+    values = { insecure_value = "api,worker,agent-bot" }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"bot\"]" }
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "control_plane_endpoint_rejected" {
+  command = plan
+
+  variables {
+    interface_endpoints = { services = ["bedrock-runtime", "bedrock-agentcore-control"] }
+  }
+
+  expect_failures = [var.interface_endpoints]
+}
+
+run "data_plane_endpoint_passes" {
+  command = plan
+
+  variables {
+    interface_endpoints = { services = ["bedrock-runtime", "bedrock-agentcore"] }
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["interface_endpoints"]) == ["bedrock-agentcore", "bedrock-runtime"]
+    error_message = "bedrock-agentcore must be accepted and published"
   }
 }
 

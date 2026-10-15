@@ -1,10 +1,13 @@
 locals {
   # SG keys are snake_case: service order-api has the key order_api.
   service_key = { for s in keys(var.services) : s => replace(s, "-", "_") }
+  # Runtime order-bot has the key agent_order_bot.
+  agent_key = { for r in keys(var.agent_runtimes) : r => "agent_${replace(r, "-", "_")}" }
 
   security_groups = merge(
     { alb = { name = "${local.name_prefix}-alb", description = "ALB" } },
     { for s, k in local.service_key : k => { name = "${local.name_prefix}-${s}", description = "${s} service" } },
+    { for r, k in local.agent_key : k => { name = "${local.name_prefix}-agent-${r}", description = "${r} AgentCore Runtime" } },
     { for d in keys(var.data_stores) : d => { name = "${local.name_prefix}-${d}", description = "${d} data store" } },
     # The Proxy security group is always created (no cost); it has no rules unless the data store uses a Proxy.
     { for d in keys(var.data_stores) : "${d}_proxy" => { name = "${local.name_prefix}-${d}-proxy", description = "${d} RDS Proxy" } },
@@ -38,6 +41,10 @@ locals {
       for d in distinct(var.services[s].data_access) : { from = k, to = var.data_stores[d].proxy ? "${d}_proxy" : d, port = var.data_stores[d].port }
     ]]),
     [for d, cfg in var.data_stores : { from = "${d}_proxy", to = d, port = cfg.port } if cfg.proxy],
+    # Runtimes have no ingress: they are called through the AgentCore API, not through the security group.
+    flatten([for r, k in local.agent_key : [
+      for d in distinct(var.agent_runtimes[r].data_access) : { from = k, to = var.data_stores[d].proxy ? "${d}_proxy" : d, port = var.data_stores[d].port }
+    ]]),
   )
 
   connection_rules = merge(
@@ -81,7 +88,20 @@ locals {
     }
   }
 
-  sg_rules = merge(local.alb_ingress_rules, local.connection_rules, local.service_egress_rules)
+  agent_egress_rules = {
+    for r, k in local.agent_key : "${k}_out_https" => {
+      security_group = k
+      type           = "egress"
+      description    = "AWS APIs"
+      from_port      = 443
+      peer_group     = null
+      cidr_ipv4      = "0.0.0.0/0"
+      prefix_list_id = null
+      allow_internet = false
+    }
+  }
+
+  sg_rules = merge(local.alb_ingress_rules, local.connection_rules, local.service_egress_rules, local.agent_egress_rules)
 }
 
 module "sg" {

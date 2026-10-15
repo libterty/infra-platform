@@ -12,6 +12,11 @@ override_data {
   values = { insecure_value = "api,worker" }
 }
 
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+  values = { insecure_value = "[]" }
+}
+
 run "tfvars_build_the_network" {
   command = plan
 
