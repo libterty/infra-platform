@@ -35,6 +35,26 @@ rel() {
   esac
 }
 
+# Map a path to the in-repo path whose rules apply to it, so every rule below is written once:
+#   <anything>/vendor/modules/<name>/...  ->  modules/<name>/...            (vendored copy of a module)
+#   <anything>/infra/terraform/<stack>/.. ->  <tf_stack_glob>/<stack>/...   (a customer stack)
+# Paths inside this repo map to themselves, so a vendor/modules/ directory nested in this repo cannot borrow a module's exemption.
+canon() {
+  local p
+  case "$1" in
+    "${repo_root}"/*)
+      rel "$1"
+      return
+      ;;
+  esac
+  p="/${1#/}"
+  case "$p" in
+    */vendor/modules/*) printf 'modules/%s\n' "${p##*/vendor/modules/}" ;;
+    */infra/terraform/*) printf '%s/%s\n' "${tf_stack_glob}" "${p##*/infra/terraform/}" ;;
+    *) rel "$1" ;;
+  esac
+}
+
 sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
@@ -129,7 +149,7 @@ for f in ${files_tftest[@]+"${files_tftest[@]}"}; do
 done
 
 for f in ${files_tf[@]+"${files_tf[@]}"}; do
-  r="$(rel "$f")"
+  r="$(canon "$f")"
   # S2: aws_ssm_parameter resources only in modules/ssm-publish
   case "$r" in
     modules/ssm-publish/*) ;;
@@ -180,20 +200,30 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
   esac
 done
 
-# S5: common.tf must be identical across template stacks
-first_common=""
-first_hash=""
-for f in "${repo_root}/${tf_stack_glob}"/*/common.tf; do
-  [ -f "$f" ] || continue
-  h="$(sha256 "$f")"
-  if [ -z "$first_hash" ]; then
-    first_common="$f"
-    first_hash="$h"
-  elif [ "$h" != "$first_hash" ]; then
-    echo "S5 $(rel "$f"): common.tf 與 $(rel "$first_common") 不同" >&2
-    fail_static=1
-  fi
+# S5: common.tf must be identical across template stacks; stacks outside this repo (customer repo)
+# are compared with each other, not with the template, because their copy comes from another tag.
+check_common_identical() {
+  local f h first_common="" first_hash=""
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    h="$(sha256 "$f")"
+    if [ -z "$first_hash" ]; then
+      first_common="$f"
+      first_hash="$h"
+    elif [ "$h" != "$first_hash" ]; then
+      echo "S5 $(rel "$f"): common.tf 與 $(rel "$first_common") 不同" >&2
+      fail_static=1
+    fi
+  done
+}
+check_common_identical "${repo_root}/${tf_stack_glob}"/*/common.tf
+outside_common=()
+for f in ${files_tf[@]+"${files_tf[@]}"}; do
+  case "$f" in "${repo_root}"/*) continue ;; esac
+  [ "$(basename "$f")" = "common.tf" ] || continue
+  case "$(canon "$f")" in "${tf_stack_glob}"/*/common.tf) outside_common+=("$f") ;; esac
 done
+if [ "${#outside_common[@]}" -gt 0 ]; then check_common_identical "${outside_common[@]}"; fi
 
 # S6: tfbackend key must be <project>-<env>/<stack>/terraform.tfstate; envs/examples/ must not have tfbackend
 for f in ${files_tfbackend[@]+"${files_tfbackend[@]}"}; do
@@ -228,11 +258,12 @@ command -v tflint >/dev/null || { echo "找不到 tflint" >&2; exit 1; }
 
 # Steps 4-7: init, validate, test, tflint for one directory.
 validate_dir() {
-  local dir="$1" r data_dir lock=()
+  local dir="$1" r c data_dir lock=()
   r="$(rel "$dir")"
+  c="$(canon "$dir")"
   data_dir="${cache_root}/tf-data/$(printf '%s' "$r" | sed 's|^/||; s|/|__|g')"
   export TF_DATA_DIR="$data_dir"
-  case "$r" in
+  case "$c" in
     "${tf_stack_glob}"/*) lock=(-lockfile=readonly) ;;
   esac
 
@@ -244,21 +275,17 @@ validate_dir() {
     terraform -chdir="$dir" test || return 1
   fi
 
-  # Step 6a: template stacks run tests against the tfvars files themselves.
-  case "$r" in
-    "${tf_stack_glob}"/*)
-      local e x
-      for e in dev prod; do
-        if [ -f "$dir/envs/$e.tfvars" ] && [ -d "$dir/tests/tfvars" ]; then
-          terraform -chdir="$dir" test -test-directory=tests/tfvars -var-file="envs/$e.tfvars" || return 1
-        fi
-      done
-      for x in "$dir"/envs/examples/*.tfvars; do
-        [ -f "$x" ] && [ -d "$dir/tests/examples" ] || continue
-        terraform -chdir="$dir" test -test-directory=tests/examples -var-file="envs/examples/$(basename "$x")" || return 1
-      done
-      ;;
-  esac
+  # Step 6a: stacks (decided by directory layout, not by path) run tests against their tfvars files.
+  local e x
+  for e in dev prod; do
+    if [ -f "$dir/envs/$e.tfvars" ] && [ -d "$dir/tests/tfvars" ]; then
+      terraform -chdir="$dir" test -test-directory=tests/tfvars -var-file="envs/$e.tfvars" || return 1
+    fi
+  done
+  for x in "$dir"/envs/examples/*.tfvars; do
+    [ -f "$x" ] && [ -d "$dir/tests/examples" ] || continue
+    terraform -chdir="$dir" test -test-directory=tests/examples -var-file="envs/examples/$(basename "$x")" || return 1
+  done
 
   tflint --chdir="$dir" --config="${repo_root}/.tflint.hcl" || return 1
 }
@@ -267,7 +294,7 @@ for d in "${dirs[@]}"; do
   rc=0
   validate_dir "$d" || rc=1
   # Step 8: modules do not commit lock files; remove the one init created.
-  case "$(rel "$d")" in
+  case "$(canon "$d")" in
     modules/*) rm -f "$d/.terraform.lock.hcl" ;;
   esac
   if [ "$rc" -ne 0 ]; then

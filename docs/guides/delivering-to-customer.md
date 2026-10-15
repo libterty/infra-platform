@@ -61,14 +61,21 @@ grep -rnE --include='*.tf' 'source *= *"git::' . | grep -v '^./vendor/'   # 預�
 cat vendor/modules/VERSIONS
 ```
 
-離線檢查 vendored 的 stack 能 init、validate、test（在本 repo 執行，目標是客戶 repo 的 stack 目錄）：
+離線檢查客戶 repo 能 init、validate、test（在本 repo 執行，目標可以是客戶 repo 的根目錄，也可以只指到單一 stack 目錄）：
 
 ```bash
 cd <platform-repo>
-scripts/validate.sh "$CUSTOMER_REPO/infra/terraform/foundation"
+scripts/validate.sh "$CUSTOMER_REPO"
 ```
 
-注意：`scripts/validate.sh` 要指到**單一 stack 目錄**，不要指到客戶 repo 根目錄。指到根目錄時，它會連 `vendor/modules/ssm-read/` 一起掃，而它的 S3 規則只認得本 repo 的 `modules/ssm-read/` 路徑，會誤報 `data "aws_ssm_parameter" 只能出現在 modules/ssm-read`。另外對 repo 外的目錄，它不會另外對 `envs/<env>.tfvars` 跑 `tests/tfvars`，要的話照 [`project-infra-standard.md`](./project-infra-standard.md)〈驗證〉手動跑。
+指到客戶 repo 根目錄時，`scripts/validate.sh` 會把路徑換算成本 repo 的對應位置再套用靜態規則：
+
+| 客戶 repo 的路徑 | 套用的規則 |
+|---|---|
+| `vendor/modules/<module>/` | 跟本 repo 的 `modules/<module>/` 相同（S2 放行 `ssm-publish`、S3 放行 `ssm-read`、S4 放行 `iam-role`、`iam-role-policy`、`security-group`、`vpc-interface-endpoints`、`vpc`） |
+| `infra/terraform/<stack>/` | 跟範本的 stack 相同（S4、S8 一律不准直接宣告 IAM、SG 或其他原生 resource；S5 比對客戶這幾個 stack 的 `common.tf` 彼此是否一致） |
+
+stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；放在別處的目錄會被當成一般目錄，S2、S3 不放行。
 
 確認沒問題之後在客戶 repo 裡 commit，commit message 帶上 `VERSIONS` 的內容，之後誰要追是哪個版本都查得到。
 

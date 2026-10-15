@@ -3112,7 +3112,7 @@ module "in_services" {
 
 為什麼用 SSM 不用 `terraform_remote_state`：客戶自管的資源不在我們的 state 裡，`remote_state` 讀不到；SSM 是我們跟客戶都能接的介面。project-a 沒有為這個決定寫 ADR，這個 repo 補 `docs/adr/0003-cross-stack-values-via-ssm-only.md`。
 
-`scripts/validate.sh` 的靜態規則（編號沿用 implement-process，S3、S4 依這次的 module 改寫，S8 是新增），全部接進 CI：
+`scripts/validate.sh` 的靜態規則（編號沿用 implement-process，S3、S4 依這次的 module 改寫，S8 是新增），全部接進 CI。對客戶 repo 執行時（`delivering-to-customer.md`），`<repo>/vendor/modules/<module>/` 當作 `modules/<module>/`、`<repo>/infra/terraform/<stack>/` 當作範本的 stack，下表的規則對它們一視同仁；換算只在 `scripts/validate.sh` 的 `canon()` 一處：
 
 | # | 規則 | 說明 |
 |---|---|---|
