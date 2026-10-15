@@ -16,7 +16,7 @@
 | 團隊 | 先讀 |
 |---|---|
 | platform team | [`releasing-modules.md`](./releasing-modules.md) |
-| 專案 app team | [`project-infra-standard.md`](./project-infra-standard.md)、[`consuming-modules.md`](./consuming-modules.md)、[`observability.md`](./observability.md) |
+| 專案 app team | [`project-infra-standard.md`](./project-infra-standard.md)、[`consuming-modules.md`](./consuming-modules.md)、[`observability.md`](./observability.md)、[`llm-agentcore.md`](./llm-agentcore.md) |
 | 專案 FDE team | [`delivering-to-customer.md`](./delivering-to-customer.md) |
 
 ## 交接點
@@ -41,6 +41,6 @@
 | `/scripts/vendor-modules.sh`、`/docs/guides/delivering-to-customer.md` | platform team ＋ FDE | 交付流程 |
 | `/docs/guides/team-roles.md` | 四個團隊 | 這份分工本身 |
 
-`releasing-modules.md`、`observability.md` 沒有特別指定，歸預設的 platform team。
+`releasing-modules.md`、`observability.md`、`llm-agentcore.md` 沒有特別指定，歸預設的 platform team。
 
 team slug 現在是 `@<org>/platform-team`、`@<org>/core-app-team`、`@<org>/project-app-reps`、`@<org>/fde-team`，團隊成立後填入實際值，路徑規則不用改。新增 module 或 stack 也不用改這份檔：module 都在 `/modules/` 底下，stack 都在 `/templates/` 底下。
