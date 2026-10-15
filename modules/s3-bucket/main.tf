@@ -23,6 +23,8 @@ locals {
   alb_selected      = setintersection(var.log_delivery, ["alb_access_logs"])
   flow_log_selected = setintersection(var.log_delivery, ["vpc_flow_logs"])
 
+  expiration_days = var.never_expire ? null : coalesce(var.expiration_days, 90)
+
   # Regions opened before 2022-08 (e.g. ap-northeast-1) write through a regional ELB account; newer ones use the
   # service principal. Granting both avoids Access Denied in either case.
   alb_statements = concat(
@@ -109,13 +111,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
   rule {
-    id     = "expire-objects"
+    # The id stays expire-objects for existing buckets, so switching to v0.2.0 is not a change.
+    id     = var.never_expire ? "abort-incomplete-uploads" : "expire-objects"
     status = "Enabled"
 
     filter {}
 
-    expiration {
-      days = var.expiration_days
+    dynamic "expiration" {
+      for_each = var.never_expire ? [] : [local.expiration_days]
+      content {
+        days = expiration.value
+      }
     }
 
     abort_incomplete_multipart_upload {
