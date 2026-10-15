@@ -421,3 +421,54 @@ run "deny_notaction_is_allowed" {
     error_message = "Deny statements may use NotAction"
   }
 }
+
+run "allow_notresource_rejected" {
+  command = plan
+
+  variables {
+    inline_policies = {
+      p = jsonencode({ Statement = [{ Effect = "Allow", Action = "s3:GetObject", NotResource = "arn:aws:s3:::secret/*" }] })
+    }
+  }
+
+  expect_failures = [var.inline_policies]
+}
+
+run "allow_notresource_list_rejected" {
+  command = plan
+
+  variables {
+    inline_policies = {
+      p = jsonencode({ Statement = [{ Effect = "Allow", Action = "s3:GetObject", NotResource = ["arn:aws:s3:::a/*", "arn:aws:s3:::b/*"] }] })
+    }
+  }
+
+  expect_failures = [var.inline_policies]
+}
+
+run "allow_notresource_without_effect_rejected" {
+  command = plan
+
+  variables {
+    inline_policies = {
+      p = jsonencode({ Statement = [{ Action = "s3:GetObject", NotResource = "arn:aws:s3:::secret/*" }] })
+    }
+  }
+
+  expect_failures = [var.inline_policies]
+}
+
+run "deny_notresource_is_allowed" {
+  command = plan
+
+  variables {
+    inline_policies = {
+      p = jsonencode({ Statement = [{ Effect = "Deny", Action = "s3:GetObject", NotResource = "arn:aws:s3:::ok/*" }, { Effect = "Deny", Action = "s3:GetObject", NotResource = ["arn:aws:s3:::ok/*"] }] })
+    }
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy.this) == 1
+    error_message = "Deny statements may use NotResource"
+  }
+}
