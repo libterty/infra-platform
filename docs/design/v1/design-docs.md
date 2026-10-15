@@ -2686,7 +2686,7 @@ module "api_alarms" {
 | `log-delivery`（§4.29） | CloudWatch vended log 的 source、destination、delivery | `project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf`、`project-a/infra-v2/terraform/agent/logs.tf` | 有（project-a） |
 | `bedrock-knowledge-base`（§4.30） | Bedrock Knowledge Base（向量儲存只收 Aurora PostgreSQL pgvector）與 S3 data source | 無 | **沒有**：三個參考專案都沒用過 Bedrock Knowledge Base；project-a 的知識庫是自建 pgvector 加嵌入模型 |
 
-**7 個新 module 共通的約定**：§4.1 全部適用（不建 IAM、不互相呼叫、收完整 `name`、`tags` 只加 `Name`、英文註解、沒有 `enable_xxx`），只有一處例外：
+**7 個新 module 共通的約定**：§4.1 全部適用（不建 IAM、不互相呼叫、收完整 `name`、`tags` 只加 `Name`、英文註解、沒有 `enable_xxx`），設計上只有下表一處例外。實作後另有兩處 tag 跟「`tags` 只加 `Name`」不同：`bedrock-inference-profile` 的 profile 只帶輸入的 `tags`、不加 `Name`（D31），`log-delivery` 的 delivery 只帶輸入的 `tags`（D35）；以程式碼為準，列為待統一。
 
 | 項目 | 例外 | 理由 |
 |---|---|---|
@@ -2703,7 +2703,9 @@ module "api_alarms" {
 - `project-a/infra-v2/terraform/agent/guardrail.tf`（`tier_config` 第 43–46、107–110、163–166 行；空 policy 不送第 144–145 行；名稱與 topic 數的 precondition 第 224–232 行）
 - `project-a/docs/guide/guide-data-scientist.md`〈五條紅線〉〈三個實測踩過的坑〉（第 266–300 行）
 
-**資源**：`aws_bedrock_guardrail.this`。`data "aws_region"`、`data "aws_caller_identity"`、`data "aws_partition"` 組 guardrail profile ARN（測試用 `override_data`）。
+**資源**：`aws_bedrock_guardrail.this`。`data "aws_region"`、`data "aws_caller_identity"`、`data "aws_partition"` 組 guardrail profile ARN（測試用 `override_data`）；region 取 `data.aws_region.current.region`，不用 provider 6.x 已 deprecated 的 `.name`（D30）。
+
+**example**：`examples/basic`（`STANDARD` 加 profile）、`examples/zh-tw-standard`（中文 topic 與 content filter）。
 
 **輸入**
 
@@ -2779,7 +2781,7 @@ variable "words" {
 }
 
 variable "managed_word_lists" {
-  type    = set(string)                          # PROFANITY
+  type    = set(string)                          # PROFANITY only (validated)
   default = []
 }
 
@@ -2803,7 +2805,7 @@ variable "regexes" {
 
 variable "contextual_grounding" {
   type = object({
-    grounding_threshold = optional(number)       # 0-0.99
+    grounding_threshold = optional(number)       # 0-0.99; at least one of the two must be set
     relevance_threshold = optional(number)
   })
   default = null
@@ -2826,13 +2828,15 @@ variable "tags" {
 | tier 與 profile | `STANDARD` 必須給 `cross_region_profile_id`，格式像 `apac.guardrail.v1:0`；`CLASSIC` 必須是 null。格式 regex 只照 project-a 用過的一個值推出來，**未實測**其他 profile id 的形狀 | `project-a/docs/guide/guide-data-scientist.md:280-292` |
 | content filter | key 只收 6 種；strength 只收 `NONE`／`LOW`／`MEDIUM`／`HIGH`；action 只收 `BLOCK`／`NONE`；**`PROMPT_ATTACK` 的 `output_strength` 必須是 `NONE`**（API 會拒絕其他值） | `project-a/docs/guide/guide-data-scientist.md`〈五條紅線〉 |
 | topic 數 | `denied_topics` 不得超過 30 個；`definition` 不得是空字串 | `project-a/infra-v2/terraform/agent/guardrail.tf:229-232` |
-| 至少一種 policy | `content_filters`、`denied_topics`、`words`、`managed_word_lists`、`pii_entities`、`regexes`、`contextual_grounding` 至少一個非空 | Bedrock 不收沒有任何 policy 的 guardrail（**未實測**，照 API 文件） |
+| 至少一種 policy | `content_filters`、`denied_topics`、`words`、`managed_word_lists`、`pii_entities`、`regexes`、`contextual_grounding` 至少一個非空。**寫成 `aws_bedrock_guardrail.this` 的 lifecycle precondition，不是變數的 validation**，測試的 `expect_failures` 指向那個 resource（D30） | Bedrock 不收沒有任何 policy 的 guardrail（**未實測**，照 API 文件） |
 | PII 與 regex 的 action | 只收 `BLOCK`、`ANONYMIZE` | 照 API 文件，**未實測** |
-| grounding 門檻 | 0 到 0.99 | 照 API 文件，**未實測** |
+| grounding 門檻 | 0 到 0.99；給了 `contextual_grounding` 就至少要有一個門檻（兩個都 null 時被擋，D30） | 照 API 文件，**未實測** |
+| managed word list | 只收 `PROFANITY`（D30） | AWS 目前只有這一種 managed word list |
 
 **行為**
 
-- `tier_config { tier_name = var.tier }` **同時**放在 `content_policy_config` 與 `topic_policy_config`。`tier_config` 在 schema 是 optional 加 computed：省略時 AWS 給 `CLASSIC`，之後的 plan 也不會出現差異，所以一律明寫。
+- `tier_config = [{ tier_name = var.tier }]` **同時**放在 `content_policy_config` 與 `topic_policy_config`。在 provider 6.69.0 裡 `tier_config` 是 list 型別的屬性，不是 block，所以寫成指派而不是 `tier_config { ... }`（D30）。`tier_config` 在 schema 是 optional 加 computed：省略時 AWS 給 `CLASSIC`，之後的 plan 也不會出現差異，所以一律明寫。
+- 每個 topic 的 `type` 寫死 `"DENY"`（目前唯一的值），不開成輸入。
 - `tier = "STANDARD"` 時 `cross_region_config.guardrail_profile_identifier` 是 `arn:<partition>:bedrock:<region>:<account>:guardrail-profile/<id>`（照 `project-a/infra-v2/terraform/agent/guardrail.tf:21`）。
 - 每個 policy 區塊在對應輸入為空時整塊不送（dynamic block）：Bedrock 拒收空清單（`project-a/infra-v2/terraform/agent/guardrail.tf:144-145`）。`topic_policy_config` 只有在 `denied_topics` 非空時才送，`tier_config` 跟著它走。
 - topic 沒有 `input_enabled`／`output_enabled`（schema 沒有這兩個欄位），要只作用在某一側，就把它放在只有那一側會呼叫的那支 guardrail。
@@ -2886,7 +2890,9 @@ variable "tags" {
 }
 ```
 
-名稱字元規則照 AWS 文件（`^([0-9a-zA-Z:.][ _-]?)+$`），**未實測**。`profiles` 沒有預設值也可以是空 map：空 map 時什麼都不建（範本的 `agent` 預設就是這樣）。
+名稱字元規則照 AWS 文件（`^([0-9a-zA-Z:.][ _-]?)+$`，所以不能連續兩個 `-`），實作成 `profiles` 的第二條 validation，**未實測**。64 字上限 provider 6.69.0 自己也會擋，module 先擋是為了讓錯誤指到 `profiles`。`copy_from` 的 regex 只收 `foundation-model/`、`inference-profile/`，application inference profile 的 ARN（`application-inference-profile/`）會被擋，有測試鎖住（D31）。`profiles` 沒有預設值也可以是空 map：空 map 時什麼都不建（範本的 `agent` 預設就是這樣）。
+
+`tags` 原樣套到每個 profile，**不加 `Name`**（跟 §4.1 不同，D31）。
 
 **輸出**：`arns`、`ids`（`map(string)`，key 同 `profiles`）。
 
@@ -2943,6 +2949,7 @@ variable "network" {
     subnet_ids         = optional(list(string), [])
     security_group_ids = optional(list(string), [])
   })
+  nullable    = false
   description = "VPC by default. PUBLIC must be written out; it bypasses security groups and VPC endpoints."
 }
 
@@ -2957,13 +2964,15 @@ variable "session_lifecycle" {
 }
 
 variable "protocol" {
-  type    = string
-  default = "HTTP"                               # HTTP | MCP | A2A
+  type     = string
+  default  = "HTTP"                              # HTTP | MCP | A2A
+  nullable = false
 }
 
 variable "environment_variables" {
-  type    = map(string)
-  default = {}
+  type     = map(string)
+  default  = {}
+  nullable = false                               # empty map is sent as null (D32)
 }
 
 variable "jwt_authorizer" {
@@ -2977,8 +2986,9 @@ variable "jwt_authorizer" {
 }
 
 variable "request_header_allowlist" {
-  type    = set(string)
-  default = []
+  type     = set(string)
+  default  = []
+  nullable = false
 }
 
 variable "tags" {
@@ -2993,7 +3003,7 @@ variable "tags" {
 |---|---|---|
 | 名稱 | 字母開頭、只有字母數字底線、最多 48 字 | 底線規則：`project-a/infra-v2/terraform/iam/ssm-inputs.tf:49`；48 字照 AWS 文件，**未實測** |
 | 映像 | ECR URI，明確 tag 或 digest，不得 `:latest` | 跟 `ecs-service` 同一條規則（§4.3）；Terraform 擁有 tag（決策 45） |
-| 網路模式 | `mode` 只收 `VPC`、`PUBLIC`；`VPC` 時 `subnet_ids` 至少 2 個且不重複、`security_group_ids` 1–5 個；`PUBLIC` 時兩者都必須是空的 | 決策 42。subnet 下限 2 是本 repo 的高可用慣例（跟 `rds`、`vpc-interface-endpoints` 一致），不是 AWS 的下限；SG 上限 5 照 AWS 文件，**未實測** |
+| 網路模式 | `mode` 只收 `VPC`、`PUBLIC`；`VPC` 時 `subnet_ids` 至少 2 個且不重複、`security_group_ids` 1–5 個且不重複（D32）；`PUBLIC` 時兩者都必須是空的 | 決策 42。subnet 下限 2 是本 repo 的高可用慣例（跟 `rds`、`vpc-interface-endpoints` 一致），不是 AWS 的下限；SG 上限 5 照 AWS 文件，**未實測** |
 | lifecycle | 兩個值都在 60–1209600 之間，且 `idle_session_timeout <= max_lifetime` | 範圍：`project-a/infra-v2/terraform/agent/variables.tf:208`；大小關係照 API 文件，**未實測** |
 | protocol | 只收 `HTTP`、`MCP`、`A2A` | 照 API 文件，**未實測**；project-a 沒有設（用預設），project-b 用過 `HTTP`、`MCP` |
 | JWT | `discovery_url` 以 `https://` 開頭、以 `/.well-known/openid-configuration` 結尾；`allowed_audience` 與 `allowed_clients` 至少一個非空 | 照 API 文件，**未實測** |
@@ -3002,7 +3012,8 @@ variable "tags" {
 
 - `lifecycle_configuration = [{ idle_runtime_session_timeout = ..., max_lifetime = ... }]` 兩個值一律一起送。底層 `update-agent-runtime` 是 PUT，少送一個就靜默回到 AWS 預設；project-a 實測過帶 60 讀回 60、不帶讀回 900（`project-a/infra-v2/terraform/agent/variables.tf:194-226` 的說明）。預設值維持 AWS 的 900／28800（決策 48）。
 - `network_configuration.network_mode = var.network.mode`；`VPC` 時才有 `network_mode_config { subnets, security_groups }`。
-- `jwt_authorizer = null` 時不送 `authorizer_configuration`；`request_header_allowlist` 為空時不送 `request_header_configuration`。
+- `jwt_authorizer = null` 時不送 `authorizer_configuration`；`allowed_audience`、`allowed_clients` 其中一個是空集合時，那一個送 `null`。`request_header_allowlist` 為空時不送 `request_header_configuration`。
+- `environment_variables` 是空 map 時送 `null`。理由是推測：空 map 讀回來可能是 null，送 `{}` 會讓每次 plan 都有差異；**未實測**（D32、§7.3 第 18 項）。
 - **不用 `ignore_changes`**：映像 tag 由 Terraform 擁有，換版只改 `container_uri` 再 apply；繞過 Terraform 直接呼叫 API 換映像，下一次 apply 會退版（`project-a/docs/runbook/runbook-agentcore.md:129,146-148,193`）。project-b 的做法相反（`ignore_changes`，CI 直接更新，`project-b/infra/terraform/modules/agentcore/main.tf:345`），不採用（決策 45）。
 
 **`idle_session_timeout` 的取捨**（寫進 README 與 description）：拉長不會改善冷啟動。project-a 的量測是冷配置約 11.5 秒，而帳號的 session 存量有上限，idle 越長、同時佔用的 session 越多，能撐的流量越少（`project-a/docs/reports/2026-09-19-first-turn-ttft-cold-provisioning/README.md`）。要降冷啟動是應用程式層的 session 分片（project-a ADR-0043），module 不做。
@@ -3015,9 +3026,9 @@ variable "tags" {
 
 **用途**：建一個 AgentCore Memory，可選加上內建的長期記憶 strategy。
 
-**參考來源**：`project-a/infra-v2/terraform/agent/runtime.tf:72-78`（只有短期記憶，沒有 strategy）、`project-a/infra-v2/terraform/agent/variables.tf:228-237`（事件保留 3–365 天）。
+**參考來源**：`project-a/infra-v2/terraform/agent/runtime.tf:72-78`（只有短期記憶，沒有 strategy）、`project-a/infra-v2/terraform/agent/variables.tf:228-237`（事件保留 3–365 天；module 的下限是 7，見下方 validation 表與 D33）。
 
-**資源**：`aws_bedrockagentcore_memory.this`、`aws_bedrockagentcore_memory_strategy.this`（`for_each = strategies`，預設 `{}`，等於 project-a 的現況：只有短期記憶）。
+**資源**：`aws_bedrockagentcore_memory.this`、`aws_bedrockagentcore_memory_strategy.this`（`for_each = strategies`，預設 `{}`，等於 project-a 的現況：只有短期記憶）。strategy 的 `name` 就是 `strategies` 的 key；`namespaces` 輸入送進 provider 的 `namespace_templates`（provider 6.69.0 把 strategy 的 `namespaces` 標成 deprecated），輸入名稱不變（D33）。
 
 **輸入**
 
@@ -3038,20 +3049,22 @@ variable "description" {
 variable "event_expiry_days" {
   type        = number
   default     = 90
-  description = "Days a short-term event is kept, 3-365. Changing it only affects events written afterwards."
+  nullable    = false
+  description = "Days a short-term event is kept, 7-365. Changing it only affects events written afterwards."
   validation {
-    condition     = var.event_expiry_days >= 3 && var.event_expiry_days <= 365 && floor(var.event_expiry_days) == var.event_expiry_days
-    error_message = "event_expiry_days must be a whole number between 3 and 365."
+    condition     = var.event_expiry_days >= 7 && var.event_expiry_days <= 365 && floor(var.event_expiry_days) == var.event_expiry_days
+    error_message = "event_expiry_days must be a whole number between 7 and 365."
   }
 }
 
 variable "strategies" {
-  type = map(object({
+  type = map(object({                            # key: strategy name, same rule as var.name
     type        = string                         # SEMANTIC | SUMMARIZATION | USER_PREFERENCE
-    namespaces  = list(string)                   # e.g. /actors/{actorId}/facts
+    namespaces  = list(string)                   # e.g. /actors/{actorId}/facts; sent as namespace_templates
     description = optional(string)
   }))
-  default = {}
+  default  = {}
+  nullable = false
 }
 
 variable "kms_key_arn" {
@@ -3068,7 +3081,8 @@ variable "tags" {
 | validation | 內容 | 依據 |
 |---|---|---|
 | 名稱 | 同 Runtime 的底線規則 | 照 API 文件，**未實測** |
-| 保留天數 | 3–365 的整數 | `project-a/infra-v2/terraform/agent/variables.tf:228-237` |
+| 保留天數 | ~~3–365 的整數~~ 已被 D33 取代：**7–365 的整數** | 上限與整數：`project-a/infra-v2/terraform/agent/variables.tf:228-237`。下限 7：aws provider 6.69.0 在 plan 階段就擋 7 以下的值（`value must be between 7 and 365, got: 3`，主 agent 實測）；API 文件與 project-a 寫的 3 用這個 provider 版本送不出去 |
+| strategy 名稱 | `strategies` 的 key 就是 strategy 名稱，規則同 Memory 名稱 | 照 API 文件，**未實測**（D33） |
 | strategy 型別 | 只收 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` | 照 API 文件，**未實測**；三個參考專案都沒用過 strategy |
 | namespace | 每個 strategy 至少一個、以 `/` 開頭 | 照 API 文件，**未實測** |
 
@@ -3113,7 +3127,8 @@ variable "authorizer" {
     allowed_audience = optional(set(string), [])
     allowed_clients  = optional(set(string), [])
   })
-  default = { type = "AWS_IAM" }
+  default  = { type = "AWS_IAM" }
+  nullable = false
 }
 
 variable "mcp" {
@@ -3151,7 +3166,8 @@ variable "targets" {
     # type = mcp_server
     endpoint = optional(string)                  # https URL
   }))
-  default = {}
+  default  = {}                                  # key: target name
+  nullable = false
 }
 
 variable "tags" {
@@ -3162,12 +3178,14 @@ variable "tags" {
 
 | validation | 內容 | 依據 |
 |---|---|---|
-| 名稱 | gateway 與 target 名稱：英數與單一 `-`，最多 100 字 | 照 API 文件，**未實測** |
+| 名稱 | gateway 與 target 名稱：英數與單一 `-`（不得有連續的 `--`、不得以 `-` 開頭或結尾），最多 100 字；target 名稱就是 `targets` 的 key | 照 API 文件，**未實測**；「不得有 `--`」是實作時補上的（D34） |
 | authorizer | `type` 只收 `AWS_IAM`、`CUSTOM_JWT`，**不收 `NONE`**；`CUSTOM_JWT` 時 `discovery_url` 必填（`https://`、`/.well-known/openid-configuration` 結尾）且 `allowed_audience`／`allowed_clients` 至少一個非空；`AWS_IAM` 時這三個必須是 null 或空 | 不收 `NONE`：沒有認證的 Gateway 等於把背後的工具開給任何拿得到 URL 的人 |
 | target 型別 | `type` 只收 `lambda`、`mcp_server` | 決策 40 |
-| 型別對應的欄位 | `lambda`：`lambda_arn` 必填（Lambda ARN 格式），`tool_schema_s3_uri` 與 `tools` 恰好一個；`endpoint` 必須是 null。`mcp_server`：`endpoint` 必填且是 `https://` URL；`lambda_arn`、`tool_schema_s3_uri`、`tools` 都必須是 null | 一個 target 只能是一種 |
+| 型別對應的欄位 | `lambda`：`lambda_arn` 必填（Lambda function ARN，可帶 alias 或版本的 qualifier，D34），`tool_schema_s3_uri` 與非空的 `tools` 恰好一個；`endpoint` 必須是 null。`mcp_server`：`endpoint` 必填且是 `https://` URL；`lambda_arn`、`tool_schema_s3_uri`、`tools` 都必須是 null | 一個 target 只能是一種 |
 | inline 工具 | `tools` 非空時每個 `name` 不重複、`description` 非空；`properties[*].type` 只收 JSON Schema 的 6 種基本型別 | — |
-| S3 URI | `tool_schema_s3_uri` 以 `s3://` 開頭 | — |
+| S3 URI | `tool_schema_s3_uri` 是 `s3://<bucket>/<key>`，只有 bucket 沒有 key 的被擋（D34） | — |
+| role | `role_arn` 是不帶 path 的 IAM role ARN，同 `agentcore-runtime` | — |
+| `mcp.search_type` | 沒有 validation，值原樣送出 | 允許值未查證（D34） |
 
 **為什麼 Lambda 的工具定義是「S3 URI 或扁平的 `tools`」**：schema 查證發現 Lambda target 的 `tool_schema.inline_payload` 不是一個 JSON 字串，而是多層的 block（`input_schema` → `property` → `items` → …，第三層之後才是 `properties_json`／`items_json` 字串）。要收任意 JSON Schema 就得寫遞迴的 dynamic block，而 Terraform 沒有遞迴。所以 module 收兩種：工具的輸入只有一層屬性時用 `tools`（project-b 的寫法就是一層）；需要巢狀型別時，把完整的工具定義放在 S3，給 `tool_schema_s3_uri`。MCP server target 不受影響：它的 inline payload 是字串，但 MCP server 的工具清單由 server 自己回報，第一版不收 inline payload（§9.4 D23、J54）。
 
@@ -3177,6 +3195,7 @@ variable "tags" {
 - Lambda target 一律帶 `credential_provider_configuration { gateway_iam_role {} }`：Gateway 用自己的 role 呼叫 Lambda，權限（`lambda:InvokeFunction`）在範本的 `iam-app` 附加到 gateway role。
 - MCP server target 不帶 `credential_provider_configuration`。**AWS 是否接受不帶 outbound 認證的 MCP server target，未實測**（§7.3 第 20 項）；如果不接受，MCP server target 在 credential provider module 做出來之前無法使用，到時候要回頭找使用者決定。
 - `search_type = null` 時 `protocol_configuration.mcp` 不送 `search_type`。
+- `tools` 寫法的每個工具一律送 `input_schema { type = "object" }`，`properties` 是空 map 時也送（只是沒有 `property`）。AWS 收不收沒有屬性的 `input_schema`、以及 `type = "array"`／`"object"` 的屬性不帶 `items`／`properties`，都**未實測**（D34、§7.3 第 20 項）。
 
 **輸出**：`gateway_id`、`gateway_arn`、`gateway_url`、`target_ids`（`map(string)`）。
 
@@ -3188,7 +3207,7 @@ variable "tags" {
 
 **參考來源**：`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf`（`TRACES` → `XRAY`；`replace_triggered_by` 第 34–40、61–67 行）、`project-a/infra-v2/terraform/agent/logs.tf`（`APPLICATION_LOGS` → log group）。
 
-**資源**：`aws_cloudwatch_log_delivery_source.this`、`aws_cloudwatch_log_delivery_destination.this`、`aws_cloudwatch_log_delivery.this`（各自 `for_each`）。
+**資源**：`aws_cloudwatch_log_delivery_source.this`、`aws_cloudwatch_log_delivery_destination.this`、`aws_cloudwatch_log_delivery.this`（各自 `for_each`），另外每個 delivery 一個 `terraform_data.source_arn`（不碰 AWS，用途見〈行為〉，D35）。source 與 destination 的 tag 加 `Name = <name_prefix>-<key>`；delivery 只帶輸入的 `tags`（D35）。
 
 **輸入**
 
@@ -3238,11 +3257,11 @@ variable "tags" {
 **行為**
 
 - `XRAY` destination 設 `delivery_destination_type = "XRAY"`、不送 `delivery_destination_configuration`；`CWL`、`S3` 只送 `delivery_destination_configuration.destination_resource_arn`，跟 project-a 一致。
-- **delivery 加 `lifecycle { replace_triggered_by = [aws_cloudwatch_log_delivery_source.this[each.value.source].resource_arn] }`**：Runtime 或 Memory 重建、ARN 換了，source 會被替換；delivery 不跟著換的話，刪 source 時撞 `ConflictException`，apply 卡在半途（project-a 實際踩過，`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf:34-40` 的註解）。只看 `resource_arn`，source 只改 tag 時不連帶重建 delivery。
+- **delivery 在 source 的 `resource_arn` 改變時跟著替換**：Runtime 或 Memory 重建、ARN 換了，source 會被替換；delivery 不跟著換的話，刪 source 時撞 `ConflictException`，apply 卡在半途（project-a 實際踩過，`project-a/infra-v2/terraform/postdeploy/agentcore-tracing.tf:34-40` 的註解）。只看 `resource_arn`，source 只改 tag 時不連帶重建 delivery。~~寫法是 `replace_triggered_by = [aws_cloudwatch_log_delivery_source.this[each.value.source].resource_arn]`~~ 已被 D35 取代：Terraform 1.15.8 的 `replace_triggered_by` 只能用 `each.key` 索引別的 resource，不能用 `each.value.source`。實作是每個 delivery 一個 `terraform_data.source_arn`（`input` 是那個 delivery 的 source 的 `resource_arn`），delivery 寫 `replace_triggered_by = [terraform_data.source_arn[each.key].output]`，效果相同。
 
 **輸出**：`source_names`、`destination_arns`、`delivery_ids`（`map(string)`）。
 
-**刻意不做**：log group 本身（`log-group` module）；跨帳號的 destination policy；`record_fields`、`field_delimiter`、S3 的 `s3_delivery_configuration`（用預設）；IAM。CloudWatch Logs 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**（§7.3 第 19 項）。
+**刻意不做**：log group 本身（`log-group` module）；跨帳號的 destination policy；`record_fields`、`field_delimiter`、S3 的 `s3_delivery_configuration`、destination 的 `output_format`（用預設；`record_fields`、`field_delimiter` 在 schema 是 optional 加 computed，不送時 plan 不會出現差異，D35）；IAM。CloudWatch Logs 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**（§7.3 第 19 項）。
 
 ### 4.30 `bedrock-knowledge-base`
 
@@ -3271,7 +3290,7 @@ variable "description" {
 }
 
 variable "role_arn" {
-  type = string                                  # Bedrock KB service role, created by iam-base
+  type = string                                  # Bedrock KB service role, created by iam-base; IAM role ARN, path allowed (D36)
 }
 
 variable "embedding_model_arn" {
@@ -3308,9 +3327,9 @@ variable "aurora" {
 }
 
 variable "data_sources" {
-  type = map(object({
+  type = map(object({                            # key: data source name, same rule as var.name
     bucket_arn              = string
-    inclusion_prefixes      = optional(set(string), [])
+    inclusion_prefixes      = optional(set(string), [])   # empty is sent as null (whole bucket)
     bucket_owner_account_id = optional(string)
     data_deletion_policy    = optional(string, "RETAIN")   # RETAIN | DELETE
     chunking = optional(object({
@@ -3336,12 +3355,14 @@ variable "tags" {
 
 | validation | 內容 | 依據 |
 |---|---|---|
-| cluster | `aurora.cluster_arn` 必須是 `arn:aws…:rds:<region>:<account>:cluster:<id>`；DB instance ARN（`:db:`）被擋 | Bedrock KB 經 RDS Data API 連資料庫，Data API 只支援 Aurora cluster（§4.31） |
+| cluster | `aurora.cluster_arn` 必須是 `arn:aws…:rds:<region>:<account>:cluster:<id>`；DB instance ARN（`:db:`）被擋。`<id>` 是字母開頭的英數與 `-`，regex 收大寫（D36） | Bedrock KB 經 RDS Data API 連資料庫，Data API 只支援 Aurora cluster（§4.31） |
 | secret | `credentials_secret_arn` 是 Secrets Manager ARN | — |
+| role | `role_arn` 是 IAM role ARN；跟 `agentcore-runtime`、`agentcore-gateway` 不同，**允許帶 path**（D36） | — |
+| data source 名稱 | `data_sources` 的 key 就是 data source 名稱，規則同 KB 名稱（D36） | 照 API 文件，**未實測** |
 | 名稱 | `database_name` 是小寫識別字；`table_name` 是 `<schema>.<table>` 或 `<table>`，每段 `^[a-z_][a-z0-9_]{0,62}$` | 只收小寫，避免 SQL 裡要加雙引號才對得上 |
 | 欄位對應 | 5 個欄位名都是小寫識別字、彼此不重複 | 重複的欄位名，KB 寫入時會互相覆蓋（推論，**未實測**） |
 | 維度 | `embedding_dimensions` 是正整數 | 跟 SQL 的 `vector(N)` 必須相同，module 驗不到資料庫，只能靠 README 與 guide 的對照 |
-| chunking | `strategy` 只收 `FIXED_SIZE`、`NONE`；`max_tokens > 0`；`overlap_percentage` 1–99 | 照 API 文件，**未實測**；`HIERARCHICAL`、`SEMANTIC` 第一版不收 |
+| chunking | `strategy` 只收 `FIXED_SIZE`、`NONE`；`max_tokens > 0`；`overlap_percentage` 1–99 | `overlap_percentage` 的 1–99：aws provider 6.69.0 在 plan 時也擋這個範圍以外的值（實作時發現，D36），module 先擋是為了讓錯誤指到 `data_sources`；其他照 API 文件，**未實測**；`HIERARCHICAL`、`SEMANTIC` 第一版不收 |
 | data source | `bucket_arn` 是 S3 bucket ARN；`data_deletion_policy` 只收 `RETAIN`、`DELETE`；prefix 不以 `/` 開頭 | — |
 
 **行為**
@@ -3351,6 +3372,8 @@ variable "tags" {
 - module 不知道 `credentials_secret_arn` 是哪個資料庫帳號，也不擋 master secret（module 拿不到 master secret 的 ARN）。範本的 `agent` 只收專用帳號的 secret，並用 precondition 擋掉 master secret（決策 53，§5.3 增補）；README 與 description 寫明「不要給 master secret」。
 - `data_deletion_policy` 預設 `RETAIN`：刪掉 data source 時不連帶清掉向量資料，避免一次錯誤的 apply 清空知識庫；要跟著刪的專案明寫 `DELETE`。
 - `chunking.strategy = "NONE"` 時不送 `fixed_size_chunking_configuration`。
+- `inclusion_prefixes` 是空集合時送 `null`（整個 bucket）。`inclusion_prefixes` 有沒有數量上限，**未查證**（§7.3 第 21 項）。
+- `kms_key_arn` 有給時，套到每個 data source 的 `server_side_encryption_configuration`；KB 本身不帶 key。
 
 **資料庫要先準備好的東西**（專案的 migration 負責，不在 Terraform 裡；`docs/guides/llm-agentcore.md` 會原樣收錄這段，Phase 15）
 
@@ -3932,8 +3955,8 @@ variable "guardrails" {
 
 variable "memories" {
   type = map(object({
-    event_expiry_days = optional(number, 90)
-    strategies = optional(map(object({
+    event_expiry_days = optional(number, 90)               # 7–365（agentcore-memory 的範圍，D33）
+    strategies = optional(map(object({                     # key 是 strategy 名稱：字母開頭、只有字母數字底線（D33）
       type       = string
       namespaces = list(string)
     })), {})
@@ -3948,7 +3971,7 @@ variable "knowledge_bases" {
     credentials_secret_arn = string                        # KB 專用資料庫帳號的 secret，由專案建立（決策 53）；不得是 master secret
     table_name             = optional(string, "bedrock_integration.bedrock_kb")
     field_mapping          = optional(map(string), {})     # 對應 bedrock-knowledge-base 的 field_mapping，空 = module 預設
-    data_sources = map(object({                            # 都在這個 KB 的語料 bucket 裡（決策 51），只用 prefix 區分
+    data_sources = map(object({                            # 都在這個 KB 的語料 bucket 裡（決策 51），只用 prefix 區分；key 是 data source 名稱，規則同 KB 名稱（D36）
       inclusion_prefixes = optional(set(string), [])
     }))
   }))
@@ -3958,7 +3981,7 @@ variable "knowledge_bases" {
 variable "agentcore_gateway" {
   description = "null = 不建 Gateway。target 只收 lambda 與 mcp_server（決策 40）。"
   type = object({
-    targets = map(object({
+    targets = map(object({                                 # key 是 target 名稱：英數與單一 -（D34）
       type               = string
       lambda_arn         = optional(string)
       tool_schema_s3_uri = optional(string)
@@ -4755,13 +4778,13 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 
 | module | run（plan，除非另註） | `expect_failures`（反向：通過的那一側寫在括號裡） |
 |---|---|---|
-| `bedrock-guardrail` | 預設 tier 是 `STANDARD`，`content_policy_config` 與 `topic_policy_config` 兩塊都有 `tier_config = [{ tier_name = "STANDARD" }]`；`cross_region_config.guardrail_profile_identifier` 等於由 `override_data` 的 partition、region、account 組成的 ARN；明寫 `CLASSIC` 時兩塊的 tier 都是 `CLASSIC`、沒有 `cross_region_config`；只有 `words` 時只有 `word_policy_config`，其他 policy 區塊都不存在；`denied_topics` 為空時沒有 `topic_policy_config`；`version` 輸出是 `DRAFT`；`PROMPT_ATTACK` 的 `output_strength = "NONE"` 照輸入 | 名稱 51 字或含空白（50 字通過）；`STANDARD` 沒給 profile（給了通過）；`CLASSIC` 給了 profile（null 通過）；profile id 格式錯（`apac.guardrail.v1:0` 通過）；31 個 topic（30 個通過）；全部 policy 都空（只有一個 word 通過）；strength 給 `EXTREME`；content filter key 給 `SPAM`；`PROMPT_ATTACK` 的 `output_strength = "HIGH"`；PII action 給 `MASK`；grounding 門檻 1.0（0.99 通過）；tier 給 `PREMIUM` |
-| `bedrock-inference-profile` | 每個 `profiles` 一個 profile，名稱 `<name_prefix>-<key>`、`model_source.copy_from` 照輸入；`profiles = {}` 時 0 個；`foundation-model` 與 `inference-profile` 兩種 ARN 都通過 | `copy_from` 不是 ARN 或是 `provisioned-model`；名稱 65 字（64 字通過） |
-| `agentcore-runtime` | `network_mode = "VPC"`，subnet 與 SG 照輸入；`mode = "PUBLIC"` 時沒有 `network_mode_config`；`lifecycle_configuration` 兩欄都有、預設 900／28800；**只覆寫 `idle_session_timeout` 時 `max_lifetime` 仍是 28800**（這條是 project-a 那個 PUT 坑的迴歸測試）；`jwt_authorizer = null` 時沒有 `authorizer_configuration`；`request_header_allowlist` 為空時沒有那個區塊；`container_uri` 照輸入、沒有 `ignore_changes`（grep，不是 run） | 名稱含 `-`（底線通過）、49 字（48 字通過）、數字開頭；`:latest`（明確 tag 與 digest 都通過）；不是 ECR 的 URI；`idle_session_timeout` 59 或 1209601（60、1209600 通過）；`idle > max_lifetime`；`role_arn` 帶 path 或不是 role；`VPC` 只給 1 個 subnet（2 個通過）；`VPC` 沒給 SG；`PUBLIC` 卻給了 subnet；`mode = "PRIVATE"`；`protocol = "GRPC"`；JWT 的 `discovery_url` 是 http 或少了 well-known 結尾；JWT 的 audience 與 clients 都是空的 |
-| `agentcore-memory` | `event_expiry_duration` 照輸入、預設 90；`strategies = {}` 時 0 個 strategy；每個 strategy 的 `memory_id` 等於 Memory 的 id、`type` 與 `namespaces` 照輸入、沒有 `configuration` | `event_expiry_days` 2 或 366（3、365 通過）、2.5；strategy 型別給 `CUSTOM`；`namespaces` 為空或不以 `/` 開頭；名稱含 `-` |
-| `agentcore-gateway` | `protocol_type = "MCP"`；`AWS_IAM` 時沒有 `authorizer_configuration`；`CUSTOM_JWT` 時有 `discovery_url` 與 audience；Lambda target 的 `lambda_arn` 照輸入、有 `credential_provider_configuration.gateway_iam_role`；`tools` 寫法產生 `inline_payload`，每個 property 一個 `property` block；`tool_schema_s3_uri` 寫法產生 `tool_schema.s3.uri`、沒有 `inline_payload`；MCP server target 的 `endpoint` 照輸入、沒有 credential 區塊；`targets = {}` 時 0 個 target；`mcp.search_type = null` 時不送 | `authorizer.type = "NONE"`；`CUSTOM_JWT` 沒有 `discovery_url`；`AWS_IAM` 給了 `discovery_url`；target 型別 `open_api`；Lambda target 沒給 `lambda_arn`；Lambda target 同時給 `tools` 與 `tool_schema_s3_uri`、或兩個都沒給（各給一個都通過）；MCP server target 給了 `lambda_arn`；`endpoint` 是 http；`tool_schema_s3_uri` 不是 `s3://`；property 型別給 `date`；同一個 target 兩個工具同名 |
-| `log-delivery` | 每個 source／destination／delivery 一個資源；XRAY destination 的 `delivery_destination_type = "XRAY"` 且沒有 `delivery_destination_configuration`；CWL destination 只有 `destination_resource_arn`；delivery 的 `delivery_source_name` 與 `delivery_destination_arn` 對到正確的 key；三個 map 都空時什麼都不建；`replace_triggered_by` 存在（grep，不是 run） | delivery 指向不存在的 source 或 destination；XRAY 給了 `resource_arn`；CWL 沒給或給了 S3 ARN；`log_type = "ACCESS_LOGS"`；destination `type = "FIREHOSE"`；名稱 61 字（60 字通過） |
-| `bedrock-knowledge-base` | `knowledge_base_configuration.type = "VECTOR"`、`storage_configuration.type = "RDS"`；`rds_configuration` 的五個欄位照輸入；`field_mapping` 沒給時是 `id`／`embedding`／`chunks`／`metadata`、沒有 `custom_metadata_field`；`dimensions` 照輸入；每個 `data_sources` 一個 data source，`type = "S3"`、`bucket_arn`、`inclusion_prefixes` 照輸入、`data_deletion_policy` 預設 `RETAIN`；`chunking.strategy = "NONE"` 時沒有 `fixed_size_chunking_configuration` | `cluster_arn` 是 `:db:` 的 instance ARN（`:cluster:` 通過）；`table_name` 含大寫、雙引號或三段；兩個欄位同名；欄位名含 `-`；`embedding_dimensions` 0 或 1.5；`embedding_model_arn` 是 inference profile；`overlap_percentage` 0 或 100（1、99 通過）；`max_tokens = 0`；`strategy = "SEMANTIC"`；`data_deletion_policy = "PURGE"`；prefix 以 `/` 開頭 |
+| `bedrock-guardrail` | 預設 tier 是 `STANDARD`，`content_policy_config` 與 `topic_policy_config` 兩塊都有 `tier_config = [{ tier_name = "STANDARD" }]`；`cross_region_config.guardrail_profile_identifier` 等於由 `override_data` 的 partition、region、account 組成的 ARN；明寫 `CLASSIC` 時兩塊的 tier 都是 `CLASSIC`、沒有 `cross_region_config`；只有 `words` 時只有 `word_policy_config`，其他 policy 區塊都不存在；`denied_topics` 為空時沒有 `topic_policy_config`；`version` 輸出是 `DRAFT`；`PROMPT_ATTACK` 的 `output_strength = "NONE"` 照輸入 | 名稱 51 字或含空白（50 字通過）；`STANDARD` 沒給 profile（給了通過）；`CLASSIC` 給了 profile（null 通過）；profile id 格式錯（`apac.guardrail.v1:0` 通過）；31 個 topic（30 個通過）；全部 policy 都空（只有一個 word、只有一個 managed word list、只有 grounding 各自通過；`expect_failures` 指向 `aws_bedrock_guardrail.this` 的 precondition，D30）；managed word list 給 `PROFANITY` 以外的值；`contextual_grounding` 兩個門檻都是 null（D30）；strength 給 `EXTREME`；content filter key 給 `SPAM`；`PROMPT_ATTACK` 的 `output_strength = "HIGH"`；PII action 給 `MASK`；grounding 門檻 1.0（0.99 通過）；tier 給 `PREMIUM` |
+| `bedrock-inference-profile` | 每個 `profiles` 一個 profile，名稱 `<name_prefix>-<key>`、`model_source.copy_from` 照輸入；`profiles = {}` 時 0 個；`foundation-model` 與 `inference-profile` 兩種 ARN 都通過 | `copy_from` 不是 ARN、是 `provisioned-model` 或 application inference profile 的 ARN；名稱 65 字（64 字通過）；名稱含不允許的字元或連續兩個 `-`（D31） |
+| `agentcore-runtime` | `network_mode = "VPC"`，subnet 與 SG 照輸入；`mode = "PUBLIC"` 時沒有 `network_mode_config`；`lifecycle_configuration` 兩欄都有、預設 900／28800；**只覆寫 `idle_session_timeout` 時 `max_lifetime` 仍是 28800**（這條是 project-a 那個 PUT 坑的迴歸測試）；`jwt_authorizer = null` 時沒有 `authorizer_configuration`；`request_header_allowlist` 為空時沒有那個區塊；`container_uri` 照輸入、沒有 `ignore_changes`（grep，不是 run） | 名稱含 `-`（底線通過）、49 字（48 字通過）、數字開頭；`:latest`（明確 tag 與 digest 都通過）；不是 ECR 的 URI；`idle_session_timeout` 59 或 1209601（60、1209600 通過）；`idle > max_lifetime`；`role_arn` 帶 path 或不是 role；`VPC` 只給 1 個 subnet 或 subnet 重複（2 個通過）；`VPC` 沒給 SG、6 個 SG（5 個通過）；`PUBLIC` 卻給了 subnet；`mode = "PRIVATE"`；`protocol = "GRPC"`；JWT 的 `discovery_url` 是 http 或少了 well-known 結尾；JWT 的 audience 與 clients 都是空的 |
+| `agentcore-memory` | `event_expiry_duration` 照輸入、預設 90；`strategies = {}` 時 0 個 strategy；每個 strategy 的 `memory_id` 等於 Memory 的 id、`name` 等於 key、`type` 照輸入、`namespace_templates` 等於輸入的 `namespaces`（D33）、沒有 `configuration` | ~~`event_expiry_days` 2 或 366（3、365 通過）、2.5~~ 已被 D33 取代：`event_expiry_days` 2、3、6 或 366（7、365 通過）、2.5、範圍內的小數；strategy 型別給 `CUSTOM`；`namespaces` 為空或不以 `/` 開頭；名稱含 `-`；strategy 的 key 含 `-` 或 49 字（48 字通過） |
+| `agentcore-gateway` | `protocol_type = "MCP"`；`AWS_IAM` 時沒有 `authorizer_configuration`；`CUSTOM_JWT` 時有 `discovery_url` 與 audience；Lambda target 的 `lambda_arn` 照輸入、有 `credential_provider_configuration.gateway_iam_role`；`tools` 寫法產生 `inline_payload`，每個 property 一個 `property` block；`tool_schema_s3_uri` 寫法產生 `tool_schema.s3.uri`、沒有 `inline_payload`；MCP server target 的 `endpoint` 照輸入、沒有 credential 區塊；`targets = {}` 時 0 個 target；`mcp.search_type = null` 時不送 | `authorizer.type = "NONE"`；`CUSTOM_JWT` 沒有 `discovery_url`；`AWS_IAM` 給了 `discovery_url`；target 型別 `open_api`；Lambda target 沒給 `lambda_arn`；Lambda target 同時給 `tools` 與 `tool_schema_s3_uri`、或兩個都沒給（各給一個都通過）；MCP server target 給了 `lambda_arn`；`endpoint` 是 http；`tool_schema_s3_uri` 不是 `s3://` 或沒有 key；property 型別給 `date`；同一個 target 兩個工具同名（不同 target 同名通過）；另外 D34 補的：gateway 名稱或 target key 含 `--`、101 字（100 字通過）；`lambda_arn` 不是 function ARN；Lambda target 給了 `endpoint`；`tools = []`；工具 `description` 是空字串；`role_arn` 帶 path |
+| `log-delivery` | 每個 source／destination／delivery 一個資源；XRAY destination 的 `delivery_destination_type = "XRAY"` 且沒有 `delivery_destination_configuration`；CWL destination 只有 `destination_resource_arn`；delivery 的 `delivery_source_name` 與 `delivery_destination_arn` 對到正確的 key；三個 map 都空時什麼都不建；`replace_triggered_by` 存在（grep，不是 run；實作指向 `terraform_data.source_arn[each.key].output`，D35）；source 與 destination 的 tag 帶 `Name` | delivery 指向不存在的 source 或 destination；XRAY 給了 `resource_arn`；CWL 沒給或給了 S3 ARN；`log_type = "ACCESS_LOGS"`；destination `type = "FIREHOSE"`；名稱 61 字（60 字通過） |
+| `bedrock-knowledge-base` | `knowledge_base_configuration.type = "VECTOR"`、`storage_configuration.type = "RDS"`；`rds_configuration` 的五個欄位照輸入；`field_mapping` 沒給時是 `id`／`embedding`／`chunks`／`metadata`、沒有 `custom_metadata_field`；`dimensions` 照輸入；每個 `data_sources` 一個 data source，`type = "S3"`、`bucket_arn`、`inclusion_prefixes` 照輸入、`data_deletion_policy` 預設 `RETAIN`；`chunking.strategy = "NONE"` 時沒有 `fixed_size_chunking_configuration`；`kms_key_arn` 有給時每個 data source 都有 `server_side_encryption_configuration`（D36） | `cluster_arn` 是 `:db:` 的 instance ARN（`:cluster:` 通過）；`table_name` 含大寫、雙引號或三段；兩個欄位同名；欄位名含 `-`；`embedding_dimensions` 0 或 1.5；`embedding_model_arn` 是 inference profile；`overlap_percentage` 0 或 100（1、99 通過）；`max_tokens = 0`；`strategy = "SEMANTIC"`；`data_deletion_policy = "PURGE"`；prefix 以 `/` 開頭；另外 D36 補的：`role_arn` 不是 role；data source 的 key 不符合名稱規則；`bucket_arn` 帶物件路徑；`database_name` 含大寫；`credentials_secret_arn` 不是 secret ARN |
 | `rds`（Data API） | **既有 5 個測試檔一行不改全部通過**；新檔 `tests/data-api.tftest.hcl`：預設時 `aws_rds_cluster.this[0].enable_http_endpoint == false`（`aurora` 與 `aurora_serverless` 各一）；`data_api = true` 時是 `true` | `deployment = "rds"` 配 `data_api = true`（`aurora` 配 `true` 通過） |
 | `rds`（新輸出，決策 52） | 新檔 `tests/deployment-outputs.tftest.hcl`：三種型態各一個 run，`output.deployment` 等於輸入的 `deployment`、`output.database_name` 等於輸入的 `database_name`；改一個非預設的 `database_name`（例如 `kb`）時輸出跟著變（不能只測預設值，否則寫死也會過） | 沒有新 validation |
 | `s3-bucket`（不過期，決策 51） | **既有 `tests/s3-bucket.tftest.hcl` 一行不改全部通過**（含 `lifecycle_defaults` 的 90 天與 `expiration_*` 的四個邊界）；新檔 `tests/never-expire.tftest.hcl`：`never_expire = true` 時 rule 沒有 `expiration` 區塊、`abort_incomplete_multipart_upload` 仍是 7 天、rule id 是 `abort-incomplete-uploads`、`status = "Enabled"`；預設時 rule id 是 `expire-objects`、`expiration.days == 90`；明寫 `expiration_days = null` 時是 90（不是不過期）；`never_expire = null` 時當成 `false`（`nullable = false`），`expiration.days == 90`；`never_expire = false` 配 `expiration_days = 30` 時是 30 | `never_expire = true` 配 `expiration_days = 30` 被擋（`expect_failures = [var.never_expire]`；`never_expire = true` 不給天數通過、`never_expire = false` 配 30 通過）；`expiration_days = 0` 仍被擋（既有 run 涵蓋） |
@@ -4816,10 +4839,10 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 15. **guardrail**：`STANDARD` 加 `cross_region_config` 對中文輸入真的會擋、`CLASSIC` 不擋（重現 project-a 的實測）；寫錯的 profile id 在 apply 時成功、第一次 `ApplyGuardrail` 才失敗；`ApplyGuardrail` 在沒有 NAT 時走 `bedrock-runtime` endpoint 呼叫得到；guardrail profile 的 IAM 用 region `*` 時不會間歇失敗；module 的名稱、profile id、PII action、grounding 門檻、「至少一種 policy」這幾條 validation 跟 API 的實際規則一致。
 16. **Runtime 建立時的權限**：execution role 只有 trust、ECR、log 時 `CreateAgentRuntime` 是否成功；`iam-app` apply 之後第一次 invoke 是否就能呼叫模型、Memory、guardrail（§5.4 增補）。
 17. **AgentCore 的 VPC 模式**：Runtime 拉映像走服務端還是 VPC 裡的 ENI；沒有 NAT 時只靠 S3 gateway endpoint、`bedrock-runtime`、`bedrock-agentcore` endpoint 能不能拉到映像、呼叫到模型與 Memory；VPC 模式是否限定特定 AZ ID；每個 Runtime 用掉多少 ENI 與 IP（project-a 為此把 app subnet 切到 `/19`，§5.11），把結果補進 §5.11 的 IP 規劃公式。
-18. **名稱與列舉值**：Runtime、Memory、Gateway、target、KB、log delivery 的名稱規則與長度；Runtime 的 `protocol`、Memory strategy 的 `type`、log delivery 的 `log_type` 允許值；Runtime 的 `idle_session_timeout <= max_lifetime`。module 的 validation 比 AWS 寬時會在 apply 才失敗，比 AWS 窄時會擋掉合法的輸入，兩種都要在第一次部署時記下來改。
+18. **名稱與列舉值**：Runtime、Memory、Gateway、target、KB、log delivery 的名稱規則與長度；Runtime 的 `protocol`、Memory strategy 的 `type`、log delivery 的 `log_type` 允許值；Runtime 的 `idle_session_timeout <= max_lifetime`；inference profile 名稱的字元規則（D31）；Gateway `mcp.search_type` 的允許值（module 不檢查，D34）；Runtime 的 `environment_variables` 送 `{}` 時讀回來是不是 null、會不會每次 plan 都有差異（module 目前改送 null，這是推測，D32）。Memory 保留天數的下限已由 provider 6.69.0 確定是 7（D33），不用再測。module 的 validation 比 AWS 寬時會在 apply 才失敗，比 AWS 窄時會擋掉合法的輸入，兩種都要在第一次部署時記下來改。
 19. **log-delivery**：CWL 目的地的 log group resource policy 由 CloudWatch 自動加（部署者有 `logs:PutResourcePolicy` 時）；Runtime 的 `APPLICATION_LOGS` 與 `TRACES` 真的進 log group 與 X-Ray；Runtime 重建時 `replace_triggered_by` 讓 delivery 一起替換、沒有 `ConflictException`；trace 需要帳號層的 Transaction Search（`aws/spans` log group），被清掉時 span 全部遺失且不報錯（`project-a/docs/runbook/runbook-agentcore.md:276`），guide 要寫檢查方式。
-20. **Gateway**：Lambda target 用 `gateway_iam_role` 呼叫 Lambda（project-b 沒有實際用過）；**MCP server target 不帶 credential provider 時 AWS 收不收**；扁平的 `tools` 產生的 inline schema 被 Gateway 接受；Runtime 在 VPC 裡呼叫 Gateway 需要哪個 interface endpoint 服務名稱（查證之前 `agent` 在沒有 NAT 時擋下 Gateway，J57）。
-21. **Knowledge Base**：Aurora PostgreSQL 的哪些版本支援 Data API、附的 pgvector 是否 0.5.0 以上；§4.30 的 SQL（欄位型別、三個索引）是否就是 Bedrock 要的；KB 建立時是否檢查表與欄位（決定 apply 順序是否真的要先跑 migration）；KB role 的動作清單是否足夠（Data API、`DescribeDBClusters`、secret 與它的 `kms:Decrypt`、S3、嵌入模型）；**KB 專用帳號只有那張表的 `SELECT`／`INSERT`／`UPDATE`／`DELETE` 與 schema 的 `USAGE` 時，ingestion、重新同步（含刪除文件後的清除）、`Retrieve` 是否都成功**，不夠時記下錯誤訊息與缺的權限（§4.30，決策 53）；KB 的 secret 改密碼後，KB 是每次連線都讀新值還是會快取、認證失敗會持續多久；`StartIngestionJob` 跑完向量確實寫進表；`rds` 對既有 Aurora cluster 換成 `rds-v0.2.0`、`data_api = false` 時 plan 零差異。
+20. **Gateway**：Lambda target 用 `gateway_iam_role` 呼叫 Lambda（project-b 沒有實際用過）；**MCP server target 不帶 credential provider 時 AWS 收不收**；扁平的 `tools` 產生的 inline schema 被 Gateway 接受，包括 `properties` 是空 map 時只送 `input_schema { type = "object" }`、`type = "array"`／`"object"` 的屬性不帶 `items`／`properties`（D34）；Runtime 在 VPC 裡呼叫 Gateway 需要哪個 interface endpoint 服務名稱（查證之前 `agent` 在沒有 NAT 時擋下 Gateway，J57）。
+21. **Knowledge Base**：Aurora PostgreSQL 的哪些版本支援 Data API、附的 pgvector 是否 0.5.0 以上；§4.30 的 SQL（欄位型別、三個索引）是否就是 Bedrock 要的；KB 建立時是否檢查表與欄位（決定 apply 順序是否真的要先跑 migration）；KB role 的動作清單是否足夠（Data API、`DescribeDBClusters`、secret 與它的 `kms:Decrypt`、S3、嵌入模型）；**KB 專用帳號只有那張表的 `SELECT`／`INSERT`／`UPDATE`／`DELETE` 與 schema 的 `USAGE` 時，ingestion、重新同步（含刪除文件後的清除）、`Retrieve` 是否都成功**，不夠時記下錯誤訊息與缺的權限（§4.30，決策 53）；KB 的 secret 改密碼後，KB 是每次連線都讀新值還是會快取、認證失敗會持續多久；`StartIngestionJob` 跑完向量確實寫進表；`inclusion_prefixes` 有沒有數量上限（module 不擋，D36）；`rds` 對既有 Aurora cluster 換成 `rds-v0.2.0`、`data_api = false` 時 plan 零差異。
 22. **KMS**：guardrail、Memory、KB data source 改用 `foundation` 的專案 key 時，key policy 要給哪些 service principal 與條件（範本目前傳 `null`，J59）。
 23. **跨帳號（A 側）**：A 帳號的 Runtime 與 ECS 服務用 `sts:AssumeRole` 取得 B 帳號 role、呼叫 B 帳號的模型；沒有 NAT 時 `sts` endpoint 是否足夠；`models.invoke_arns` 的 foundation-model region `*` 對 `global.` 前綴與地區前綴都成立（project-a 的實測在 B 側，A 側沒有）；`*` 是否涵蓋空 region，涵蓋的話 `global` 那條空 region 的 ARN 可以拿掉。
 24. **Memory strategy**：`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE` 不給 `memory_execution_role_arn` 能不能建、能不能產生長期記憶（三個參考專案都沒用過 strategy）。
@@ -5084,6 +5107,13 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D27 | （規劃稿）Gateway 的參考 project-b「OpenAPI 經 VPC Lattice 失敗」引用 `gateway.tf:105-110` | 註解在第 109–113 行；另外檔頭寫明 Lambda target 是「legacy, currently unused」，所以 Lambda target 也沒有部署過的證據 | §4.28 照實寫「沒有部署過的證據」 |
 | D28 | （規劃稿）`rds` 要為 KB 新增 cluster ARN 輸出 | 不用：既有的 `arn` 輸出在 Aurora 時就是 cluster ARN | `rds-v0.2.0` 不為 KB 加 cluster ARN 輸出；後來另外併進 D21 的 `deployment`、`database_name` 兩個輸出（決策 52，§4.31），跟 KB 無關 |
 | D29 | （規劃稿）`global.` 前綴的模型另外列一條空 region 的 foundation-model ARN | 保留。project-a 的跨帳號 runbook 寫「foundation-model 那條的 region 必須是 `*`」，但同一個專案的批次評分角色仍列了空 region 那一條，註解寫「`*` 能不能涵蓋空 region，沒有在這個角色上實測過」（`project-a/infra-v2/terraform/iam/judge-batch-role.tf:71-78`） | `invoke_arns` 對 `global` 前綴多一條空 region 的 ARN，標未實測（§5.3 增補、§7.3 第 23 項） |
+| D30 | （Phase 13，`ea0a365`）`bedrock-guardrail` 的實作與 design 的差異 | 已回寫 §4.24、§7.1：`tier_config` 在 provider 6.69.0 是 list 型別的屬性，寫成 `tier_config = [{ tier_name = var.tier }]`，不是 block；region 取 `data.aws_region.current.region`（`.name` 已 deprecated）；topic 的 `type = "DENY"` 寫死；多兩條 validation：`contextual_grounding` 給了就至少要有一個門檻、`managed_word_lists` 只收 `PROFANITY`；「至少一種 policy」是 resource 的 lifecycle precondition，不是變數 validation；多一個 `examples/zh-tw-standard`（implement-process 原本就列了，§4.24 補上） | 以程式碼為準 |
+| D31 | （Phase 13，`71e7550`）`bedrock-inference-profile` 的實作與 design 的差異 | 已回寫 §4.23、§4.25、§7.1、§7.3 第 18 項：名稱字元規則（`^([0-9a-zA-Z:.][ _-]?)+$`，照 AWS 文件）寫成第二條 validation，仍**未實測**；`copy_from` 給 application inference profile 的 ARN 會被擋，有測試鎖住；64 字上限 provider 自己也會擋。另外（實作者沒有回報，核對程式碼時發現）：profile 的 `tags = var.tags`，**沒有加 `Name`**，跟 §4.1 的約定不同，README 與 CHANGELOG 都沒有說明理由 | 以程式碼為準；`Name` 這點跟 D17 同類，列為待統一，要補的話是 MINOR（只改 tag，不 replace） |
+| D32 | （Phase 13，`1948aba`）`agentcore-runtime` 的實作與 design 的差異 | 已回寫 §4.26、§7.1、§7.3 第 18 項：`security_group_ids` 也要不重複；`jwt_authorizer` 的 `allowed_audience`、`allowed_clients` 空集合時送 `null`；`environment_variables` 空 map 時送 `null`，理由是「空 map 讀回來是 null、送 `{}` 會永遠有差異」，這是**未實測的推測**；`network`、`protocol`、`environment_variables`、`request_header_allowlist` 也加了 `nullable = false`（design 原本只有 `session_lifecycle` 有）；不建 endpoint 資源（已是 J53，不是新差異） | 以程式碼為準 |
+| D33 | （Phase 13，`8708820`）`agentcore-memory` 的實作與 design 的差異 | 已回寫 §4.27、§5.3〈增補：`agent` stack〉的 `memories`、§7.1、§7.3 第 18 項：`event_expiry_days` 的下限是 **7**，不是 3。aws provider 6.69.0 在 plan 階段就擋 7 以下的值（`value must be between 7 and 365, got: 3`，主 agent 實測確認），API 文件與 project-a 寫的 3 用這個 provider 版本送不出去；strategy 的 `namespaces` 輸入送進 provider 的 `namespace_templates`（provider 把 `namespaces` 標成 deprecated），輸入名稱不變；strategy 名稱就是 `strategies` 的 key，規則同 Memory 名稱；`event_expiry_days`、`strategies` 是 `nullable = false` | 以程式碼為準。收緊下限在 v0.1.0 之前，不涉及版本規則；範本 `agent` 的 `memories` 預設 90，不受影響 |
+| D34 | （Phase 13，`4048dbf`）`agentcore-gateway` 的實作與 design 的差異 | 已回寫 §4.28、§5.3 的 `agentcore_gateway`、§7.1、§7.3 第 18、20 項：gateway 名稱與 target key 不得有連續的 `--`；`tool_schema_s3_uri` 必須是 `s3://<bucket>/<key>`；`lambda_arn` 必須是 Lambda function ARN（可帶 alias 或版本）；`authorizer`、`targets` 是 `nullable = false`；target 名稱就是 `targets` 的 key；`properties` 是空 map 時仍送 `input_schema { type = "object" }`（**未實測**）；`mcp.search_type` 沒有 validation。新的未實測項目併進 §7.3 第 20 項（不帶 outbound 認證的 MCP server target 原本就在第 20 項，沒有另開）：空 `properties`、`array`／`object` 屬性不帶 `items` | 以程式碼為準 |
+| D35 | （Phase 13，`0c79364`）`log-delivery` 的實作與 design 的差異 | 已回寫 §4.23、§4.29、§7.1：design 寫的 `replace_triggered_by = [aws_cloudwatch_log_delivery_source.this[each.value.source].resource_arn]` 在 Terraform 1.15.8 不成立（`replace_triggered_by` 只能用 `each.key` 索引別的 resource）。實作改成每個 delivery 一個 `terraform_data.source_arn`（`input` 是對應 source 的 `resource_arn`），delivery 寫 `replace_triggered_by = [terraform_data.source_arn[each.key].output]`，意圖相同（只看 ARN，source 只改 tag 時不重建 delivery）；delivery 只帶輸入的 `tags`，沒有 `Name`；`record_fields`、`field_delimiter` 在 schema 是 optional 加 computed，module 不送 | 以程式碼為準；delivery 的 `Name` 列為待統一（同 D17）。§7.3 第 19 項「Runtime 重建時 delivery 一起替換」的實測仍要做，寫法換了不影響要驗的事 |
+| D36 | （Phase 13，`36d6ee5`）`bedrock-knowledge-base` 的實作與 design 的差異 | 已回寫 §4.30、§5.3 的 `knowledge_bases`、§7.1、§7.3 第 21 項：`role_arn` 有格式 validation，而且**允許帶 path**（`agentcore-runtime`、`agentcore-gateway` 不允許）；data source 名稱就是 `data_sources` 的 key，規則同 KB 名稱；`inclusion_prefixes` 空集合時送 `null`；`kms_key_arn` 套到每個 data source 的 `server_side_encryption_configuration`；`cluster_arn` 的 cluster id 收大寫；provider 6.69.0 自己也在 plan 時擋 `overlap_percentage` 1–99 以外的值，原本標「未實測」的這個範圍由 provider 確認（實作者回報，module README 有記載）。新的未查證項目：`inclusion_prefixes` 有沒有數量上限（§7.3 第 21 項） | 以程式碼為準。`role_arn` 是否帶 path 三個 module 不一致，列為待統一 |
 
 ### 9.5 待決事項（需要使用者決定）
 

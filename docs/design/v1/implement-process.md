@@ -34,9 +34,9 @@
 | 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`a89e478` |
 | 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`6fcd3e2`、`79a6520`、`ff68ca4`、`feat(template): wire x-ray tracing into the template` |
 | 10 | 整體驗收 | 已完成：刪掉 `.cache/` 後全量 52 個目錄全過（583 秒，provider 重新下載），測試 1,037 個（module 671、範本 366）；修正 ADR 0001 對 tag 檢查的錯誤說明 | 1：`docs: record phase 10 acceptance` |
-| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 進行中 | 1：`docs(design): add llm and agentcore addendum` |
-| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`） | 未開始 | 3 |
-| 13 | 增補：7 個新 module | 未開始 | 7 |
+| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 已完成 | 2：`66d41d0`、`da991f7` |
+| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`） | 已完成 | 3：`fdcaf99`、`8ca62c5`、`7324c41` |
+| 13 | 增補：7 個新 module | 已完成：7 個 module 共 262 個測試，主 agent 逐一重跑 `validate.sh` 通過；差異記在 design §9.4 D30–D36 | 7：`0c79364`、`ea0a365`、`71e7550`、`8708820`、`1948aba`、`4048dbf`、`36d6ee5` |
 | 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 未開始 | 1 |
 | 15 | 增補：`docs/guides/llm-agentcore.md` 與相關文件 | 未開始 | 1 |
 | 16 | 增補：整體驗收、manifest 登記 `rds` 與 `s3-bucket` 0.2.0、人手動打 9 個 tag | 未開始 | 0–1 |
@@ -1017,7 +1017,30 @@ S9 的反向驗證在 scratchpad 的暫存複本做（同 Phase 6）：
 
 `rds` 的反向驗證：暫時把 `enable_http_endpoint` 寫死 `true`，`data_api_off_by_default_*` 要紅；暫時拿掉 validation，`data_api_rejected_for_rds` 要紅；暫時把 `deployment` 輸出寫死 `"aurora"`，`deployment_output_rds` 要紅。`s3-bucket` 的反向驗證：暫時讓 `never_expire = true` 也送 `expiration`，`never_expire_drops_expiration` 要紅；暫時拿掉互斥 validation，`never_expire_rejects_expiration_days` 要紅；暫時拿掉 `coalesce`，`explicit_null_days_means_90` 要紅；暫時把 rule id 寫死成 `abort-incomplete-uploads`，既有測試檔不會紅、`default_keeps_expire_rule` 要紅（這條證明新檔補到既有測試沒鎖的地方）。
 
-#### Phase 13：7 個新 module（可平行，一個 module 一個 commit）
+#### Phase 13：7 個新 module（可平行，一個 module 一個 commit；已完成）
+
+| module | commit | 測試數 |
+|---|---|---|
+| `log-delivery` | `0c79364` | 28 |
+| `bedrock-guardrail` | `ea0a365` | 45 |
+| `bedrock-inference-profile` | `71e7550` | 14 |
+| `agentcore-memory` | `8708820` | 24 |
+| `agentcore-runtime` | `1948aba` | 47 |
+| `agentcore-gateway` | `4048dbf` | 54 |
+| `bedrock-knowledge-base` | `36d6ee5` | 50 |
+
+主 agent 對每個 module 重跑 `scripts/validate.sh modules/<name>`，全部通過，並另外確認 aws provider 6.69.0 在 plan 時拒收 Memory 保留天數 3（`value must be between 7 and 365, got: 3`）。git 歷史的 commit 順序是 `bedrock-inference-profile` → `agentcore-runtime` → `agentcore-memory` → `bedrock-knowledge-base` → `log-delivery` → `agentcore-gateway` → `bedrock-guardrail`，跟下面計畫的順序不同；module 之間沒有檔案重疊，結果相同。
+
+跟計畫的差異（設計面的細節回寫在 design 各 module 章節，總表在 design §9.4 D30–D36）：
+
+- `agentcore-memory` 的保留天數下限是 7，不是 3（provider 的限制，D33）；strategy 的 `namespaces` 送進 provider 的 `namespace_templates`。
+- `log-delivery` 的 `replace_triggered_by` 改經 `terraform_data.source_arn[each.key]`：Terraform 1.15.8 不能在 `replace_triggered_by` 用 `each.value.source` 索引別的 resource（D35）。
+- `bedrock-guardrail` 的 `tier_config` 是屬性指派，不是 block；「至少一種 policy」是 resource precondition（D30）。
+- 各 module 多了幾條 validation（gateway 的 `--`、S3 URI、Lambda ARN；KB 的 `role_arn`；inference profile 的名稱字元；runtime 的 SG 不重複），對應的 run 已補進 design §7.1。
+- 核對程式碼時另外發現、實作者沒有回報的：`bedrock-inference-profile` 的 profile 沒有加 `Name` tag（D31）。
+
+以下是當時的計畫，保留作為對照。
+
 
 每個 module 照〈每個 module／stack 的 TDD 節奏〉做，run 表以 design §7.1 的增補表為準；固定檔案照〈module 的固定檔案〉，**唯一差別是 `versions.tf` 的 aws 是 `>= 6.69, < 7.0`**（design 決策 43）。README 要有「要修掉的坑」一節，內容照 design 各節。
 
