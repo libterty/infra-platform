@@ -1,7 +1,10 @@
 locals {
   logs_arn_prefix = "arn:aws:logs:${var.aws_region}:${var.expected_account_id}"
 
-  ecr_repository_arns = [for s, k in local.service_key : module.in_services.strings["ecr_${k}_arn"]]
+  ecr_repository_arns = concat(
+    [for s, k in local.service_key : module.in_services.strings["ecr_${k}_arn"]],
+    [for m, k in local.mirror_key : module.in_mirrors.strings["ecr_mirror_${k}_arn"]],
+  )
 
   execution_statements = [
     {

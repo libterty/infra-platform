@@ -26,13 +26,14 @@ run "publishes_under_stack_path" {
 
   assert {
     condition = module.ssm_publish.names == {
-      services       = "/alpha/dev/containerimage/services"
-      ecr_api_url    = "/alpha/dev/containerimage/ecr_api_url"
-      ecr_api_arn    = "/alpha/dev/containerimage/ecr_api_arn"
-      ecr_worker_url = "/alpha/dev/containerimage/ecr_worker_url"
-      ecr_worker_arn = "/alpha/dev/containerimage/ecr_worker_arn"
+      services        = "/alpha/dev/containerimage/services"
+      mirrored_images = "/alpha/dev/containerimage/mirrored_images"
+      ecr_api_url     = "/alpha/dev/containerimage/ecr_api_url"
+      ecr_api_arn     = "/alpha/dev/containerimage/ecr_api_arn"
+      ecr_worker_url  = "/alpha/dev/containerimage/ecr_worker_url"
+      ecr_worker_arn  = "/alpha/dev/containerimage/ecr_worker_arn"
     }
-    error_message = "ssm-publish must write the services list plus a url and an arn per service under the containerimage path"
+    error_message = "ssm-publish must write the services list, the mirror list, and a url and an arn per service under the containerimage path"
   }
 }
 
@@ -192,8 +193,182 @@ run "publishes_url_and_arn" {
     condition = local.published_strings == {
       ecr_order_api_url = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-order-api"
       ecr_order_api_arn = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-order-api"
+      mirrored_images   = "[]"
     }
     error_message = "Hyphens in the service name must become underscores in the SSM keys, and the values must come from the repository"
+  }
+}
+
+# ---- mirrored_images: repositories that hold copies of external images ----
+
+run "no_mirrors_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.ecr_mirror) == 0
+    error_message = "Without mirrored_images no mirror repository may exist"
+  }
+
+  assert {
+    condition     = local.published_strings["mirrored_images"] == "[]"
+    error_message = "The mirror list must still be published, as an empty JSON array, so downstream stacks can always read it"
+  }
+
+  assert {
+    condition     = length([for k in keys(local.published_strings) : k if startswith(k, "ecr_mirror_")]) == 0
+    error_message = "Without mirrors no ecr_mirror_* key may be published"
+  }
+}
+
+run "mirror_repository_is_created" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot-collector"]
+  }
+
+  assert {
+    condition     = keys(module.ecr_mirror) == ["adot-collector"]
+    error_message = "ecr-repository must be called once per mirror"
+  }
+
+  assert {
+    condition     = module.ecr_mirror["adot-collector"].name == "alpha-dev-mirror-adot-collector"
+    error_message = "Mirror repository names must be <project>-<env>-mirror-<name>"
+  }
+
+  assert {
+    condition     = local.mirror_repositories["adot-collector"].kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+    error_message = "Mirror repositories must be encrypted with the foundation key"
+  }
+
+  assert {
+    condition     = length(module.ecr) == 2
+    error_message = "Adding a mirror must not change the service repositories"
+  }
+}
+
+run "mirror_gets_the_lifecycle_settings" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot-collector"]
+    lifecycle_rules = { untagged_expire_days = 3, keep_count = 100 }
+  }
+
+  assert {
+    condition     = local.mirror_repositories["adot-collector"].lifecycle_rules.untagged_expire_days == 3 && local.mirror_repositories["adot-collector"].lifecycle_rules.keep_count == 100
+    error_message = "The lifecycle override must reach the mirror repositories"
+  }
+}
+
+run "mirror_publishes_url_arn_and_list" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot-collector", "other-image"]
+  }
+
+  override_module {
+    target = module.ecr_mirror["adot-collector"]
+    outputs = {
+      repository_url = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector"
+      arn            = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-adot-collector"
+    }
+  }
+
+  override_module {
+    target = module.ecr_mirror["other-image"]
+    outputs = {
+      repository_url = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-other-image"
+      arn            = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-other-image"
+    }
+  }
+
+  assert {
+    condition = (
+      local.published_strings["ecr_mirror_adot_collector_url"] == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-mirror-adot-collector" &&
+      local.published_strings["ecr_mirror_adot_collector_arn"] == "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-adot-collector" &&
+      local.published_strings["ecr_mirror_other_image_arn"] == "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-other-image"
+    )
+    error_message = "Each mirror must publish ecr_mirror_<name>_url and _arn with hyphens turned into underscores"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["mirrored_images"]) == ["adot-collector", "other-image"]
+    error_message = "The mirror list must be published as a sorted JSON array of the mirror names"
+  }
+
+  assert {
+    condition     = contains(keys(module.ssm_publish.names), "ecr_mirror_adot_collector_url") && contains(keys(module.ssm_publish.names), "mirrored_images")
+    error_message = "The mirror keys must be written to SSM under the containerimage path"
+  }
+}
+
+run "mirror_name_uppercase_rejected" {
+  command = plan
+
+  variables {
+    mirrored_images = ["Adot"]
+  }
+
+  expect_failures = [var.mirrored_images]
+}
+
+run "mirror_name_with_underscore_rejected" {
+  command = plan
+
+  variables {
+    mirrored_images = ["adot_collector"]
+  }
+
+  expect_failures = [var.mirrored_images]
+}
+
+run "mirror_name_with_slash_rejected" {
+  command = plan
+
+  variables {
+    mirrored_images = ["aws-observability/adot"]
+  }
+
+  expect_failures = [var.mirrored_images]
+}
+
+run "mirror_with_same_name_as_service_rejected" {
+  command = plan
+
+  variables {
+    services        = ["api", "adot-collector"]
+    mirrored_images = ["adot-collector"]
+  }
+
+  expect_failures = [var.mirrored_images]
+}
+
+run "mirror_repository_name_colliding_with_service_rejected" {
+  command = plan
+
+  variables {
+    # The service repository alpha-dev-mirror-adot would have the same name as the mirror repository.
+    services        = ["mirror-adot"]
+    mirrored_images = ["adot"]
+  }
+
+  expect_failures = [var.mirrored_images]
+}
+
+run "mirror_next_to_unrelated_service_passes" {
+  command = plan
+
+  variables {
+    services        = ["mirror"]
+    mirrored_images = ["adot"]
+  }
+
+  assert {
+    condition     = keys(module.ecr) == ["mirror"] && keys(module.ecr_mirror) == ["adot"]
+    error_message = "A service called mirror does not collide with a mirror called adot (alpha-dev-mirror vs alpha-dev-mirror-adot)"
   }
 }
 

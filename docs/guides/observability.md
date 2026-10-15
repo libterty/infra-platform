@@ -12,7 +12,7 @@
 |---|---|---|
 | 決定哪些服務要追蹤、給 task role X-Ray 權限 | `iam-app` | `iam-app/tracing_<service>`，`application` 只讀不設 |
 | 掛 ADOT collector sidecar、設 OTLP endpoint | `application` | — |
-| collector 映像能被拉到 | `iam-base`（拉私有 ECR 時）或 `network`（拉 ECR Public 時要有 NAT） | — |
+| collector 映像能被拉到 | `containerimage` 的 `mirrored_images` 加 `iam-base`（拉私有 ECR 時），或 `network`（拉 ECR Public 時要有 NAT） | — |
 | X-Ray 的 interface endpoint（沒有 NAT 或想走私網時） | `network` 的 `interface_endpoints.services` 加 `xray` | — |
 | 抽樣規則與 group | `application` 的 `xray_sampling_rules`、`xray_groups` | — |
 | log 事件告警 | `application` 的 `log_alarms` | — |
@@ -78,7 +78,63 @@ collector 如果也送 metric（例如 `awsemf` exporter 寫 CloudWatch Logs）�
 | ECR Public（`public.ecr.aws/aws-observability/aws-otel-collector`，example 用的） | ECR Public 拉映像不需要 execution role 的 ECR 權限，但 task 所在的 subnet 要能經 NAT 出去；`nat_mode = "none"` 或客戶 VPC 沒有對外路由時拉不到。**未驗證** |
 | 複製到專案自己的 ECR | 映像推進一個專案的 repository；`iam-base` 的 `PullImagesFromProjectRepositories` statement 的 Resource 要加上那個 repository 的 ARN（經 SSM 讀，不寫死在 tfvars），私網環境再加 `ecr.api`、`ecr.dkr` interface endpoint |
 
-沒有 NAT 的環境建議走第二種。範本的 `containerimage` 只為 `services` 建 repository，collector 的 repository 要由專案自己加，並發布它的 ARN 給 `iam-base` 讀。
+沒有 NAT 的環境建議走第二種。範本的 `containerimage` 有 `mirrored_images` 輸入，專門放外部映像的副本；`iam-base` 會把這些 repository 的 ARN 加進 execution role 的拉取權限，不需要自己改 policy。
+
+### 沒有 NAT 時：把 collector 映像放進 mirror repository
+
+下面四步都在已經跑過 `foundation` 的環境做；mirror 是 `containerimage` 的一個輸入，不需要新增 stack。
+
+**1. `containerimage` 的 tfvars 加 mirror**
+
+```hcl
+# infra/terraform/containerimage/envs/<env>.tfvars
+mirrored_images = ["adot-collector"]
+```
+
+名稱用 kebab-case，不能跟任何服務同名。Repository 名稱是 `<project>-<env>-mirror-adot-collector`（例如 `alpha-dev-mirror-adot-collector`），設定跟服務的 repository 相同：tag 不可覆蓋（`IMMUTABLE`）、推上去就掃描、KMS 加密、同一組 lifecycle。
+
+**2. 先 apply `containerimage`，再 apply `iam-base`**
+
+順序不能反：`iam-base` 讀的是 `containerimage/mirrored_images` 與 `containerimage/ecr_mirror_adot_collector_arn`，`containerimage` 還沒發布時 `iam-base` 的 plan 會讀不到。`containerimage` 的 `terraform output mirror_repository_urls` 會印出 repository URL。`iam-base` 的 plan 應該只有 execution role 的 inline policy 一個變更：`PullImagesFromProjectRepositories` 的 Resource 多出 mirror 的 ARN。
+
+**3. 把映像複製進 mirror repository**
+
+由有網路的人或 CI 做，用上游版本號當 tag（repository 是 `IMMUTABLE`，同一個 tag 推第二次會被拒絕，所以不要用 `latest`）。版本號跟 `application` 的 `adot_sidecar` 用的一致（下例 `v0.43.1`）：
+
+```bash
+VERSION="v0.43.1"
+ACCOUNT_ID="<account-id>"
+REGION="ap-northeast-1"
+REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+REPO="${REGISTRY}/alpha-dev-mirror-adot-collector"
+
+aws ecr get-login-password --region "$REGION" \
+  | docker login --username AWS --password-stdin "$REGISTRY"
+
+# Fargate 跑 ARM64 時改 linux/arm64，跟 ecs-service 的 cpu_architecture 一致
+docker pull --platform linux/amd64 "public.ecr.aws/aws-observability/aws-otel-collector:${VERSION}"
+docker tag  "public.ecr.aws/aws-observability/aws-otel-collector:${VERSION}" "${REPO}:${VERSION}"
+docker push "${REPO}:${VERSION}"
+```
+
+不想裝 docker 的話，用 [`crane`](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) 直接在 registry 之間複製，會保留上游所有平台的 manifest：
+
+```bash
+aws ecr get-login-password --region "$REGION" | crane auth login --username AWS --password-stdin "$REGISTRY"
+crane copy "public.ecr.aws/aws-observability/aws-otel-collector:${VERSION}" "${REPO}:${VERSION}"
+```
+
+這兩組指令都**未驗證**，沒有在真實帳號跑過。
+
+**4. sidecar 的 image 改指 mirror**
+
+`application` 的 `adot_sidecar.image` 改成上一步的 `${REPO}:${VERSION}`。repository URL 不要寫死帳號 ID：從 `containerimage/ecr_mirror_adot_collector_url` 讀，再接上版本號，讀法跟 `ssm_service_strings` 讀 `ecr_<service>_url` 相同。
+
+task 所在的 subnet 沒有 NAT 時，Fargate 拉私有 ECR 的映像還需要 `ecr.api`、`ecr.dkr` 兩個 interface endpoint（在 `network` 的 `interface_endpoints.services` 加上去）與 S3 的 gateway endpoint（映像的 layer 存在 S3）。目前範本的 `network` 沒有 S3 gateway endpoint 的輸入，這一項要另外處理。**未驗證**。
+
+### 替代方案：ECR pull-through cache
+
+ECR 的 pull-through cache 規則讓帳號自己的 ECR 在第一次被拉取時，自動從 ECR Public 抓一份進來，不需要人或 CI 複製映像，也不用管 tag。但目前這個 repo 沒有管 `aws_ecr_pull_through_cache_rule` 的 module，要用就得新增一個（還要處理 execution role 多出的 `ecr:CreateRepository`、`ecr:BatchImportUpstreamImage` 權限，以及第一次拉取時要連得到上游），第一版不做。需要時先用上面的 mirror 做法。
 
 ## 3. `application`：掛 sidecar
 

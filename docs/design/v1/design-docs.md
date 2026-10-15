@@ -2747,7 +2747,7 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 | 順序 | stack | 放什麼 | 用到的 module | 擁有者 | 變動頻率 | 讀（SSM，來源 stack） | 寫（SSM key） |
 |---|---|---|---|---|---|---|---|
 | 1 | `foundation` | 告警 SNS、專案共用 KMS key、Secrets Manager secret 容器（不含值）、flow log bucket、ALB access log bucket | `kms-key`、`sns-alarm-topic`、`s3-bucket` ×2、`ssm-publish`（另有一個原生 resource，見下） | 專案 app team；客戶自管時為客戶 | 低 | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
-| 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
+| 2 | `containerimage` | 各服務的 ECR repository；**服務清單的單一決定點** | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | 同上 | 低（新增服務時才動） | `foundation` | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` |
 | 3 | `network` | VPC（預設建立；模式 A 改登記既有）、interface endpoint、ALB／各服務／DB／Proxy 的 SG | `vpc`、`vpc-interface-endpoints`、`security-group`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`、`nat`、`alb_https`、`db_proxy`、`data_access` |
 | 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | `iam-role` ×3、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`containerimage` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | `rds`、`ssm-read`、`ssm-publish` | 同上 | 低 | `foundation`、`network`、`iam-base` | `database`（JSON） |
@@ -2777,6 +2777,7 @@ apply 順序：`foundation` → `containerimage` → `network` → `iam-base` �
 | `force_delete` | `false` | repository 裡還有映像時 destroy 會失敗，不會連映像一起刪 |
 | 加密 | KMS，用 `foundation` 發布的 `kms_key_arn` | 跟 SNS、log group 用同一把專案 CMK |
 | lifecycle policy | 未加 tag 的映像 7 天後刪除；有 tag 的保留最近 50 個 | 預設值，專案依部署頻率與回退需求調整；回退要用的舊 tag 不能被清掉 |
+| 外部映像副本 | `var.mirrored_images`（`set(string)`，預設空集合，沒有開關）；每個名稱建一個 repository `<project>-<env>-mirror-<name>`，設定（IMMUTABLE、掃描、KMS、lifecycle）與服務的 repository 相同，同一個 `ecr-repository` module 另一個 `for_each`（`module "ecr_mirror"`） | 沒有 NAT 的環境拉不到 ECR Public 上的映像（例如 ADOT collector），要先複製進自己的 ECR；複製動作是人或 CI 做的，不在 Terraform 裡。名稱檢查：格式同服務名稱；mirror 名稱不得等於服務名稱，`<project>-<env>-mirror-<name>` 也不得等於任何服務的 repository 名稱（服務 `mirror-adot` 與 mirror `adot` 會撞）。清單發布成 `mirrored_images`（String，JSON 陣列），不用 StringList，因為 `ssm-publish` 不收空清單而這份清單預設是空的 |
 
 **`network` 的寫法**
 
@@ -2922,7 +2923,7 @@ Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`p
 #### `iam-base`
 
 - **execution role**（一個專案一個）：
-  - ECR 拉映像限定 `containerimage` 發布的 `ecr_<service>_arn`（`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、`ecr:BatchCheckLayerAvailability`）；`ecr:GetAuthorizationToken` 只支援 `Resource = "*"`，是例外並寫註解。
+  - ECR 拉映像限定 `containerimage` 發布的 `ecr_<service>_arn` 與 `ecr_mirror_<name>_arn`（mirror 清單讀 `mirrored_images`，用 `module "in_mirrors"` 第二次讀；沒有 mirror 時 Resource 與原來完全相同）（`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、`ecr:BatchCheckLayerAvailability`）；`ecr:GetAuthorizationToken` 只支援 `Resource = "*"`，是例外並寫註解。
   - `logs:CreateLogStream`、`logs:PutLogEvents` 限定 `arn:aws:logs:<region>:<account>:log-group:/ecs/<name_prefix>-*:*`。log group 在 `application` 才建，所以用命名規則限定，這要求 log group 名稱照 `ecs-service` 的預設（`/ecs/<name>`）。
   - `secretsmanager:GetSecretValue` 限定 `foundation` 發布的 `app_secret_arn`；`kms:Decrypt` 限定 `foundation` 的 key。
   - **沒有 DB secret 的權限**（DB secret 由 task role 讀，§8.2）。
@@ -3011,6 +3012,8 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `foundation` | `alb_log_bucket_name` | String | bucket 名稱（ALB 的 `access_logs.bucket` 收名稱，不收 ARN） |
 | `containerimage` | `services` | StringList | 服務名稱 |
 | `containerimage` | `ecr_<service>_url`、`ecr_<service>_arn` | String | — |
+| `containerimage` | `mirrored_images` | String（JSON 陣列） | mirror 名稱，沒有時 `[]` |
+| `containerimage` | `ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` | String | 外部映像副本的 repository，只有設了 `mirrored_images` 才存在 |
 | `network` | `vpc_id`、`vpc_cidr` | String | — |
 | `network` | `azs` | StringList | AZ 順序，所有 `subnet_*` 清單都照這個順序 |
 | `network` | `subnet_ids_public`、`subnet_ids_app`、`subnet_ids_data` | StringList | 依 AZ 排序。新增其他 tier 時多發布 `subnet_ids_<tier>`，只有需要它的 stack 才去讀 |
@@ -3107,6 +3110,8 @@ module "in_services" {
 ```
 
 `application` 的服務清單取自自己的 `var.services`（precondition 檢查它等於 `containerimage/services`），同樣用 `module "in_services"` 讀每個服務的 key。
+
+外部映像副本的 ARN 同理：`iam-base` 先讀 `containerimage/mirrored_images`（JSON 陣列，用 `jsondecode` 解開）得到 mirror 名稱，再用 `module "in_mirrors"` 讀每個 `ecr_mirror_<name>_arn`（`ssm_mirror_strings`）。沒有 mirror 時 `in_mirrors` 什麼都不讀。
 
 下游引用 `module.in.strings["vpc_id"]`、`module.in.lists["subnet_ids_app"]`。本地名稱（map 的 key）通常跟 SSM key 同名；同一個 key 名稱在兩個 stack 都有時，本地名稱可以加前綴區分。測試時用 `override_data { target = module.in.data.aws_ssm_parameter.this["network/vpc_id"] ... }` 餵值。
 

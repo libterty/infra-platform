@@ -41,9 +41,9 @@ infra/
 | 順序 | stack | 讀（來源 stack） | 發布 |
 |---|---|---|---|
 | 1 | `foundation` | 無 | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
-| 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
+| 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` |
 | 3 | `network` | foundation、containerimage | VPC、subnet、security group、`nat` 與三個決定點，見下表 |
-| 4 | `iam-base` | foundation、containerimage | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
+| 4 | `iam-base` | foundation、containerimage（含 `mirrored_images` 與各 mirror 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | foundation、network、iam-base | `database` |
 | 6 | `iam-app` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>` |
 | 7 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
@@ -93,6 +93,7 @@ terraform plan -var-file=envs/dev.tfvars
 | 決定點 | 決定者 | 誰讀 | 下游怎麼檢查或使用 |
 |---|---|---|---|
 | `containerimage/services` | `containerimage` 的 `services` | `network`、`iam-base`、`iam-app`、`application` | `network` 與 `application` 的服務設定 key 必須相同；`iam-app` 的 `ecs_exec_services` 必須是它的子集 |
+| `containerimage/mirrored_images` | `containerimage` 的 `mirrored_images` | `iam-base` | execution role 的 ECR 拉取權限涵蓋這些 mirror repository，沒有 mirror 時不變 |
 | `network/alb_https` | `network` 的 `alb_ingress.https` | `loadbalancer` | `certificate_arn` 有沒有給，必須等於 `enabled` |
 | `network/db_proxy` | `network` 的 `data_stores.db.proxy` | `data` | `enabled` 為 true 才把 `proxy` 傳給 `rds` |
 | `network/data_access` | `network` 各服務的 `data_access` | `iam-app`、`application` | 名單上的服務，task role 才能讀資料庫 secret，也才拿得到 `DB_*` 環境變數 |
@@ -108,6 +109,8 @@ terraform plan -var-file=envs/dev.tfvars
 | `foundation` | `alb_log_bucket_name` | String | bucket 名稱（ALB 的 access log 收名稱，不收 ARN） |
 | `containerimage` | `services` | StringList | 服務名稱 |
 | `containerimage` | `ecr_<service>_url`、`ecr_<service>_arn` | String | repository URL 與 ARN |
+| `containerimage` | `mirrored_images` | String（JSON 陣列） | 放外部映像副本的 repository 名稱，沒有時是 `[]`。SSM 不收空的 StringList，所以用 JSON；`iam-base` 靠它知道要讀哪些 `ecr_mirror_*` |
+| `containerimage` | `ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` | String | 外部映像副本 repository 的 URL 與 ARN；沒有設 `mirrored_images` 就不存在。`<name>` 的 `-` 換成 `_` |
 | `network` | `vpc_id`、`vpc_cidr` | String | `vpc_cidr` 是主要 CIDR |
 | `network` | `azs` | StringList | AZ 順序；所有 `subnet_*` 清單都照這個順序 |
 | `network` | `subnet_ids_<tier>`、`subnet_cidrs_<tier>` | StringList | tier 至少有 `public`、`app`、`data`，名稱不可改 |

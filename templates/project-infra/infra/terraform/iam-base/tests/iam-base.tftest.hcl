@@ -17,6 +17,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["containerimage/services"]
   values = { insecure_value = "api,worker" }
 }
@@ -36,10 +41,10 @@ run "reads_only_listed_keys" {
 
   assert {
     condition = (
-      local.ssm_input_strings == { kms_key_arn = "foundation/kms_key_arn", app_secret_arn = "foundation/app_secret_arn" } &&
+      local.ssm_input_strings == { kms_key_arn = "foundation/kms_key_arn", app_secret_arn = "foundation/app_secret_arn", mirrored_images = "containerimage/mirrored_images" } &&
       local.ssm_input_lists == { services = "containerimage/services" }
     )
-    error_message = "iam-base must read the project key, the app secret and the service list"
+    error_message = "iam-base must read the project key, the app secret, the mirror list and the service list"
   }
 
   assert {
@@ -122,6 +127,59 @@ run "ecr_pull_only_from_published_repos" {
       if contains(flatten([s.Action]), "ecr:BatchGetImage")
     ])) == toset(["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"])
     error_message = "The pull statement must grant the three image download actions and nothing else"
+  }
+
+  assert {
+    condition     = local.ssm_mirror_strings == {} && length(module.in_mirrors.strings) == 0
+    error_message = "Without mirrors iam-base must read no mirror repository ARN"
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(local.roles["ecs_execution"].policies["pull-and-log"]).Statement : !contains(flatten([s.Resource]), "*")
+      if contains(flatten([s.Action]), "ecr:BatchGetImage")
+    ])
+    error_message = "The pull statement must never use a wildcard Resource"
+  }
+}
+
+run "ecr_pull_includes_mirror_repositories" {
+  command = plan
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+    values = { insecure_value = "[\"adot-collector\",\"other-image\"]" }
+  }
+
+  override_data {
+    target = module.in_mirrors.data.aws_ssm_parameter.this["containerimage/ecr_mirror_adot_collector_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-adot-collector" }
+  }
+
+  override_data {
+    target = module.in_mirrors.data.aws_ssm_parameter.this["containerimage/ecr_mirror_other_image_arn"]
+    values = { insecure_value = "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-other-image" }
+  }
+
+  assert {
+    condition = local.ssm_mirror_strings == {
+      ecr_mirror_adot_collector_arn = "containerimage/ecr_mirror_adot_collector_arn"
+      ecr_mirror_other_image_arn    = "containerimage/ecr_mirror_other_image_arn"
+    }
+    error_message = "iam-base must read one ARN per mirror, with hyphens turned into underscores in the key"
+  }
+
+  assert {
+    condition = [
+      for s in jsondecode(local.roles["ecs_execution"].policies["pull-and-log"]).Statement : flatten([s.Resource])
+      if contains(flatten([s.Action]), "ecr:BatchGetImage")
+      ] == [[
+        "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-api",
+        "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-worker",
+        "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-adot-collector",
+        "arn:aws:ecr:ap-northeast-1:111111111111:repository/alpha-dev-mirror-other-image",
+    ]]
+    error_message = "Image pulls must cover the service repositories and exactly the mirror repositories"
   }
 }
 

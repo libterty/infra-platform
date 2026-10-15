@@ -12,6 +12,11 @@ override_data {
 }
 
 override_data {
+  target = module.in.data.aws_ssm_parameter.this["containerimage/mirrored_images"]
+  values = { insecure_value = "[]" }
+}
+
+override_data {
   target = module.in.data.aws_ssm_parameter.this["containerimage/services"]
   values = { insecure_value = "api,worker" }
 }
