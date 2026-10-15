@@ -1,14 +1,14 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–7（A–D）已完成（HEAD `a9f2251`），Phase 7E 起待執行。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–7 已完成（HEAD `30f1b38`），Phase 8 起待執行。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
 ## 結論
 
-第一版是 18 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc` 建（design §1、§4.1）。
+第一版是 19 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc-interface-endpoints` 建，`vpc` 只建 `aws_default_security_group`（design §1、§4.1、§5.6 S4）。
 
-分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）與 E（觀測性）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 27 個 commit，剩下 8 個（Phase 10 有修正才多一個），合計 35 個。
+分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 39 個 commit，剩下 2 個（Phase 10 有修正才多一個），合計 41 個。全量 `scripts/validate.sh`：44 個目錄通過。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
@@ -24,8 +24,10 @@
 | — | 設計文件擴充到 15 個 module、重排 Phase 6–10 | 已完成 | 1：`b020eef` |
 | 6 | 共用設定更新：release-please 加 7 個 module、`validate.sh` 的 S3／S4／S8、README 的 module 清單 | 已完成 | 1：`0e0efab` |
 | 7A–D | 7 個新 module：`iam-role`、`iam-role-policy`、`kms-key`、`s3-bucket`、`ecr-repository`、`ssm-read`、`security-group` | 已完成 | 7：`fd1cb37`、`8db54cc`、`bf02f15`、`8a805dd`、`63936ce`、`c6ba150`、`a9f2251` |
-| 7E | 觀測性：設計文件、共用設定、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 待執行 | 6 |
-| 8 | 專案範本（8 個 stack，全部改呼叫 module；application 加 `log-metric-alarm`、`xray`） | 待執行 | 1 |
+| 7E | 觀測性：共用設定、設計文件、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 已完成 | 6：`d40c452`、`1c13dda`、`e34f41b`、`cc0b2c4`、`27e7dda`、`d199577` |
+| 7F | 拆出 `vpc-interface-endpoints`：設計文件、`refactor(vpc)`、新 module、共用設定（release-please 19 個、S4） | 已完成 | 4：`eeb17d2`、`30de94a`、`07e80f2`、`30f1b38` |
+| — | 兩個 IAM module 加上「Allow 不准搭配 `NotResource`」 | 已完成（計畫外） | 2：`e6655ec`、`b51b79e` |
+| 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 待執行 | 1 |
 | 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh` | 待執行 | 1 |
 | 10 | 整體驗收 | 待執行 | 有修正才 1 |
 
@@ -160,7 +162,7 @@ export AWS_EC2_METADATA_DISABLED=true
 |---|---|---|
 | `ssm-publish` | `120939c` | 22 |
 | `sns-alarm-topic` | `86572da` | 18 |
-| `vpc` | `84765ef` | 76 |
+| `vpc` | `84765ef`（`30de94a` 後 69：搬走 4 個、刪掉 3 個） | 76 |
 | `ecs-cluster` | `48ac0d7` | 22 |
 | `ecs-service` | `5a5818e` | 67 |
 | `alb` | `df8ddd0` | 32 |
@@ -196,7 +198,7 @@ export AWS_EC2_METADATA_DISABLED=true
 |---|---|
 | S2 | 範圍確認涵蓋 `modules/` 與 `templates/`（現行已是） |
 | S3 | 改寫：`data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 不得出現 `.value`。原本「範本 `ssm-inputs.tf` 不讀 `.value`」由這條涵蓋 |
-| S4 | 改寫：`resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc/`；範本 stack 兩類都不得出現 |
+| S4 | 改寫：`resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`30f1b38` 起；Phase 6 時的版本允許 `modules/vpc/`） |
 | S8 | 新增：範本 stack 裡 `resource "aws_*"` 只能是 design §5.3〈stack 裡的原生資源〉上的型別與 stack（目前只有 `foundation` 的 `aws_secretsmanager_secret`）。清單寫成腳本開頭的一個陣列，跟 design 的表一一對應 |
 
 **反向驗證**（在 scratchpad 的暫存複本做，不在 repo 留 fixture）
@@ -237,8 +239,8 @@ scripts/validate.sh                                                # 既有 21 �
 
 | module | commit | 測試數 |
 |---|---|---|
-| `iam-role` | `fd1cb37` | 30 |
-| `iam-role-policy` | `8db54cc` | 23 |
+| `iam-role` | `fd1cb37`（`e6655ec` 後 34） | 30 |
+| `iam-role-policy` | `8db54cc`（`b51b79e` 後 27） | 23 |
 | `kms-key` | `bf02f15` | 27 |
 | `s3-bucket` | `8a805dd` | 28 |
 | `ecr-repository` | `63936ce` | 17 |
@@ -389,7 +391,24 @@ scripts/validate.sh                                       # 全量
 
 **不在本次範圍**：design 各章節「刻意不做」的項目；範本（Phase 8）；`secret` module（design 決策 30）。
 
-### Phase 7E：觀測性（3 個新 module 與 `ecs-service` 的 `sidecars`）
+### Phase 7E：觀測性（已完成）
+
+| commit | 內容 | 測試數 |
+|---|---|---|
+| `d40c452 chore(repo)` | release-please 加 `log-group`、`log-metric-alarm`、`xray`；README 改成 18 個 | — |
+| `1c13dda docs(design)` | 設計文件的 7E 變更，並補記 Phase 7 的計畫外差異 | — |
+| `e34f41b` | `log-group` | 18 |
+| `cc0b2c4` | `log-metric-alarm` | 27 |
+| `27e7dda` | `xray` | 22 |
+| `d199577` | `ecs-service` 的 `sidecars` | `ecs-service` 合計 90；既有 5 個測試檔沒有變動 |
+
+跟計畫的差異：
+
+- 順序是 chore 先、docs 後（計畫是 docs 先），結果相同。
+- `examples/adot-sidecar/` 的 collector 設成 `essential = false`：觀測工具掛掉，不應該讓 ECS 把整個 task 連應用程式一起重啟。`observability.md` 要照這個寫。
+
+以下是當時的計畫，保留作為對照。
+
 
 **目標**：照 design §4.17–§4.20、§7.1、決策 31–33，新增 `log-group`、`log-metric-alarm`、`xray`，並讓 `ecs-service` 支援 sidecar。module 總數從 15 變 18。
 
@@ -505,6 +524,17 @@ scripts/validate.sh                                                # 全量
 
 **不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。
 
+### Phase 7F：拆出 `vpc-interface-endpoints`（已完成）
+
+使用者在 7E 之後決定（design 決策 34）：interface endpoint 不碰路由，從 `vpc` 拆出來，network stack 在自建 VPC 與客戶既有 VPC（模式 A）兩種情況都能呼叫。IGW、NAT、gateway endpoint、flow log 留在 `vpc`。`vpc` 還沒打過 tag，併進 `v0.1.0`。
+
+| commit | 內容 | 測試數 |
+|---|---|---|
+| `eeb17d2 docs(design)` | design §4.7、§4.21、§5.3、§5.6 S4、§5.8、§7.1 | — |
+| `30de94a refactor(vpc)` | 移除 `interface_endpoints` 變數、endpoint SG、`vpce_security_group_id` 輸出 | 69（原本 76：4 個搬到新 module、3 個刪除，對照表在 design §7.1） |
+| `07e80f2 feat(vpc-interface-endpoints)` | interface endpoint 加專用 SG（只對 `allowed_cidrs` 開 443，獨立 rule 資源，沒有 egress） | 22 |
+| `30f1b38 chore(repo)` | release-please 改成 19 個；S4 改成 SG 只能在 `security-group` 與 `vpc-interface-endpoints`、`aws_default_security_group` 只能在 `vpc` | — |
+
 ### Phase 8：`templates/project-infra`（8 個 stack）
 
 **目標**：照 design §5。8 個 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 `aws_secretsmanager_secret`（S8）；跨 stack 讀寫一律透過 `ssm-read`／`ssm-publish`；兩個以上 stack 都要知道的開關只由上游一個 stack 決定（design §5.6「單一決定點」），下游用 precondition 檢查自己的設定跟上游一致。
@@ -515,7 +545,7 @@ scripts/validate.sh                                                # 全量
 |---|---|---|---|---|
 | 1 | `foundation` | `kms-key`、`sns-alarm-topic`、`s3-bucket` ×2、`ssm-publish`；原生 `aws_secretsmanager_secret` | — | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
 | 2 | `containerimage` | `ecr-repository`（`for_each` 服務）、`ssm-read`、`ssm-publish` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn` |
-| 3 | `network` | `vpc`、`security-group`、`ssm-read`、`ssm-publish` | foundation、containerimage | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`（有 interface endpoint 才發布）、`nat`、`alb_https`、`db_proxy`、`data_access` |
+| 3 | `network` | `vpc`（只在建立模式）、`vpc-interface-endpoints`（兩種模式都呼叫）、`security-group`、`ssm-read`、`ssm-publish` | foundation、containerimage | `vpc_id`、`vpc_cidr`、`azs`、`subnet_ids_<tier>`、`subnet_cidrs_<tier>`、`sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id`（由 `vpc-interface-endpoints` 的 `security_group_id` 發布；`services` 為空時不發布）、`nat`、`alb_https`、`db_proxy`、`data_access` |
 | 4 | `iam-base` | `iam-role` ×3、`ssm-read`、`ssm-publish` | foundation、containerimage | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
 | 5 | `data` | `rds`、`ssm-read`、`ssm-publish` | foundation、network、iam-base | `database`（JSON） |
 | 6 | `iam-app` | `iam-role-policy`、`iam-role`（`for_each` 服務）、`ssm-read`、`ssm-publish` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>` |
@@ -630,7 +660,8 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | 檔案 | 用途 |
 |---|---|
 | `vpc.tf` | 建立模式：`vpc` module，tier 固定 `public`、`app`、`data`（data 預設 isolated）；`vpc.flow_log = true` 時 `destination_arn` 用 SSM 讀到的 `flow_log_bucket_arn` |
-| `existing.tf` | 模式 A：`existing = { vpc_id, subnet_ids }`，`data "aws_vpc"`、`data "aws_subnet"` 用 `for_each` 確認存在 |
+| `existing.tf` | 模式 A：`existing = { vpc_id, subnet_ids }`，`data "aws_vpc"`、`data "aws_subnet"` 用 `for_each` 確認存在；precondition 檢查 `data.aws_vpc.this` 的 `enable_dns_support` 與 `enable_dns_hostnames` 都是 true（`private_dns_enabled = true` 的 endpoint 需要，design §5.8）。路由、IGW、NAT、gateway endpoint、default SG 一律不碰 |
+| `endpoints.tf` | `vpc-interface-endpoints`，兩種模式都呼叫：`services` 與 `subnet_tier` 來自最上層變數 `interface_endpoints`（預設 `{}`，`subnet_tier` 預設 `app`）；建立模式的 `vpc_id`、`allowed_cidrs = [vpc_cidr]`、`subnet_ids` 來自 `vpc` 的輸出；模式 A 來自 `existing` 與 `data.aws_vpc.this`（`allowed_cidrs` 是 `cidr_block_associations` 的全部 CIDR）。validation：`subnet_tier` 必須存在而且不是 `public`（這條從 `vpc` module 搬到這裡） |
 | `security-groups.tf` | locals 把 `services`、`data_stores`、`alb_ingress` 展開成 `security_groups` 與 `rules`，呼叫 `security-group` 一次（design §4.16、§5.3 的規則表） |
 | `envs/dev.tfvars` | `data_stores.db.proxy = false` |
 | `envs/prod.tfvars` | `data_stores.db.proxy = true` |
@@ -656,9 +687,15 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `https_opens_443_and_80` | `https = true`、`cidrs = ["0.0.0.0/0"]` → ALB 有 443 與 80 ingress，`allow_internet = true` |
 | `publishes_decision_points` | `alb_https`、`db_proxy`、`data_access` 的 JSON 內容照輸入 |
 | `sg_key_name_conversion` | 服務 `order-api` → 發布 `sg_order_api_id` |
-| `vpce_sg_key_only_with_endpoints` | 沒有 interface endpoint → 不發布 `sg_vpce_id` |
+| `endpoints_in_create_mode` | 建立模式、`interface_endpoints.services = ["ecr.api", "logs"]` → `vpc-interface-endpoints` 的 `vpc_id` 等於 `vpc` 的 `vpc_id`、`allowed_cidrs` 等於 `[vpc_cidr]`、`subnet_ids` 等於 app tier 的 subnet |
+| `endpoints_in_existing_mode` | 模式 A、同樣的 `services` → `vpc_id` 等於 `existing.vpc_id`、`allowed_cidrs` 等於 `override_data` 給的 `cidr_block_associations` 全部 CIDR（給兩段，驗證 secondary CIDR 也在）、`subnet_ids` 等於 `existing.subnet_ids["app"]` |
+| `endpoints_none_by_default` | `interface_endpoints = {}` → `vpc-interface-endpoints` 的 `services` 是空集合，不發布 `sg_vpce_id` |
+| `vpce_sg_key_from_module` | 有 `services` 時 `sg_vpce_id` 等於 `vpc-interface-endpoints` 的 `security_group_id`（`override_module` 或 `override_during = plan` 給固定值） |
+| `interface_tier_must_exist_and_not_public` | `subnet_tier = "nope"` 被擋；`subnet_tier = "public"` 被擋；`app` 通過 |
+| `existing_vpc_needs_dns` | 模式 A、`override_data` 讓 `enable_dns_support = false` → precondition 失敗；`enable_dns_hostnames = false` 也失敗；兩個都是 true 通過 |
+| `existing_mode_does_not_touch_routing` | 模式 A → `vpc` module 沒被呼叫（沒有 route table、IGW、NAT、gateway endpoint、default SG） |
 | `nat_json` | `nat` 是 `{mode, ids}` |
-| examples（`tests/examples/`） | `nat_mode = "per_az"` 時 NAT 數等於 AZ 數；`alb_ingress.https = false` 時 ALB 沒有 `0.0.0.0/0` ingress；`vpc.flow_log` 為 true 時 flow log 指向 foundation 的 bucket |
+| examples（`tests/examples/`） | interface endpoint 數等於 `interface_endpoints.services` 的數量；`nat_mode = "per_az"` 時 NAT 數等於 AZ 數；`alb_ingress.https = false` 時 ALB 沒有 `0.0.0.0/0` ingress；`vpc.flow_log` 為 true 時 flow log 指向 foundation 的 bucket |
 
 #### iam-base
 
@@ -783,8 +820,8 @@ scripts/validate.sh
 |---|---|
 | `docs/guides/consuming-modules.md` | 怎麼引用（`git::https://github.com/<org>/<repo>.git//modules/<name>?ref=<name>-v<semver>`）、私有 repo 的 git 認證、Git source 只能 `ref` 釘死、從範本複製出去時把相對路徑改成 git source（一個 module 一行的手改方式，加一次改完的指令）、升版、讀 CHANGELOG、升級到真 registry 時消費端改什麼 |
 | `docs/guides/project-infra-standard.md` | 8 個 stack 與 apply 順序、stack 只呼叫 module（例外清單）、iam 為什麼拆兩個、單一決定點、SSM 合約（含 tier 調整時 key 怎麼變）、流量規格對照表與 IP 規劃公式、環境切換四件事、客戶自管模式 A／B |
-| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 18 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
-| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 發布 `tracing_<service>` 當單一決定點、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證） |
+| `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
+| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 發布 `tracing_<service>` 當單一決定點、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證），collector 照 example 寫 `essential = false` 並說明理由；interface endpoint 的 `xray` 服務由 network 的 `interface_endpoints` 加 |
 | `docs/guides/delivering-to-customer.md` | FDE：`vendor-modules.sh`、`terraform providers mirror`（給客戶環境用，不是本 repo 的驗證流程）、客戶自管資源的 SSM 合約、客戶環境差異怎麼回報 |
 | `docs/guides/team-roles.md` | 四個團隊的責任與交接點，對到 CODEOWNERS |
 | `scripts/vendor-modules.sh` | 只做 `git::...?ref=<tag>` → vendored 相對路徑（design §8.7）。tag 的 module 名稱清單從 `modules/` 目錄讀 |
@@ -821,17 +858,17 @@ git tag                                            # 預期沒有輸出：tag �
 
 | 檢查 | 指令或做法 | 預期 |
 |---|---|---|
-| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠（18 個 module、它們的 example、8 個 stack 與各自的 `-var-file` 執行） |
+| 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠（19 個 module、它們的 example、8 個 stack 與各自的 `-var-file` 執行） |
 | 沒留下產物 | `git status --short --ignored` | 只有 `.cache/` 與 `docs/slides/` 是 ignored |
 | 沒有禁止的指令 | `grep -rnE 'terraform (plan\|apply\|providers lock)\|aws ' scripts/ .github/` | 只出現在註解或禁止說明 |
 | module 只用英文 | `grep -rnP '[^\x00-\x7F]' modules/ --include='*.tf' --include='*.tftest.hcl'` | 沒有輸出 |
-| IAM 與 SG 的邊界 | S4 | 通過 |
+| IAM 與 SG 的邊界 | S4；另外 `grep -rn 'resource "aws_security_group"' modules/vpc/` | S4 通過；`modules/vpc/` 只有 `aws_default_security_group` |
 | stack 只呼叫 module | S8 | 通過 |
-| tag 格式一致 | release-please 設定（18 個 package）、guides、ADR 0001、各 module README、`vendor-modules.sh` | 都是 `<module>-v<semver>`，起始 `0.1.0` |
+| tag 格式一致 | release-please 設定（19 個 package）、guides、ADR 0001、各 module README、`vendor-modules.sh` | 都是 `<module>-v<semver>`，起始 `0.1.0` |
 | stack 清單、SSM key、單一決定點 | 範本 README、`project-infra-standard.md`、ADR 0002、design §5.3、§5.6 | 一致 |
-| 介面與 design 一致 | 18 個 module 的變數名、預設值、輸出對照 design §4.2–§4.20 | 不一致要揭露，不自行改 design |
+| 介面與 design 一致 | 19 個 module 的變數名、預設值、輸出對照 design §4.2–§4.21 | 不一致要揭露，不自行改 design |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與各 Phase 回報一致 |
-| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 35 個 commit（Phase 10 有修正時 36 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
+| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 41 個 commit（Phase 10 有修正時 42 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
 
 ## 驗證指令的具體寫法
 
@@ -859,7 +896,7 @@ git tag                                            # 預期沒有輸出：tag �
 | S1 | 每個 `*.tftest.hcl`（含 `tests/tfvars/`、`tests/examples/`）都宣告 `mock_provider "aws"` |
 | S2 | `resource "aws_ssm_parameter"` 只能出現在 `modules/ssm-publish/`（範圍含 `modules/` 與 `templates/`） |
 | S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 不得出現 `.value` |
-| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc/`；範本 stack 兩類都不得出現 |
+| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`30f1b38` 起；Phase 6 時的版本允許 `modules/vpc/`） |
 | S5 | 範本 8 個 stack 的 `common.tf` 雜湊相同 |
 | S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend |
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` |
@@ -914,7 +951,7 @@ git tag                                            # 預期沒有輸出：tag �
 | R3 | `command = plan` 時 computed 屬性是 unknown | 斷言 `arn`、`id` 報「無法判斷」 | 優先用 `override_resource`／`override_data` 加 `override_during = plan`（1.15.8 已驗證可用），其次 `command = apply` |
 | R4 | 用 `TF_CLI_CONFIG_FILE` 指到本機 mirror | `.cache/plugins` 留下 symlink，之後 init 失敗 | 禁止（硬性限制與派工 prompt 都寫）；出事時刪掉整個 `.cache/` |
 | R5 | 開了 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE` 時產生範本 lock 檔 | lock 檔只有本機平台的雜湊，CI 的 `-lockfile=readonly` 失敗 | 照 Phase 8〈lock 檔的產生方式〉不用快取產生，驗收檢查每份都有 `zh:` |
-| R6 | 範本測試會 init 全部 18 個 module 與它們的 provider | 第一次跑很慢 | plugin cache 共用；CI 快取 `.cache/plugins` |
+| R6 | 範本測試會 init 全部 19 個 module 與它們的 provider | 第一次跑很慢 | plugin cache 共用；CI 快取 `.cache/plugins` |
 | R7 | `-test-directory` 的子目錄會不會被一般 `terraform test` 掃到 | 會的話，`tests/tfvars/`、`tests/examples/` 在沒有 `-var-file` 時被跑到而失敗 | 未驗證，Phase 8 第一個 stack 先實測；會掃到就改目錄名（例如 `tests-tfvars/`）並同步改 `validate.sh` |
 | R8 | `rds` 的 `master_user_secret` 是 nested list | 範本 data stack 取 `[0]` 失敗 | 沿用 `modules/rds/tests/` 的 `mock_resource` 寫法，或用 `override_module` 給 `module.db` 的輸出 |
 | R9 | RDS Proxy 建立時 role 還沒有讀 secret 的權限 | 未驗證：可能建立失敗，也可能建立成功但連不上 | 照 design §5.4 的兩種對策；dev 預設不開 Proxy、prod 開 |
@@ -948,21 +985,19 @@ git tag                                            # 預期沒有輸出：tag �
 | P2 | 執行型 subagent 只能透過 `scripts/validate.sh` 跑 terraform；唯一例外是 Phase 8 產生範本 lock 檔，照原文執行 |
 | P3 | 不准 `terraform providers lock`；不准用 `TF_CLI_CONFIG_FILE` 指到本機 mirror |
 | P4 | `validate.sh` 設 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`e51348f`） |
-| P5 | 第一個 tag 由人手動打 18 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（`bb26a42`、design 決策 27） |
+| P5 | 第一個 tag 由人手動打 19 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（`bb26a42`、design 決策 27） |
 | P6 | `modules/` 底下的註解、`description`、`error_message` 只用英文，禁止 icon（design 決策 26） |
-| P7 | 新增 7 個 module（再加 7E 的 3 個，共 18 個）；IAM 只由 `iam-role`、`iam-role-policy` 建；SG 只由 `security-group`、`vpc` 建；stack 只呼叫 module，例外只有 foundation 的 secret 容器（design 決策 24、25、28、29、30） |
+| P7 | 新增 7 個 module（再加 7E 的 3 個、7F 的 `vpc-interface-endpoints`，共 19 個）；IAM 只由 `iam-role`、`iam-role-policy` 建；SG 只由 `security-group`、`vpc` 建；stack 只呼叫 module，例外只有 foundation 的 secret 容器（design 決策 24、25、28、29、30） |
 | P8 | tfvars（dev、prod、examples）不在測試裡複製值，由 `validate.sh` 對範本 stack 另跑 `terraform test -var-file=...` |
 | P9 | Phase 7E：先一個 docs commit（設計文件）、一個 chore commit（release-please 加 3 個 module、README 改成 18 個），再 3 個新 module 與 `feat(ecs-service)` 的 sidecars 各一個 commit；`ecs-service` 既有測試檔一行都不改（design 決策 31–33） |
 
 ### 跟 design-docs 不一致的點
 
-上一輪列的三點（§7.1 的 Phase 編號、§4.14 的章節引用、決策 14 的文字）design 都已改正。這一輪核對後：
+上一輪列的三點（§5.1 的樹缺 `application/envs/examples/`、§5.11 沒有觀測性的列、S3 沒寫 `each.value` 例外）design 都已改正。這一輪核對後：
 
 | # | 位置 | 狀況 | 建議 |
 |---|---|---|---|
-| 1 | design §5.1 的資料夾樹 | 只畫出 `network`、`data`、`loadbalancer` 有 `envs/examples/`；§5.3 與 §4.19 說 `application/envs/examples/` 放 `log_alarms`、`xray_*` 的範例值。本文照 §5.3 寫，`application` 也有 examples | design §5.1 的樹補上 `application/envs/examples/` |
-| 2 | design §5.11 | 流量規格表沒有觀測性的列（每種規格的抽樣比例、要不要開 log 告警），`application` 的三份範例沒有對照依據 | design §5.11 補一列，或註明 `application` 的三份範例內容相同、只示範寫法 |
-| 3 | design §5.6 S3 | 寫「`modules/ssm-read/` 不得出現 `.value`」。實作（`0e0efab`）放行 `each.value`，因為那是 `for_each` 的迭代變數，不是參數值 | design 的 S3 補一句「`each.value` 除外」 |
+| 1 | design §5.6 S4 的說明欄 | 還寫「`scripts/validate.sh` 現在的 S4 允許 `modules/vpc`，要跟著改」。`30f1b38` 已經改好 | design 拿掉這句，或改成「`30f1b38` 起生效」 |
 
 ### 待補資訊
 

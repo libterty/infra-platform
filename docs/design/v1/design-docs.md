@@ -1824,16 +1824,25 @@ variable "inline_policies" {
     ]))
     error_message = "Allow statements must not use NotAction."
   }
+  validation {
+    condition = alltrue(flatten([
+      for p in values(var.inline_policies) : [
+        for s in try(jsondecode(p).Statement, []) : !(try(s.Effect, "Allow") == "Allow" && try(s.NotResource, null) != null)
+      ]
+    ]))
+    error_message = "Allow statements must not use NotResource."
+  }
 }
 ```
 
-三條 validation 的作用（`iam-role-policy` 的 `policies` 一字不差，只有變數名不同，另外第一條多一個 `length(var.policies) > 0`）：
+四條 validation 的作用（`iam-role-policy` 的 `policies` 一字不差，只有變數名不同，另外第一條多一個 `length(var.policies) > 0`）：
 
 | # | 檢查 | 為什麼這樣寫 |
 |---|---|---|
 | 1 | `can(jsondecode(p).Statement[0])` | `Statement` 必須是非空清單。寫成 `can(jsondecode(p).Statement)` 的話，空清單會通過；`Statement` 寫成單一物件（IAM 允許）也會通過，而第二條的 `for s in ...` 對物件跑的是欄位值，萬用動作就檢查不到 |
 | 2 | 迴圈用 `try(jsondecode(p).Statement, [])` | 非 JSON 字串在第一條就會失敗；第二、三條如果直接 `jsondecode`，會變成 hard error，`expect_failures` 接不到，測試只能看到「plan 壞了」而不是「這條 validation 擋下來」 |
 | 3 | Allow statement 不准有 `NotAction` | `Allow` 加 `NotAction` 等於「除了這幾個動作以外全部允許」，比 `*` 只少一點，第二條檢查不到。沒寫 `Effect` 時 IAM 視為 `Allow`，所以 `try(s.Effect, "Allow")`；`Deny` 搭配 `NotAction` 是常見的防護寫法，照樣放行 |
+| 4 | Allow statement 不准有 `NotResource` | `Allow` 加 `NotResource` 等於「除了這幾個資源以外全部允許」，效果接近 `Resource = "*"`，前三條都檢查不到。寫法比照第三條：沒寫 `Effect` 視為 Allow，`Deny` 搭配 `NotResource` 照樣放行（使用者同意比照 `NotAction`，§9.2 決策 35） |
 
 ```hcl
 
@@ -1905,6 +1914,14 @@ variable "policies" {
     ]))
     error_message = "Allow statements must not use NotAction."
   }
+  validation {
+    condition = alltrue(flatten([
+      for p in values(var.policies) : [
+        for s in try(jsondecode(p).Statement, []) : !(try(s.Effect, "Allow") == "Allow" && try(s.NotResource, null) != null)
+      ]
+    ]))
+    error_message = "Allow statements must not use NotResource."
+  }
 }
 ```
 
@@ -1912,7 +1929,7 @@ variable "policies" {
 
 **跟 `iam-role` 的關係**
 
-- 兩者的三條 policy validation（非空 `Statement` 清單、Allow 不准 `*` 或 `service:*`、Allow 不准 `NotAction`，理由見 §4.14）寫法一字不差，只有變數名不同，`iam-role-policy` 的第一條另外要求至少一個 policy。這段邏輯重複在兩個 module 裡是刻意的：Terraform module 之間不能共用 validation，抽成第三個 module 只為了放一段表達式不划算。
+- 兩者的四條 policy validation（非空 `Statement` 清單、Allow 不准 `*` 或 `service:*`、Allow 不准 `NotAction`、Allow 不准 `NotResource`，理由見 §4.14）寫法一字不差，只有變數名不同，`iam-role-policy` 的第一條另外要求至少一個 policy。這段邏輯重複在兩個 module 裡是刻意的：Terraform module 之間不能共用 validation，抽成第三個 module 只為了放一段表達式不划算。
 - `iam-role` **不得**使用 `aws_iam_role_policies_exclusive` 這類「獨佔管理 inline policy」的資源。用了的話，`iam-role` 每次 apply 都會把 `iam-role-policy` 附加的 policy 刪掉，兩邊互相覆蓋。
 - 「只有 `iam-role` 與 `iam-role-policy` 建 IAM」由 §5.6 S4 檢查。
 
@@ -2040,7 +2057,9 @@ module "sg" {
 
 **參考來源**：`modules/ecs-service/main.tf`、`modules/ecs-cluster/` 的 log group 寫法（保留天數、可選 KMS）；`project-c-infra/modules/infra-platform/ecs.tf` 預建 Container Insights log group 以控制保留天數的理由。
 
-**資源**：`aws_cloudwatch_log_group.this`；`subscription != null` 時加 `aws_cloudwatch_log_subscription_filter.this`。
+**資源**：`aws_cloudwatch_log_group.this`；`subscription != null` 時加 `aws_cloudwatch_log_subscription_filter.this`，名稱用 `var.name`（一個 log group 只有一個 filter，不會撞名）。
+
+**`role_arn` 的保證範圍**：provider 把 subscription filter 的 `role_arn` 定義成 optional 加 computed。Lambda 目的地時 module 傳 `null`，但在 mock 下 computed 屬性會被填上假值，所以「Lambda 目的地時 `role_arn` 是 null」只能靠程式碼保證，`terraform test` 驗不到（§7.1）。
 
 **輸入**
 
@@ -2101,7 +2120,7 @@ variable "tags" {
 
 **參考來源**：`project-a/infra-v2/terraform/postdeploy/alarms-persistence.tf`（一張 `log_event → metric_name → description` 表，`for_each` 同時建 filter 與 alarm；pattern 用 JSON 欄位比對 `{ $.event = "..." }`；`value = "1"`、`default_value = "0"`；`Sum`、60 秒、`>= 1`、`notBreaching`；`alarm_actions` 與 `ok_actions` 都接 topic；alarm `depends_on` filter）、`postdeploy/alarms.tf` 的 `rate_limit_fail_open`（同樣寫法，但 300 秒、門檻 60）、`database/alarms-partitions.tf`。
 
-**資源**：`aws_cloudwatch_log_metric_filter.this`、`aws_cloudwatch_metric_alarm.this`，兩者都 `for_each = alarms`；alarm `depends_on` filter（指標要先存在，告警才不會一建好就落在 INSUFFICIENT_DATA）。
+**資源**：`aws_cloudwatch_log_metric_filter.this`、`aws_cloudwatch_metric_alarm.this`，兩者都 `for_each = alarms`；provider 的 `metric_transformation.default_value` 是 string，module 收 number、內部用 `tostring()` 轉；metric filter 不支援 tag，只有 alarm 帶 `tags`；alarm `depends_on` filter（指標要先存在，告警才不會一建好就落在 INSUFFICIENT_DATA）。
 
 **輸入**
 
@@ -2193,7 +2212,7 @@ variable "tags" {
 
 **重要**：sampling rule 只對「向 X-Ray 拿抽樣規則」的 SDK 或 collector 生效（X-Ray SDK、或 ADOT／OTEL 用 X-Ray remote sampler）。像 project-a 那樣在 SDK 端用 `traceidratio` 固定比例抽樣的應用程式，**不會**套用這裡的 rule。用了這個 module 的專案要讓 SDK 或 collector 用 remote sampling，task role 也要多給 `xray:GetSamplingRules`、`xray:GetSamplingTargets`。這段行為**沒有在我們的環境實測過**（§7.3）。
 
-**資源**：`aws_xray_sampling_rule.this`（`for_each = sampling_rules`）、`aws_xray_group.this`（`for_each = groups`）。
+**資源**：`aws_xray_sampling_rule.this`（`for_each = sampling_rules`）、`aws_xray_group.this`（`for_each = groups`）。sampling rule 的 `version = 1`、`resource_arn = "*"` 寫死：兩者都是 provider 的必填欄位，`version` 目前只有 1，`resource_arn` 只對 X-Ray SDK 的少數服務整合有意義，第一版不開放。
 
 **輸入**
 
@@ -2328,7 +2347,7 @@ variable "sidecars" {
 
 | 位置 | 內容 | 為什麼放這裡 |
 |---|---|---|
-| `modules/ecs-service/examples/adot-sidecar/` | 只示範 `sidecars` 怎麼填一個 ADOT collector：映像、`AOT_CONFIG_CONTENT` 用 `environment` 帶入 collector 設定、health check、`app_depends_on = "START"`、主 container 的 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317` | module 的 example 會被 CI 跑 `init -backend=false` 與 `validate`，寫法壞了會被抓到 |
+| `modules/ecs-service/examples/adot-sidecar/` | 只示範 `sidecars` 怎麼填一個 ADOT collector：映像、`essential = false`（collector 掛掉不應該連帶讓整個 task 重啟、中斷服務；project-c 的寫法是 `true`，這裡刻意不同）、`AOT_CONFIG_CONTENT` 用 `environment` 帶入 collector 設定、health check、`app_depends_on = "START"`、主 container 的 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317` | module 的 example 會被 CI 跑 `init -backend=false` 與 `validate`，寫法壞了會被抓到 |
 | `docs/guides/observability.md`（新增） | 整套做法：collector 設定檔範例（參考 project-c 的 `otel-collector-config.yaml`：OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 要給 task role 的 X-Ray 與 CloudWatch 權限（`xray:PutTraceSegments`、`PutTelemetryRecords`、`GetSamplingRules`、`GetSamplingTargets`，只支援 `Resource = "*"`）、`iam-base` 要給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配、「要不要追蹤」用 `iam-app` 發布 `tracing_<service>` 當單一決定點 | 牽涉三個 stack，範本的 stack 預設不開追蹤；放進範本會讓每個專案都背一個預設關閉的 sidecar。guide 不會被 CI 驗證，所以 HCL 片段要跟 module example 對照 |
 
 collector 設定用 `environment` 帶，不學 project-c 存成 SSM parameter 再用 `secrets` 讀：設定檔不是機密，而範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（§5.6 S2）。設定檔太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
@@ -2343,7 +2362,7 @@ collector 設定用 `environment` 帶，不學 project-c 存成 SSM parameter �
 - endpoint SG 只對 VPC CIDR 開 443、`private_dns_enabled = true`：原本在 `modules/vpc/endpoints.tf`（拆出前的實作）、`project-a/infra-v2/terraform/network/vpc-interface-endpoints.tf`
 - 服務清單：`project-c-infra/environments/uat/platform/terraform.tfvars`（`vpce_interface_config`）
 
-**資源**：`aws_security_group.this`、`aws_vpc_security_group_ingress_rule.https`（`for_each = allowed_cidrs`）、`aws_vpc_endpoint.this`（`for_each = services`）。`services` 是空集合時三種資源都不建。規則是獨立的 rule 資源，沒有 inline；SG 沒有任何 egress 規則（interface endpoint 只需要被連入）。
+**資源**：`aws_security_group.this`（`Name` 為 `<name>-vpce`）、`aws_vpc_security_group_ingress_rule.https`（`for_each = allowed_cidrs`，`Name` tag 為 `<name>-vpce-https`）、`aws_vpc_endpoint.this`（`for_each = services`）。`services` 是空集合時三種資源都不建。規則是獨立的 rule 資源，沒有 inline；SG 沒有任何 egress 規則（interface endpoint 只需要被連入）。
 
 **輸入**
 
@@ -3077,7 +3096,7 @@ locals {
 | S1 | 每個 `*.tftest.hcl` 都宣告 `mock_provider "aws"` | 測試不得需要 AWS 憑證 |
 | S2 | `resource "aws_ssm_parameter"` 只能出現在 `modules/ssm-publish/` | 只能透過 `ssm-publish` 寫入；範圍含 `modules/` 與 `templates/` |
 | S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 只讀 `insecure_value`，不得出現 `.value`（`each.value` 是例外：那是 `for_each` 的迭代變數，不是參數的值） | 範本 stack 改用 `ssm-read`，原本「`ssm-inputs.tf` 不讀 `.value`」改由這條涵蓋 |
-| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`），範本的 stack 也不例外；`resource "aws_security_group"`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`，`modules/vpc/` 與範本的 stack 都不得出現；`resource "aws_default_security_group"` 只能出現在 `modules/vpc/`（§4.7） | 「只有兩個 IAM module 建 IAM」「SG 一律透過 module」的程式檢查。`scripts/validate.sh` 現在的 S4 允許 `modules/vpc`，要跟著改 |
+| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`），範本的 stack 也不例外；`resource "aws_security_group"`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`，`modules/vpc/` 與範本的 stack 都不得出現；`resource "aws_default_security_group"` 只能出現在 `modules/vpc/`（§4.7） | 「只有兩個 IAM module 建 IAM」「SG 一律透過 module」的程式檢查（`30f1b38` 起由 `scripts/validate.sh` 執行） |
 | S5 | 範本 8 個 stack 的 `common.tf` 雜湊相同 | 修掉 project-a「common.tf 多版本漂移」 |
 | S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend | 修掉 project-a「key 寫錯讀到別的環境」 |
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` | 密碼一律由 RDS 管理 |
@@ -3349,10 +3368,10 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | `ecr-repository` | `IMMUTABLE`、`scan_on_push = true`、`force_delete = false`；`kms_key_arn = null` 時 `AES256`、有給時 `KMS`；lifecycle policy 的兩條規則與預設值（7 天、50 個）；覆寫後的值 | 名稱含大寫或空白；`untagged_expire_days = 0`；`keep_count = 0` |
 | `s3-bucket` | 封鎖公開存取四項全開；`BucketOwnerEnforced`；bucket policy 一定有 `aws:SecureTransport = false` 的 Deny；`log_delivery = []` 時只有那一段 Deny；`alb_access_logs` 有 ELB 服務帳號與服務主體兩段（`data.aws_elb_service_account` 用 `override_data`）；`vpc_flow_logs` 有 PutObject 與 GetBucketAcl，帶 `aws:SourceAccount`；`kms_key_arn` 有給時是 `aws:kms` | 名稱含 `.` 或大寫；`expiration_days = 0`；`log_delivery` 給 `cloudtrail`；**`alb_access_logs` 搭配 `kms_key_arn`** |
 | `ssm-read` | `strings` 的輸出等於 `override_data` 給的 `insecure_value`；`lists` 以逗號切開；同一個 `<stack>/<key>` 出現在兩個本地名稱時只讀一次；兩個 map 都空時沒有 data source | `ssm_prefix` 缺開頭斜線或多結尾斜線；值不是 `<stack>/<key>`（例如 `network/VPC_ID`、`/network/vpc_id`） |
-| `iam-role` | trust 只有給的服務主體；`source_account` 有給時帶 `aws:SourceAccount`；每個 `inline_policies` 一個 `aws_iam_role_policy`；`permissions_boundary` 照輸入 | trust 為空或給 `*`；`source_account` 不是 12 位數；inline policy 不是 JSON；Allow statement 的 Action 是 `*` 或 `s3:*`（字串與清單兩種寫法、沒寫 `Effect` 的都要測）；`Statement` 寫成單一物件（`statement_object_rejected`）；`Statement` 是空清單（`empty_statement_list_rejected`）；Allow 用 `NotAction`，字串、清單、沒寫 `Effect` 三種（`allow_notaction_*_rejected`）；反向：`s3:Get*` 這種前綴萬用要通過（`allow_prefix_wildcard_passes`）、Deny 用 `*` 要通過（`deny_wildcard_is_allowed`）、Deny 搭配 `NotAction` 要通過（`deny_notaction_is_allowed`） |
-| `iam-role-policy` | 每個 `policies` 一個 `aws_iam_role_policy`；`role` 等於從 `role_arn` 取出的名稱 | `role_arn` 帶 path 或不是 role ARN；`policies` 為空；policy 不是 JSON；以及跟 `iam-role` 相同的 policy 檢查：Action 是 `*` 或 `secretsmanager:*`、單一物件 `Statement`、空 `Statement`、Allow 用 `NotAction`（三種寫法）；反向：前綴萬用、Deny 用 `*`、Deny 搭配 `NotAction` 都要通過。兩個 module 的這組 run 名稱相同 |
+| `iam-role` | trust 只有給的服務主體；`source_account` 有給時帶 `aws:SourceAccount`；每個 `inline_policies` 一個 `aws_iam_role_policy`；`permissions_boundary` 照輸入 | trust 為空或給 `*`；`source_account` 不是 12 位數；inline policy 不是 JSON；Allow statement 的 Action 是 `*` 或 `s3:*`（字串與清單兩種寫法、沒寫 `Effect` 的都要測）；`Statement` 寫成單一物件（`statement_object_rejected`）；`Statement` 是空清單（`empty_statement_list_rejected`）；Allow 用 `NotAction`，字串、清單、沒寫 `Effect` 三種（`allow_notaction_*_rejected`）；反向：`s3:Get*` 這種前綴萬用要通過（`allow_prefix_wildcard_passes`）、Deny 用 `*` 要通過（`deny_wildcard_is_allowed`）、Deny 搭配 `NotAction` 要通過（`deny_notaction_is_allowed`）；Allow 用 `NotResource`，字串、清單、沒寫 `Effect` 三種（`allow_notresource_rejected`、`allow_notresource_list_rejected`、`allow_notresource_without_effect_rejected`）；反向：Deny 搭配 `NotResource` 要通過（`deny_notresource_is_allowed`） |
+| `iam-role-policy` | 每個 `policies` 一個 `aws_iam_role_policy`；`role` 等於從 `role_arn` 取出的名稱 | `role_arn` 帶 path 或不是 role ARN；`policies` 為空；policy 不是 JSON；以及跟 `iam-role` 相同的 policy 檢查：Action 是 `*` 或 `secretsmanager:*`、單一物件 `Statement`、空 `Statement`、Allow 用 `NotAction`（三種寫法）、Allow 用 `NotResource`（三種寫法，`allow_notresource_*`）；反向：前綴萬用、Deny 用 `*`、Deny 搭配 `NotAction`、Deny 搭配 `NotResource`（`deny_notresource_is_allowed`）都要通過。兩個 module 的這組 run 名稱相同 |
 | `security-group` | 每個 `security_groups` 一個 SG；規則依 `type` 分到 ingress／egress 兩種資源；`peer_group` 轉成同一次呼叫裡 SG 的 id（`referenced_security_group_id`）；`to_port` 預設等於 `from_port`；`ip_protocol = "-1"` 時沒有 port；沒有 inline 規則 | 規則指向不存在的 SG key；同一條規則給了兩個 peer 或沒有 peer；`type = "both"`；tcp 規則沒有 `from_port`；**ingress 對 `0.0.0.0/0` 沒寫 `allow_internet = true`**；egress 對 `0.0.0.0/0` 不需要 `allow_internet` 要**通過**（反向） |
-| `log-group` | `retention_in_days` 等於輸入、預設 30；`kms_key_arn` 有給時帶上；`subscription = null` 時沒有 subscription filter；給 Lambda 目的地時 `role_arn` 可以是 null；給 Firehose 目的地時帶 `role_arn` | `retention_days = 0` 或 `2`；名稱以 `aws/` 開頭；`destination_arn` 是 S3 ARN；Kinesis／Firehose 目的地沒給 `role_arn` |
+| `log-group` | `retention_in_days` 等於輸入、預設 30；`kms_key_arn` 有給時帶上；`subscription = null` 時沒有 subscription filter；給 Lambda 目的地時不給 `role_arn` 也能通過（`lambda_subscription_without_role`；只驗「不報錯」，`role_arn` 是 null 這件事測不到，因為 provider 的 `role_arn` 是 optional 加 computed，mock 會填假值）；給 Firehose 目的地時帶 `role_arn` | `retention_days = 0` 或 `2`；名稱以 `aws/` 開頭；`destination_arn` 是 S3 ARN；Kinesis／Firehose 目的地沒給 `role_arn` |
 | `log-metric-alarm` | 每個 `alarms` 項目一個 metric filter 與一個 alarm，名稱 `<name_prefix>-<key 的 _ 換成 ->`；filter 的 `metric_transformation` 是 `value = "1"`、`default_value = 0`；alarm 的預設是 `Sum`、60 秒、1 期、`>= 1`、`notBreaching`；**每個 alarm 的 `alarm_actions` 與 `ok_actions` 都等於 `sns_topic_arns`**（反向驗證：拿掉一個的 `ok_actions` 測試要紅）；`alarms = {}` 時兩種資源都是 0 個 | `sns_topic_arns = []`；key 不是 snake_case；`pattern` 或 `description` 是空字串；`statistic = "p99"`；`period = 45`；`datapoints_to_alarm` 大於 `evaluation_periods`；`namespace` 以 `AWS/` 開頭 |
 | `xray` | 每個 `sampling_rules` 一個 rule，名稱 `<name_prefix>-<key>`、沒給的欄位是 `*`；每個 `groups` 一個 group，`insights_configuration` 照輸入；兩個 map 都空時什麼都不建 | 名稱超過 32 字；`priority = 0` 或 `10000`；`fixed_rate = 1.5`；兩條 rule 的 `priority` 相同；group 的 `filter_expression` 空字串；`notifications_enabled = true` 但 `insights_enabled = false` |
 | `ecs-service` 的 `sidecars` | **迴歸要求：`sidecars = []` 時，`aws_ecs_task_definition.this.container_definitions` 跟加這個變數之前完全相同**：`jsondecode` 後長度是 1、主 container 沒有 `dependsOn` 欄位，而且既有的 `ecs-service` 測試檔一行都不改就全部通過。另外：一個 sidecar 時長度是 2、順序是 `app` 在前；sidecar 的 `logConfiguration` 用同一個 log group、`awslogs-stream-prefix` 是 sidecar 名稱（或 `log_stream_prefix`）；有 `app_depends_on = "START"` 時主 container 才有 `dependsOn = [{ containerName = <sidecar>, condition = "START" }]`；sidecar 的 `secrets` 轉成 `valueFrom` | sidecar 名稱是 `app` 或重複；sidecar 映像用 `:latest`；`app_depends_on = "READY"`；`app_depends_on = "HEALTHY"` 卻沒有 `health_check`；sidecar 的 port 跟主 container 撞號；secret 不是 ARN |
@@ -3573,6 +3592,7 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | 32 | `ecs-service` 新增通用的 `sidecars`（MINOR），不寫死 ADOT；`sidecars = []` 時結果跟現在完全一致，列為迴歸測試要求。ADOT、collector 設定、task role 的 X-Ray／CloudWatch 權限由專案在 `application` 與 `iam-app` 自己決定 | 使用者決定（Phase 7E） | §4.20、§7.1 |
 | 33 | 這 3 個新 module 都不建 IAM；既有的 `ecs-service`、`rds`、`ecs-service-alarms` 不改成呼叫 `log-group` 或 `log-metric-alarm` | 主 agent 判斷，見 §9.1 J38 | §4.17、§4.18 |
 | 34 | interface endpoint 從 `vpc` 拆出來，成為 `vpc-interface-endpoints` module（interface endpoint 加 endpoint 專用的 SG，SG 只允許指定 CIDR 連 443，規則用獨立 rule 資源）；module 總數 19 個。`vpc` 移除 `interface_endpoints` 變數、endpoint SG 與 `vpce_security_group_id` 輸出；subnet、route table、IGW、NAT、gateway endpoint、flow log 留在 `vpc`。名稱用 `vpc-interface-endpoints` 不用 `vpc-endpoints`，避免誤會 gateway endpoint 也在裡面。`vpc` 還沒打過 tag，這項併進 `v0.1.0`，不算破壞性變更 | 使用者決定。IGW、NAT、gateway endpoint 都是路由，要跟 `vpc` 建的 route table 在一起，拆開的話 `per_az` NAT 對錯表不會報錯、加 AZ 要改兩個 module；客戶自管 VPC 時路由歸客戶，我們不該碰（project-a 2026-09-04 報告）。interface endpoint 不碰路由，拆出來之後 network stack 在自建與客戶既有 VPC 兩種模式都能呼叫 | §1、§4.7、§4.21、§5.3、§5.6 S4、§5.8、§5.11、§7.1 |
+| 35 | `iam-role` 與 `iam-role-policy` 新增第四條 validation：Allow statement 不准搭配 `NotResource`（沒寫 `Effect` 視為 Allow，Deny 搭配 `NotResource` 照樣放行），兩個 module 一字不差 | 使用者同意比照 `NotAction`：`Allow` 加 `NotResource` 的效果接近 `Resource = "*"`，原本三條都擋不到 | §4.14、§4.15、§7.1 |
 
 ### 9.3 待補資訊（不需要拍板，名稱定了填入即可）
 
@@ -3605,3 +3625,4 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D16 | 三層架構增補文件：「J7 是 ELB 5xx 那條」 | 本文件原本的編號就是 J4，增補文件寫 J7 是筆誤 | 本次改寫 J4 |
 | D17 | （第二輪增補）8 個 module 實作與 design 的差異 | 已回寫到各 module 章節：vpc 移除中間 AZ 時 CIDR 位移、多兩條檢查；rds 的 `[0]` 位址、`<name>-writer`／`<name>-reader-N`、random provider、`pending-reboot` 只用在 `shared_preload_libraries`、validation 較多、`sns_topic_arns` 的 regex 結尾 `.+` 較寬；ecs-service 的 `step[...]`／`scaling[...]` 位址與 key、`service_arn` 取 `.id`、region 從 `cluster_arn` 拆、log driver 多兩個固定選項；ecs-service-alarms 告警集中在 `this[<key>]`；alb ELB 5xx 用 `GreaterThanOrEqualToThreshold`、404 本文 `Not Found`。另外：examples 目錄不是 `basic`（alb 是 `http-only`、`https`，rds 是 `rds`、`aurora-serverless-proxy`），測試依主題拆多檔，§4.1 已放寬；alb 的 listener 與告警、ecs-service-alarms 的告警只帶 `var.tags`、沒有加 `Name`，rds 的告警有加，**各 module 不一致** | 以程式碼為準。兩項列為**待統一**，這次不改程式碼：(1) 會建告警與 listener 的 module 一律在 tags 加 `Name`；(2) `sns_topic_arns` 的 ARN regex 統一成同一條（建議 alb／ecs-service-alarms 的 `[A-Za-z0-9_-]+$` 結尾）。之後一起以 PATCH 版發布 |
 | D18 | （Phase 7 A–D）7 個新 module 的實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 的 validation 改成三條（`Statement[0]` 要求非空清單、迴圈用 `try(..., [])` 讓非 JSON 能被 `expect_failures` 接到、Allow 不准 `NotAction`），兩個 module 一字不差；`kms-key` 的 `administrator_arns` regex 結尾 `[^*]+$` 擋 `role/*`，管理者 statement 的動作清單與服務 statement 的 Sid 規則寫進 §4.10；`s3-bucket` 在 SSE-KMS 時 `bucket_key_enabled = true`；`security-group` 的 `ip_protocol` 只收 `tcp`／`udp`／`-1`、`vpc_id` 有格式 validation、規則的 `Name` tag 是規則的 key，另記兩個已知限制（主機位元、兩個 `/1` 繞過 `allow_internet`）。`ecr-repository`、`ssm-read` 核對後與 design 一致 | 以程式碼為準 |
+| D19 | （Phase 7 完成）實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 新增第四條「Allow 不准 `NotResource`」（決策 35）；`log-group` 的 subscription filter 名稱用 `var.name`，`role_arn` 是 provider 的 optional 加 computed，Lambda 目的地時為 null 只能靠程式碼保證；`log-metric-alarm` 的 `default_value` 在 module 內 `tostring()`，metric filter 不帶 tag；`xray` 的 `version = 1`、`resource_arn = "*"` 寫死；ADOT 範例的 sidecar 改成 `essential = false`；`vpc-interface-endpoints` 的 ingress rule 加 `Name` tag。另外：`allowed_cidrs` 有多個時，每條 ingress rule 的 `Name` 都是同一個 `<name>-vpce-https`，不影響運作，只是在 console 分不出哪一條對應哪個 CIDR | 以程式碼為準；`Name` 相同這點建議下一個 PATCH 版改成帶 CIDR，列為待統一 |
