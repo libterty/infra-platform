@@ -22,7 +22,7 @@ module "flow_logs" {
 }
 
 module "kb_corpus" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/s3-bucket?ref=s3-bucket-v0.2.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/s3-bucket?ref=s3-bucket-v0.1.1"
 
   name         = "alpha-dev-kb-corpus"
   never_expire = true

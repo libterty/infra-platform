@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0（未發布）
+## 0.1.1（未發布）
 
-MINOR。跟 7 個新 module 一起在增補驗收後手動打 tag（manifest 屆時才改成 `0.2.0`），release-please 不會產生這一段。
+新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（design 決策 54）跟 7 個新 module 一起用 `0.1.1`，在增補驗收後手動打 tag（manifest 屆時才改成 `0.1.1`），release-please 不會產生這一段。之後的版本照 semver 表。
 
 - 新變數 `never_expire`（預設 `false`，`nullable = false`）：`true` 時 lifecycle rule 沒有 `expiration`，只留未完成 multipart upload 的 7 天清除，rule id 改成 `abort-incomplete-uploads`。給 Knowledge Base 語料這類不能過期的內容 bucket。
 - `expiration_days` 的預設從 `90` 改成 `null`，module 內當成 90；`never_expire = true` 又給了 `expiration_days` 會被 validation 擋下。
