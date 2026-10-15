@@ -1,9 +1,10 @@
 name: Release
 
-# push 到 main 時由 release-please 開各 module 的 release PR，PR 合併後打 <module>-v<semver> tag。
+# release-please 開各 module 的 release PR，PR 合併後打 <module>-v<semver> tag。
+# 目前只手動觸發：repo 還沒允許 GitHub Actions 開 PR，push 觸發只會失敗並留下 release 分支。
+# 要交給 release-please 發版時，先在 Settings → Actions → General 允許 Actions 建立 PR，再把 push 觸發加回來。
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions: {}
 
