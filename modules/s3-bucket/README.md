@@ -25,7 +25,6 @@ module "kb_corpus" {
   source = "git::https://github.com/<org>/<repo>.git//modules/s3-bucket?ref=s3-bucket-v0.2.0"
 
   name         = "alpha-dev-kb-corpus"
-  kms_key_arn  = module.key.key_arn
   never_expire = true
 }
 ```
