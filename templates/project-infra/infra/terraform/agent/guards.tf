@@ -44,16 +44,6 @@ resource "terraform_data" "knowledge_base_database" {
   }
 }
 
-# Only catches the master secret ARN written here as is; Terraform cannot see which user the secret holds.
-resource "terraform_data" "knowledge_base_secret_is_not_master" {
-  lifecycle {
-    precondition {
-      condition     = alltrue([for kb in values(var.knowledge_bases) : kb.credentials_secret_arn != try(local.database.secret_arn, null)])
-      error_message = "credentials_secret_arn must be the secret of the dedicated knowledge base database user, not the master secret of the data stack."
-    }
-  }
-}
-
 locals {
   # Endpoints the VPC Runtimes need when there is no NAT. nat mode external is a customer VPC whose NAT is the
   # customer's to provide, so it is not checked; PUBLIC Runtimes do not use the VPC.

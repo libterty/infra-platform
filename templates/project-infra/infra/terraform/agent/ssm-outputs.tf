@@ -14,6 +14,7 @@ locals {
         knowledge_bases    = var.agent_runtimes[r].knowledge_bases
         gateway            = var.agent_runtimes[r].gateway
         tracing            = var.agent_runtimes[r].tracing
+        workload_identity  = var.agent_runtimes[r].workload_identity
       })
     },
     {
@@ -27,16 +28,19 @@ locals {
         }
       })
       agent_memories = jsonencode({ for k, m in module.memory : k => { id = m.memory_id, arn = m.memory_arn } })
+      # Every configured knowledge base, also before its database user is ready: iam-app grants the knowledge base role
+      # the secret and the bucket before the knowledge base is created. ready is false and the ids are null until then.
       knowledge_bases = jsonencode({
-        for k, kb in module.knowledge_base : k => {
-          id                     = kb.knowledge_base_id
-          arn                    = kb.knowledge_base_arn
-          embedding_model        = var.knowledge_bases[k].embedding_model
+        for k, cfg in var.knowledge_bases : k => {
+          ready                  = contains(keys(module.knowledge_base), k)
+          id                     = contains(keys(module.knowledge_base), k) ? module.knowledge_base[k].knowledge_base_id : null
+          arn                    = contains(keys(module.knowledge_base), k) ? module.knowledge_base[k].knowledge_base_arn : null
+          embedding_model        = cfg.embedding_model
           bucket_name            = module.corpus_bucket[k].bucket_name
           bucket_arn             = module.corpus_bucket[k].arn
-          inclusion_prefixes     = { for ds, cfg in var.knowledge_bases[k].data_sources : ds => sort(tolist(cfg.inclusion_prefixes)) }
-          data_source_ids        = kb.data_source_ids
-          credentials_secret_arn = var.knowledge_bases[k].credentials_secret_arn
+          inclusion_prefixes     = { for ds, d in cfg.data_sources : ds => sort(tolist(d.inclusion_prefixes)) }
+          data_source_ids        = contains(keys(module.knowledge_base), k) ? module.knowledge_base[k].data_source_ids : {}
+          credentials_secret_arn = aws_secretsmanager_secret.kb_db[k].arn
         }
       })
       agentcore_gateway = var.agentcore_gateway == null ? jsonencode({ enabled = false }) : jsonencode({

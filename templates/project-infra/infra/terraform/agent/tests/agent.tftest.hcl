@@ -1,4 +1,13 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  # The hardened modules compare ARNs with the current account and region.
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111111111111" }
+  }
+
+  mock_data "aws_region" {
+    defaults = { region = "ap-northeast-1" }
+  }
+}
 
 variables {
   project             = "alpha"
@@ -34,6 +43,11 @@ override_data {
 override_data {
   target = module.in.data.aws_ssm_parameter.this["data/database"]
   values = { insecure_value = "{\"enabled\":true,\"deployment\":\"aurora_serverless\",\"port\":5432,\"name\":\"app\",\"secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf\",\"app_endpoint\":\"alpha-dev-db.cluster-abc.ap-northeast-1.rds.amazonaws.com\",\"app_reader_endpoint\":\"alpha-dev-db.cluster-ro-abc.ap-northeast-1.rds.amazonaws.com\",\"has_reader\":false,\"cluster_arn\":\"arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db\",\"data_api\":true}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["foundation/kms_key_arn"]
+  values = { insecure_value = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
 }
 
 # Values for the Runtime "assistant"; read only by the runs that configure it.
@@ -78,8 +92,9 @@ run "reads_only_listed_keys" {
       agent_data_access   = "network/agent_data_access"
       agent_service_roles = "iam-base/agent_service_roles"
       database            = "data/database"
+      kms_key_arn         = "foundation/kms_key_arn"
     } && local.ssm_input_lists == {}
-    error_message = "agent must read the Runtime list, the NAT and endpoint decisions, the Runtime data access, the service role list and the database"
+    error_message = "agent must read the Runtime list, the NAT and endpoint decisions, the Runtime data access, the service role list, the database and the project key"
   }
 
   assert {
@@ -223,6 +238,7 @@ run "runtime_json_shape" {
       knowledge_bases    = []
       gateway            = false
       tracing            = true
+      workload_identity  = false
     }
     error_message = "agent_runtime_<name> must carry the Runtime ids, its execution role and the keys it may use"
   }
@@ -1015,10 +1031,10 @@ run "nat_none_knowledge_base_requires_agent_runtime_endpoint" {
     models         = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
+        data_sources         = { manuals = {} }
       }
     }
   }
@@ -1102,42 +1118,6 @@ run "nat_none_db_runtime_with_secretsmanager_passes" {
     condition     = length(local.agent_missing_endpoints) == 0
     error_message = "A VPC Runtime that reads the database secret needs only the secretsmanager endpoint on top of the base set"
   }
-}
-
-run "kb_secret_wildcard_rejected" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:*"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [var.knowledge_bases]
-}
-
-run "kb_secret_without_suffix_rejected" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [var.knowledge_bases]
 }
 
 run "nat_none_blocks_gateway" {
@@ -1252,21 +1232,27 @@ run "kb_corpus_bucket" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
         data_sources = {
           manuals = { inclusion_prefixes = ["manuals/"] }
           faq     = {}
         }
       }
       policies = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-policies-AbCdEf"
-        data_sources           = { all = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
+        data_sources         = { all = {} }
       }
     }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.kb_db["products"]
+    override_during = plan
+    values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
 
   override_module {
@@ -1298,23 +1284,24 @@ run "kb_corpus_bucket" {
   assert {
     condition = (
       jsonencode(local.knowledge_base_inputs["products"].data_sources) == jsonencode({
-        manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-products-111111111111", inclusion_prefixes = ["manuals/"] }
-        faq     = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-products-111111111111", inclusion_prefixes = [] }
+        manuals = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-products-111111111111", bucket_owner_account_id = "111111111111", inclusion_prefixes = ["manuals/"] }
+        faq     = { bucket_arn = "arn:aws:s3:::alpha-dev-kb-products-111111111111", bucket_owner_account_id = "111111111111", inclusion_prefixes = [] }
       }) &&
-      local.knowledge_base_inputs["policies"].data_sources["all"].bucket_arn == "arn:aws:s3:::alpha-dev-kb-policies-111111111111"
+      local.knowledge_base_inputs["policies"].data_sources["all"].bucket_arn == "arn:aws:s3:::alpha-dev-kb-policies-111111111111" &&
+      local.knowledge_base_inputs["policies"].data_sources["all"].bucket_owner_account_id == "111111111111"
     )
-    error_message = "Every data source of a knowledge base must read the corpus bucket of that same knowledge base"
+    error_message = "Every data source of a knowledge base must read the corpus bucket of that same knowledge base, owned by expected_account_id"
   }
 
   assert {
     condition = jsonencode(local.knowledge_base_inputs["products"].aurora) == jsonencode({
       cluster_arn            = "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db"
-      credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
+      credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf"
       database_name          = "app"
       table_name             = "bedrock_integration.bedrock_kb"
       field_mapping          = { primary_key_field = "id", vector_field = "embedding", text_field = "chunks", metadata_field = "metadata", custom_metadata_field = null }
     })
-    error_message = "The knowledge base must use the cluster and database of the data stack and its own secret"
+    error_message = "The knowledge base must use the cluster and database of the data stack and the secret this stack created for it"
   }
 
   assert {
@@ -1331,10 +1318,9 @@ run "kb_corpus_bucket_name_too_long" {
     knowledge_bases = {
       # alpha-dev-kb- (13) + 38 + -111111111111 (13) = 64 characters.
       abcdefghijabcdefghijabcdefghijabcdefgh = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-AbCdEf"
-        data_sources           = { all = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { all = {} }
       }
     }
   }
@@ -1349,10 +1335,9 @@ run "kb_corpus_bucket_name_at_limit_passes" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       abcdefghijabcdefghijabcdefghijabcdefg = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-AbCdEf"
-        data_sources           = { all = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { all = {} }
       }
     }
   }
@@ -1370,10 +1355,9 @@ run "kb_requires_aurora_data_api_rds_rejected" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }
@@ -1393,10 +1377,9 @@ run "kb_requires_aurora_data_api_off_rejected" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }
@@ -1416,10 +1399,9 @@ run "kb_requires_a_database" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }
@@ -1439,10 +1421,9 @@ run "kb_requires_the_service_role" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }
@@ -1462,17 +1443,17 @@ run "kb_ready_passes" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
+        data_sources         = { manuals = {} }
       }
     }
   }
 
   assert {
     condition     = local.knowledge_base_database_ready && length(module.knowledge_base) == 1
-    error_message = "An Aurora database with the Data API, the knowledge base role and a dedicated secret must pass"
+    error_message = "An Aurora database with the Data API, the knowledge base role and a database user that is ready must create the knowledge base"
   }
 }
 
@@ -1483,108 +1464,14 @@ run "kb_embedding_model_with_prefix_rejected" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0", inference_profile_prefix = "apac" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }
 
   expect_failures = [var.knowledge_bases]
-}
-
-run "kb_secret_not_master" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [terraform_data.knowledge_base_secret_is_not_master]
-}
-
-run "kb_secret_not_a_secret_rejected" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:ssm:ap-northeast-1:111111111111:parameter/alpha-dev/kb-products"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [var.knowledge_bases]
-}
-
-run "kb_secret_other_region_rejected" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:us-east-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [var.knowledge_bases]
-}
-
-run "kb_secret_other_account_rejected" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:222222222222:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  expect_failures = [var.knowledge_bases]
-}
-
-run "kb_dedicated_secret_passed_as_is" {
-  command = plan
-
-  variables {
-    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
-    knowledge_bases = {
-      products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
-      }
-    }
-  }
-
-  assert {
-    condition     = local.knowledge_base_inputs["products"].aurora.credentials_secret_arn == "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-    error_message = "A dedicated secret must be passed to the module as it is"
-  }
 }
 
 run "publishes_kb_bucket_and_secret" {
@@ -1594,14 +1481,20 @@ run "publishes_kb_bucket_and_secret" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       products = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
         data_sources = {
           manuals = { inclusion_prefixes = ["manuals/", "faq/"] }
         }
       }
     }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.kb_db["products"]
+    override_during = plan
+    values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
 
   override_module {
@@ -1628,10 +1521,217 @@ run "publishes_kb_bucket_and_secret" {
         bucket_arn             = "arn:aws:s3:::alpha-dev-kb-products-111111111111"
         inclusion_prefixes     = { manuals = ["faq/", "manuals/"] }
         data_source_ids        = { manuals = "DSID000001" }
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
+        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf"
+        ready                  = true
       }
     }
-    error_message = "The knowledge base JSON must carry its ids, the corpus bucket, the prefixes and ids per data source and the dedicated secret"
+    error_message = "The knowledge base JSON must carry its ids, the corpus bucket, the prefixes and ids per data source the secret this stack created and ready = true"
+  }
+}
+
+run "kb_secret_created_per_knowledge_base" {
+  command = plan
+
+  variables {
+    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
+    knowledge_bases = {
+      products = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
+      }
+      policies = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { all = {} }
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      toset(keys(aws_secretsmanager_secret.kb_db)) == toset(["products", "policies"]) &&
+      aws_secretsmanager_secret.kb_db["products"].name == "alpha-dev-kb-products-db" &&
+      aws_secretsmanager_secret.kb_db["policies"].name == "alpha-dev-kb-policies-db"
+    )
+    error_message = "Each knowledge base must get its own database user secret named <project>-<env>-kb-<key>-db"
+  }
+
+  assert {
+    condition = alltrue([for s in values(aws_secretsmanager_secret.kb_db) :
+      s.kms_key_id == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" && s.recovery_window_in_days == null
+    ])
+    error_message = "The database user secret must be encrypted with the project key of foundation and leave the recovery window at the provider default, as the foundation secret does"
+  }
+}
+
+run "kb_database_user_not_ready_creates_only_the_secret" {
+  command = plan
+
+  variables {
+    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
+    knowledge_bases = {
+      products = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = { inclusion_prefixes = ["manuals/"] } }
+      }
+    }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.kb_db["products"]
+    override_during = plan
+    values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
+  }
+
+  override_module {
+    target  = module.corpus_bucket["products"]
+    outputs = { bucket_name = "alpha-dev-kb-products-111111111111", arn = "arn:aws:s3:::alpha-dev-kb-products-111111111111" }
+  }
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.kb_db) == 1 && length(module.corpus_bucket) == 1 && length(module.knowledge_base) == 0
+    error_message = "database_user_ready defaults to false, which must create the secret and the corpus bucket but no knowledge base"
+  }
+
+  assert {
+    condition = jsondecode(local.published_strings["knowledge_bases"]) == {
+      products = {
+        id                     = null
+        arn                    = null
+        embedding_model        = "embedding"
+        bucket_name            = "alpha-dev-kb-products-111111111111"
+        bucket_arn             = "arn:aws:s3:::alpha-dev-kb-products-111111111111"
+        inclusion_prefixes     = { manuals = ["manuals/"] }
+        data_source_ids        = {}
+        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf"
+        ready                  = false
+      }
+    }
+    error_message = "A knowledge base whose database user is not ready must still be published with its bucket and secret, so iam-app can grant the knowledge base role, with ready = false and no ids"
+  }
+}
+
+run "kb_uses_the_secret_it_created" {
+  command = plan
+
+  variables {
+    models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
+    knowledge_bases = {
+      products = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
+        data_sources         = { manuals = {} }
+      }
+    }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.kb_db["products"]
+    override_during = plan
+    values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
+  }
+
+  assert {
+    condition = (
+      local.knowledge_base_inputs["products"].aurora.credentials_secret_arn == aws_secretsmanager_secret.kb_db["products"].arn &&
+      local.knowledge_base_inputs["products"].aurora.credentials_secret_arn != local.database.secret_arn
+    )
+    error_message = "The knowledge base must connect with the secret this stack created for it, never the master secret of the data stack"
+  }
+}
+
+# Terraform cannot list resource types in a test, so scan the stack files.
+run "kb_secret_has_no_value" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for f in fileset(path.module, "*.tf") : !strcontains(file("${path.module}/${f}"), "aws_secretsmanager_secret_version")])
+    error_message = "The stack must not write the database user password; it would end up in state"
+  }
+}
+
+run "runtime_with_knowledge_base_not_ready_rejected" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = { image_tag = "abc1234", knowledge_bases = ["products"] } }
+    models         = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
+    knowledge_bases = {
+      products = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
+      }
+    }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  expect_failures = [var.agent_runtimes]
+}
+
+run "runtime_with_knowledge_base_ready_gets_its_id" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = { image_tag = "abc1234", knowledge_bases = ["products"] } }
+    models         = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
+    knowledge_bases = {
+      products = {
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        database_user_ready  = true
+        data_sources         = { manuals = {} }
+      }
+    }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_module {
+    target  = module.knowledge_base["products"]
+    outputs = { knowledge_base_id = "KBID000001", knowledge_base_arn = "arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/KBID000001", data_source_ids = { manuals = "DSID000001" } }
+  }
+
+  assert {
+    condition     = local.runtime_environment["assistant"]["KNOWLEDGE_BASE_ID_PRODUCTS"] == "KBID000001"
+    error_message = "A Runtime may use a knowledge base whose database user is ready and gets its id"
+  }
+}
+
+run "runtime_workload_identity_published" {
+  command = plan
+
+  variables {
+    agent_runtimes = { assistant = { image_tag = "abc1234", workload_identity = true } }
+  }
+
+  override_data {
+    target = module.in.data.aws_ssm_parameter.this["containerimage/agent_runtimes"]
+    values = { insecure_value = "[\"assistant\"]" }
+  }
+
+  override_module {
+    target = module.runtime["assistant"]
+    outputs = {
+      runtime_arn  = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_assistant-AbCdEfGhIj"
+      runtime_id   = "alpha_dev_assistant-AbCdEfGhIj"
+      runtime_name = "alpha_dev_assistant"
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings["agent_runtime_assistant"]).workload_identity == true
+    error_message = "workload_identity must be published in agent_runtime_<name> so iam-app can grant the workload access token"
   }
 }
 
@@ -1690,10 +1790,9 @@ run "knowledge_base_key_not_kebab_case_rejected" {
     models = { embedding = { foundation_model_id = "amazon.titan-embed-text-v2:0" } }
     knowledge_bases = {
       product_docs = {
-        embedding_model        = "embedding"
-        embedding_dimensions   = 1024
-        credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/kb-products-AbCdEf"
-        data_sources           = { manuals = {} }
+        embedding_model      = "embedding"
+        embedding_dimensions = 1024
+        data_sources         = { manuals = {} }
       }
     }
   }

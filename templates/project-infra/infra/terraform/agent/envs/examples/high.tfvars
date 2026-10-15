@@ -1,7 +1,9 @@
 # High traffic: everything of standard, plus a tracked model for cost allocation, a knowledge base on the Aurora
 # database and a gateway. Copy to envs/<env>.tfvars and adjust; this file is not applied by itself.
-# The knowledge base needs db.data_api = true in data, knowledge_base and gateway in iam-base agent_service_roles, and a
-# dedicated database user whose secret the project creates (never the master secret).
+# The knowledge base needs db.data_api = true in data and knowledge_base and gateway in iam-base agent_service_roles.
+# It is created in two steps: the first apply with database_user_ready = false (and without the knowledge base in
+# agent_runtimes) creates the secret <project>-<env>-kb-<key>-db; the project writes the database user into it and sets
+# its password in a migration, then database_user_ready = true creates the knowledge base. This file shows the end state.
 project             = "alpha"
 env                 = "prod"
 expected_account_id = "222222222222"
@@ -50,9 +52,9 @@ memories = {
 
 knowledge_bases = {
   products = {
-    embedding_model        = "embedding"
-    embedding_dimensions   = 1024
-    credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:222222222222:secret:alpha-prod/kb-products-AbCdEf"
+    embedding_model      = "embedding"
+    embedding_dimensions = 1024
+    database_user_ready  = true # false on the first apply; see the top of this file
     data_sources = {
       manuals = { inclusion_prefixes = ["manuals/"] }
     }

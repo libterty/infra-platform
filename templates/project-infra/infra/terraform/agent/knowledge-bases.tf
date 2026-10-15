@@ -24,9 +24,20 @@ module "corpus_bucket" {
   force_destroy = each.value.force_destroy
 }
 
+# One database user secret per knowledge base, created without a value like the foundation secret: the project writes
+# the user name and password outside Terraform, so they never reach tfvars, SSM or state.
+resource "aws_secretsmanager_secret" "kb_db" {
+  for_each = var.knowledge_bases
+
+  name        = "${local.name_prefix}-kb-${each.key}-db"
+  description = "Database user of knowledge base ${local.name_prefix}-${each.key}. The value is written outside Terraform."
+  kms_key_id  = module.in.strings["kms_key_arn"]
+}
+
 locals {
   # guards.tf fails the plan when the database cannot hold a knowledge base; the modules are left out in that case so
-  # the precondition is the error that is reported.
+  # the precondition is the error that is reported. A knowledge base waits for database_user_ready, because Bedrock
+  # may check the database user when it creates the knowledge base (not verified).
   knowledge_base_database_ready = (
     try(local.database.enabled, false) &&
     try(local.database.deployment, "rds") != "rds" &&
@@ -41,18 +52,19 @@ locals {
       embedding_dimensions = kb.embedding_dimensions
       aurora = {
         cluster_arn            = local.database.cluster_arn
-        credentials_secret_arn = kb.credentials_secret_arn
+        credentials_secret_arn = aws_secretsmanager_secret.kb_db[k].arn
         database_name          = local.database.name
         table_name             = kb.table_name
         field_mapping          = kb.field_mapping
       }
       data_sources = {
         for ds, cfg in kb.data_sources : ds => {
-          bucket_arn         = module.corpus_bucket[k].arn
-          inclusion_prefixes = cfg.inclusion_prefixes
+          bucket_arn              = module.corpus_bucket[k].arn
+          bucket_owner_account_id = var.expected_account_id
+          inclusion_prefixes      = cfg.inclusion_prefixes
         }
       }
-    } if local.knowledge_base_database_ready
+    } if local.knowledge_base_database_ready && kb.database_user_ready
   }
 }
 

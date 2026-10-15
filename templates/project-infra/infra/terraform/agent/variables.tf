@@ -1,5 +1,5 @@
 variable "agent_runtimes" {
-  description = "AgentCore Runtimes. The keys must equal the agent_runtimes published by containerimage. models, memories, guardrails and knowledge_bases list keys of the variables below; tracing is the single decision point for Runtime tracing. Empty by default, which creates nothing."
+  description = "AgentCore Runtimes. The keys must equal the agent_runtimes published by containerimage. models, memories, guardrails and knowledge_bases list keys of the variables below; tracing is the single decision point for Runtime tracing. workload_identity (default false) is the single decision point for AgentCore Identity: true publishes it in agent_runtime_<name> and iam-app grants the execution role bedrock-agentcore:GetWorkloadAccessToken*; leave it false unless the Runtime calls outbound services through AgentCore Identity. Empty by default, which creates nothing."
   type = map(object({
     image_tag    = string                   # unique per build, never latest; Terraform owns the tag
     network_mode = optional(string, "VPC")  # VPC | PUBLIC; PUBLIC bypasses security groups and VPC endpoints
@@ -15,6 +15,7 @@ variable "agent_runtimes" {
     knowledge_bases    = optional(list(string), [])
     gateway            = optional(bool, false) # may call agentcore_gateway
     tracing            = optional(bool, false)
+    workload_identity  = optional(bool, false)     # iam-app grants GetWorkloadAccessToken* only when true
     environment        = optional(map(string), {}) # the project's own variables; only ids, ARNs and URLs, never secrets
     log_retention_days = optional(number, 30)
   }))
@@ -44,6 +45,14 @@ variable "agent_runtimes" {
       alltrue([for k in r.knowledge_bases : contains(keys(var.knowledge_bases), k)])
     ])
     error_message = "models, memories, guardrails and knowledge_bases of a Runtime must name keys of the variables with the same name."
+  }
+
+  validation {
+    # The knowledge base exists only after the second step of knowledge_bases.
+    condition = alltrue([for r in values(var.agent_runtimes) :
+      alltrue([for k in r.knowledge_bases : !contains(keys(var.knowledge_bases), k) || try(var.knowledge_bases[k].database_user_ready, false)])
+    ])
+    error_message = "A Runtime may only use knowledge bases whose database_user_ready is true; the knowledge base is not created before that."
   }
 
   validation {
@@ -155,12 +164,12 @@ variable "memories" {
 }
 
 variable "knowledge_bases" {
-  description = "Bedrock knowledge bases on the Aurora database of the data stack, by key. Each gets its own corpus bucket <project>-<env>-kb-<key>-<account>, which never expires. credentials_secret_arn is the secret of a dedicated database user the project creates; never the master secret. Needs db.data_api in data and knowledge_base in iam-base agent_service_roles. Empty by default."
+  description = "Bedrock knowledge bases on the Aurora database of the data stack, by key. Each gets its own corpus bucket <project>-<env>-kb-<key>-<account>, which never expires, and its own Secrets Manager secret <project>-<env>-kb-<key>-db for the dedicated database user, encrypted with the project key. Terraform creates the secret without a value; the project writes {\"username\":\"bedrock_kb_user\",\"password\":...} into it and sets that password with ALTER ROLE in a migration. database_user_ready (default false) is the second step: false creates only the secret and the corpus bucket; set it to true after the secret has its value and the database user has that password, and the next apply creates the knowledge base and its data sources. A Runtime may only use a knowledge base whose database_user_ready is true. Needs db.data_api in data and knowledge_base in iam-base agent_service_roles. Empty by default."
   type = map(object({
-    embedding_model        = string # a key of models without a prefix and not tracked
-    embedding_dimensions   = number
-    credentials_secret_arn = string
-    table_name             = optional(string, "bedrock_integration.bedrock_kb")
+    embedding_model      = string # a key of models without a prefix and not tracked
+    embedding_dimensions = number
+    database_user_ready  = optional(bool, false) # true once the secret has its value and the database user has that password
+    table_name           = optional(string, "bedrock_integration.bedrock_kb")
     field_mapping = optional(object({
       primary_key_field     = optional(string, "id")
       vector_field          = optional(string, "embedding")
@@ -189,13 +198,6 @@ variable "knowledge_bases" {
       contains(keys(var.models), kb.embedding_model) ? (var.models[kb.embedding_model].inference_profile_prefix == null && !var.models[kb.embedding_model].tracked) : false
     ])
     error_message = "embedding_model must name a key of models that has no inference_profile_prefix and is not tracked."
-  }
-
-  validation {
-    condition = alltrue([for kb in values(var.knowledge_bases) :
-      can(regex("^arn:aws:secretsmanager:${var.aws_region}:${var.expected_account_id}:secret:[A-Za-z0-9/_+=.@!-]+-[A-Za-z0-9]{6}$", kb.credentials_secret_arn))
-    ])
-    error_message = "credentials_secret_arn must be the full ARN of one Secrets Manager secret in this region and account, ending in the 6-character suffix; wildcards are not allowed because iam-app grants exactly this ARN."
   }
 }
 

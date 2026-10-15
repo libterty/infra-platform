@@ -1,6 +1,17 @@
 # Run by scripts/validate.sh once per file in envs/examples/ with -var-file, so the examples cannot rot.
 # Assertions hold for any valid example; do not set variables here, they would hide the example values.
-mock_provider "aws" {}
+mock_provider "aws" {
+  # The hardened modules compare ARNs with the current account and region. The current account and every upstream
+  # value below are those of the prod account of the examples: high.tfvars puts a knowledge base, a gateway target and
+  # a tracked model there. The dev example passes as well, since its Runtime is only compared with the ECR registry.
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "222222222222" }
+  }
+
+  mock_data "aws_region" {
+    defaults = { region = "ap-northeast-1" }
+  }
+}
 
 # Every example configures the Runtime "assistant".
 override_data {
@@ -30,17 +41,22 @@ override_data {
 
 override_data {
   target = module.in.data.aws_ssm_parameter.this["data/database"]
-  values = { insecure_value = "{\"enabled\":true,\"deployment\":\"aurora_serverless\",\"port\":5432,\"name\":\"app\",\"secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000-AbCdEf\",\"app_endpoint\":\"alpha-dev-db.cluster-abc.ap-northeast-1.rds.amazonaws.com\",\"app_reader_endpoint\":\"alpha-dev-db.cluster-ro-abc.ap-northeast-1.rds.amazonaws.com\",\"has_reader\":false,\"cluster_arn\":\"arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db\",\"data_api\":true}" }
+  values = { insecure_value = "{\"enabled\":true,\"deployment\":\"aurora_serverless\",\"port\":5432,\"name\":\"app\",\"secret_arn\":\"arn:aws:secretsmanager:ap-northeast-1:222222222222:secret:rds!cluster-0000-AbCdEf\",\"app_endpoint\":\"alpha-prod-db.cluster-abc.ap-northeast-1.rds.amazonaws.com\",\"app_reader_endpoint\":\"alpha-prod-db.cluster-ro-abc.ap-northeast-1.rds.amazonaws.com\",\"has_reader\":false,\"cluster_arn\":\"arn:aws:rds:ap-northeast-1:222222222222:cluster:alpha-prod-db\",\"data_api\":true}" }
+}
+
+override_data {
+  target = module.in.data.aws_ssm_parameter.this["foundation/kms_key_arn"]
+  values = { insecure_value = "arn:aws:kms:ap-northeast-1:222222222222:key/00000000-0000-0000-0000-000000000000" }
 }
 
 override_data {
   target = module.in_agents.data.aws_ssm_parameter.this["containerimage/ecr_agent_assistant_url"]
-  values = { insecure_value = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-agent-assistant" }
+  values = { insecure_value = "222222222222.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-prod-agent-assistant" }
 }
 
 override_data {
   target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_agent_assistant_execution_arn"]
-  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-agent-assistant" }
+  values = { insecure_value = "arn:aws:iam::222222222222:role/alpha-prod-agent-assistant" }
 }
 
 override_data {
@@ -55,12 +71,12 @@ override_data {
 
 override_data {
   target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_bedrock_kb_arn"]
-  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-bedrock-kb" }
+  values = { insecure_value = "arn:aws:iam::222222222222:role/alpha-prod-bedrock-kb" }
 }
 
 override_data {
   target = module.in_agents.data.aws_ssm_parameter.this["iam-base/role_agentcore_gateway_arn"]
-  values = { insecure_value = "arn:aws:iam::111111111111:role/alpha-dev-agentcore-gateway" }
+  values = { insecure_value = "arn:aws:iam::222222222222:role/alpha-prod-agentcore-gateway" }
 }
 
 run "example_creates_the_runtimes" {
@@ -106,5 +122,10 @@ run "example_corpus_buckets_never_expire" {
   assert {
     condition     = length(module.corpus_bucket) == length(var.knowledge_bases) && alltrue([for b in values(local.corpus_buckets) : b.never_expire && b.kms_key_arn == null])
     error_message = "Every knowledge base of the example must get a corpus bucket that never expires"
+  }
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.kb_db) == length(var.knowledge_bases) && length(module.knowledge_base) == length([for kb in values(var.knowledge_bases) : kb if kb.database_user_ready])
+    error_message = "Every knowledge base of the example must get a database user secret, and only those with database_user_ready a knowledge base"
   }
 }

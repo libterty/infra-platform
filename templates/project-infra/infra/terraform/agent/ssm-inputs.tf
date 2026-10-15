@@ -7,6 +7,7 @@ locals {
     agent_data_access   = "network/agent_data_access"
     agent_service_roles = "iam-base/agent_service_roles"
     database            = "data/database"
+    kms_key_arn         = "foundation/kms_key_arn" # encrypts the knowledge base database user secrets
   }
   ssm_input_lists = {}
 }
