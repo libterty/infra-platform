@@ -3460,6 +3460,8 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 
 ### 7.3 之後有 AWS 環境時要補的
 
+本 repo 是範例，只在本機：不建 git remote、不推送、不部署到 AWS（使用者 2026-10-15 決定）。下面這份清單不會在本 repo 執行，留給照這個範例建立、實際部署的 repo 當驗證清單。
+
 1. 在沙箱帳號用範本 PoC 規格跑完八個 stack 的 apply，再 destroy（反序；`deletion_protection` 要先關）。
 2. **Proxy 建立時的權限**：在 `iam-app` 還沒附加 policy 前建立 Proxy，記錄是建立失敗，還是建立成功但連線失敗；依結果選 §5.4 表裡的對策，寫進 `infra/README.md`。
 3. **RDS 型態互換**：`aurora` ↔ `aurora_serverless` 確認 plan 只有就地修改、實際停機多久；`rds` → `aurora` 確認 plan 是 replace 且被 `deletion_protection` 擋下。

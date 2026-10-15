@@ -1,6 +1,6 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–10 全部完成（Phase 10 的驗收結果見下方 Phase 表），19 個 `<module>-v0.1.0` tag 已打在 `3a15b26`。本 repo 是範例，只在本機：不建 git remote、不推送、不部署到 AWS（使用者 2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
