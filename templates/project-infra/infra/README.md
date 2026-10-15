@@ -1,6 +1,6 @@
 # 專案 infra 範本
 
-這份範本把一個專案的 AWS 基礎建設拆成 8 個 Terraform stack，依序 apply 就能得到 ALB 在 public subnet、ECS 服務與資料庫在 private subnet 的三層架構。stack 本身只呼叫 `modules/` 底下的共用 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器；stack 之間只透過 SSM Parameter Store 傳值。
+這份範本把一個專案的 AWS 基礎建設拆成 9 個 Terraform stack，依序 apply 就能得到 ALB 在 public subnet、ECS 服務與資料庫在 private subnet 的三層架構。第 9 個 stack `agent`（AgentCore 與 Bedrock）預設關閉，沒有設定時什麼都不建，其他 stack 的 plan 也跟沒有它時一樣。stack 本身只呼叫 `modules/` 底下的共用 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器；stack 之間只透過 SSM Parameter Store 傳值。
 
 設計理由與每個 module 的介面見 [`docs/design/v1/design-docs.md`](../../../docs/design/v1/design-docs.md) 第 5 章。這份文件只講怎麼用。
 
@@ -11,11 +11,12 @@ infra/
 ├── README.md
 └── terraform/
     ├── foundation/       # KMS key、告警 SNS、兩個 log bucket、secret 容器
-    ├── containerimage/   # ECR；服務清單的單一決定點
+    ├── containerimage/   # ECR；服務清單與 Runtime 清單的單一決定點
     ├── network/          # VPC（或登記既有 VPC）、interface endpoint、所有 security group
-    ├── iam-base/         # ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role
-    ├── data/             # 資料庫（可選 Proxy）
-    ├── iam-app/          # Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關、追蹤開關
+    ├── iam-base/         # ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role、Runtime execution role、KB 與 Gateway role（只有 trust）
+    ├── data/             # 資料庫（可選 Proxy、可選 Data API）
+    ├── agent/            # AgentCore Runtime、Memory、Gateway，Bedrock guardrail、inference profile、Knowledge Base 與語料 bucket；預設關閉
+    ├── iam-app/          # Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關、追蹤開關、AgentCore 與 Bedrock 的權限
     ├── loadbalancer/     # ALB、listener
     └── application/      # ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣、ADOT collector sidecar
 ```
@@ -25,14 +26,14 @@ infra/
 | 檔案 | 用途 |
 |---|---|
 | `versions.tf`、`providers.tf` | Terraform 與 provider 版本、空的 `backend "s3" {}`、`allowed_account_ids`、`default_tags` |
-| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表。8 個 stack 必須一字不差，`scripts/validate.sh` 會比對 |
+| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表。9 個 stack 必須一字不差，`scripts/validate.sh` 會比對 |
 | `variables.tf` | 這個 stack 自己的變數，不放其他 stack 的 ARN 或 id |
 | `ssm-inputs.tf`、`ssm-outputs.tf` | 讀上游值（`ssm-read`）、發布給下游的值（`ssm-publish`） |
 | `envs/<env>.tfvars`、`envs/<env>.tfbackend` | 非機密設定與 state 位置，都進版控 |
 | `tests/` | `terraform test`，全部用 mock provider，不需要任何 AWS 憑證 |
 | `.terraform.lock.hcl` | 進版控 |
 
-`network`、`data`、`loadbalancer`、`application` 另有 `envs/examples/{poc,standard,high}.tfvars`：依流量調整規格的範例，本身不 apply，複製成 `envs/<env>.tfvars` 再改。`scripts/validate.sh` 會拿每個範例各跑一次測試，確保範例沒有壞掉。
+`network`、`data`、`agent`、`loadbalancer`、`application` 另有 `envs/examples/{poc,standard,high}.tfvars`：依流量調整規格的範例，本身不 apply，複製成 `envs/<env>.tfvars` 再改。`scripts/validate.sh` 會拿每個範例各跑一次測試，確保範例沒有壞掉。
 
 ## apply 順序
 
@@ -41,15 +42,22 @@ infra/
 | 順序 | stack | 讀（來源 stack） | 發布 |
 |---|---|---|---|
 | 1 | `foundation` | 無 | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
-| 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn` |
-| 3 | `network` | foundation、containerimage | VPC、subnet、security group、`nat`、`interface_endpoints` 與三個決定點，見下表 |
-| 4 | `iam-base` | foundation、containerimage（含 `mirrored_images` 與各 mirror 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` |
+| 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn`、`agent_runtimes`、`ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` |
+| 3 | `network` | foundation、containerimage | VPC、subnet、security group（含每個 Runtime 的 `sg_agent_<rt>_id`）、`nat`、`interface_endpoints`、`agent_data_access` 與三個決定點，見下表 |
+| 4 | `iam-base` | foundation、containerimage（含 `mirrored_images`、`agent_runtimes` 與各 mirror、各 Runtime 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn`、`role_agent_<rt>_execution_arn`、`role_bedrock_kb_arn`、`role_agentcore_gateway_arn`、`agent_service_roles` |
 | 5 | `data` | foundation、network、iam-base | `database` |
-| 6 | `iam-app` | foundation、containerimage、network、iam-base、data | `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing` |
-| 7 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
-| 8 | `application` | 前七個（`iam-app/tracing` 一律讀；有服務被追蹤時才另讀 `network/nat`、`network/interface_endpoints`，映像用 mirror 時再讀 `containerimage/mirrored_images` 與 `ecr_mirror_adot_collector_url`） | 不發布 |
+| 6 | `agent` | containerimage、network、iam-base、data | `agent_runtime_<rt>`、`models`、`guardrails`、`agent_memories`、`knowledge_bases`、`agentcore_gateway`、`bedrock_invoke`（沒有東西時也發布，值是空的 JSON） |
+| 7 | `iam-app` | foundation、containerimage、network、iam-base、data、agent | `role_<service>_task_arn`、`ecs_exec_<service>`、`tracing`、`agent_access` |
+| 8 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
+| 9 | `application` | 前面的 stack（`iam-app/tracing`、`iam-app/agent_access` 一律讀；有服務被追蹤時才另讀 `network/nat`、`network/interface_endpoints`，映像用 mirror 時再讀 `containerimage/mirrored_images` 與 `ecr_mirror_adot_collector_url`；`agent_access` 有列服務時才讀 `agent/*` 與 `network/nat`、`network/interface_endpoints`） | 不發布 |
+
+`agent` 一定要在 `iam-app` 之前 apply，即使什麼都沒開：`iam-app` 讀 `agent` 發布的 key。Runtime、Memory、guardrail 的權限在 `iam-app` 才附加，指向 `agent` 建好的確切 ARN（跟 RDS Proxy 一樣是兩段式）。
+
+第一次部署有 Knowledge Base 時的順序：`data`（`db.data_api = true`）→ 專案建 KB 專用資料庫帳號的 Secrets Manager secret、跑 migration、設密碼 → 把 secret ARN 寫進 `agent` 的 `knowledge_bases[*].credentials_secret_arn` → `agent` → `iam-app` → …。沒有 Knowledge Base 時不用這幾步。
 
 destroy 前要先處理三件事，否則會失敗：把 ALB 與資料庫的 `deletion_protection` 改成 `false` 並 apply；清空 ECR repository（`force_delete = false`）；清空兩個 log bucket（`force_destroy = false`）。
+
+已經部署過、還沒有這些 LLM 相關 key 的環境升級到這一版時，也照上表從 `containerimage` 開始逐一 apply，不能跳過 `agent`：`iam-base`、`iam-app`、`application` 一律讀 `containerimage/agent_runtimes`、`network/agent_data_access`、`agent/*` 這些 key，上游還沒發布時 plan 會因為讀不到 SSM 參數而失敗。什麼都沒開時，這一輪只會多出這些 SSM 參數，不建其他資源。
 
 這份範本不提供 `stacks.sh` 之類一鍵跑全部的腳本。順序就是上表，靠人照著跑。
 
@@ -81,7 +89,7 @@ terraform plan -var-file=envs/dev.tfvars
 這份範本在本 repo 裡用相對路徑引用 module（`../../../../../modules/<name>`），這樣 module 的 tag 還沒打出來時也能驗證。複製到專案 repo 之後，先做這幾件事：
 
 1. 把每個 module 的 `source` 從相對路徑改成釘版本的 git 路徑：`git::https://github.com/<org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`。一個 module 一行，改完跑 `terraform init -backend=false` 確認抓得到 tag。完整指令見 `docs/guides/consuming-modules.md`。
-2. 改 `common.tf` 的 `accounts_by_env`，填入各環境的帳號；8 個 stack 要同步改，保持一字不差。
+2. 改 `common.tf` 的 `accounts_by_env`，填入各環境的帳號；9 個 stack 要同步改，保持一字不差。
 3. 改每份 `envs/*.tfbackend` 的 `bucket`（目前是 `<state-bucket>` 佔位符）與 key 的 `alpha` 前綴。
 4. 改每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及各 stack 的佔位值：告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 CIDR 或 prefix list。
 5. tfvars 不放 secret。應用程式的 secret 值寫進 `foundation` 建好的 secret 容器，Terraform 只引用 ARN。
@@ -99,6 +107,14 @@ terraform plan -var-file=envs/dev.tfvars
 | `network/data_access` | `network` 各服務的 `data_access` | `iam-app`、`application` | 名單上的服務，task role 才能讀資料庫 secret，也才拿得到 `DB_*` 環境變數 |
 | `iam-app/ecs_exec_<service>` | `iam-app` 的 `ecs_exec_services` | `application` | 直接當 `enable_execute_command`，`application` 自己沒有這個變數 |
 | `iam-app/tracing` | `iam-app` 的 `tracing` | `application` | 名單上的服務，task role 才有 X-Ray 的四個動作，也才會掛 ADOT collector sidecar 與 OTEL 環境變數；`application` 自己沒有追蹤開關，只有 collector 映像的 `adot_collector`。名單必須是 `containerimage/services` 的子集 |
+| `containerimage/agent_runtimes` | `containerimage` 的 `agent_runtimes` | `network`、`iam-base`、`agent`、`iam-app` | `network` 與 `agent` 的 Runtime 設定 key 必須相同 |
+| `network/agent_data_access` | `network` 各 Runtime 的 `data_access` | `agent`、`iam-app` | 名單上的 Runtime 才有連資料庫的 security group 規則、`DB_*` 環境變數與讀資料庫 secret 的權限；`PUBLIC` 的 Runtime 不得在名單上 |
+| `iam-base/agent_service_roles` | `iam-base` 的 `agent_service_roles` | `agent` | 有 Knowledge Base 時要含 `knowledge_base`，有 Gateway 時要含 `gateway` |
+| `data/database` 的 `data_api` | `data` 的 `db.data_api` | `agent` | 有 Knowledge Base 時必須是 Aurora 而且 `data_api = true` |
+| `agent/models` | `agent` 的 `models` | `iam-app`、`application` | `invoke_arns` 是模型 IAM Resource 的唯一來源，`iam-app` 不自己拼 ARN |
+| `agent/bedrock_invoke` | `agent` 的 `bedrock_invoke` | `iam-app`、`application` | 啟用時模型權限換成 `sts:AssumeRole`，並注入 `BEDROCK_INVOKE_*` |
+| `agent/agent_runtime_<rt>` 的 `tracing` | `agent` 的 `agent_runtimes[*].tracing` | `iam-app` | 開了的 Runtime，execution role 才有 X-Ray 動作（含 `xray:PutSpans`） |
+| `iam-app/agent_access` | `iam-app` 的 `agent_access` | `application` | 有列的服務 task role 才有 `bedrock`／`bedrock-agentcore` 動作，也才注入 Runtime ARN、模型 id、guardrail id、KB id |
 
 ## SSM 合約
 
@@ -127,6 +143,20 @@ terraform plan -var-file=envs/dev.tfvars
 | `iam-app` | `ecs_exec_<service>` | String（JSON） | `{"enabled":false}` |
 | `iam-app` | `tracing` | String（JSON 陣列） | 要追蹤的服務名稱（已排序），沒有時 `[]`。SSM 不收空的 StringList，所以用 JSON |
 | `loadbalancer` | `alb_arn`、`alb_arn_suffix`、`alb_dns_name`、`alb_zone_id`、`listener_arn`、`listener_protocol` | String | 有憑證時 `listener_arn` 是 HTTPS listener，否則是 HTTP；`listener_protocol` 是 `HTTPS` 或 `HTTP` |
+| `containerimage` | `agent_runtimes` | String（JSON 陣列） | AgentCore Runtime 名稱（已排序），沒有時 `[]` |
+| `containerimage` | `ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` | String | Runtime 的 repository；只有設了 `agent_runtimes` 才存在 |
+| `network` | `sg_agent_<rt>_id` | String | Runtime 的 security group |
+| `network` | `agent_data_access` | String（JSON） | `{"db":["assistant"]}`，沒有時 `{}` |
+| `iam-base` | `role_agent_<rt>_execution_arn` | String | Runtime execution role |
+| `iam-base` | `role_bedrock_kb_arn`、`role_agentcore_gateway_arn` | String | 只有 `agent_service_roles` 含 `knowledge_base`／`gateway` 才存在 |
+| `iam-base` | `agent_service_roles` | String（JSON 陣列） | `["gateway","knowledge_base"]` 的子集合（已排序），沒有時 `[]` |
+| `agent` | `agent_runtime_<rt>` | String（JSON） | Runtime 的 `arn`、`id`、`name`、`execution_role_arn` 與它能用的 `models`、`memories`、`guardrails`、`knowledge_bases`（key 清單）、`gateway`、`tracing` |
+| `agent` | `models` | String（JSON） | `{"<key>":{"model_id":…,"invoke_arns":[…]}}`，沒有時 `{}` |
+| `agent` | `guardrails` | String（JSON） | `{"<key>":{"id":…,"arn":…,"version":"DRAFT","profile_id":…}}`，沒有時 `{}`；`CLASSIC` 的 `profile_id` 是 `null` |
+| `agent` | `agent_memories` | String（JSON） | `{"<key>":{"id":…,"arn":…}}`，沒有時 `{}` |
+| `agent` | `knowledge_bases` | String（JSON） | `{"<key>":{"id":…,"arn":…,"embedding_model":…,"bucket_name":…,"bucket_arn":…,"inclusion_prefixes":{…},"data_source_ids":{…},"credentials_secret_arn":…}}`，沒有時 `{}`；`data_source_ids` 是 data source key → id，跑 `StartIngestionJob` 用；`credentials_secret_arn` 是 ARN，不是 secret 的值 |
+| `agent` | `agentcore_gateway`、`bedrock_invoke` | String（JSON） | `{"enabled":false}` 或 `{"enabled":true,...}`；Gateway 的 `lambda_arns` 與 `tool_schema_arns`（Lambda target 工具定義的 S3 物件 ARN）給 `iam-app` 附加權限 |
+| `iam-app` | `agent_access` | String（JSON） | 服務 → `{runtimes, models, guardrails, knowledge_bases}`，沒有時 `{}` |
 
 `data/database` 有資料庫時：
 
@@ -142,11 +172,13 @@ terraform plan -var-file=envs/dev.tfvars
   "writer_endpoint": "...",
   "reader_endpoint": "...",
   "proxy_endpoint": null,
-  "has_reader": false
+  "has_reader": false,
+  "cluster_arn": "arn:aws:rds:ap-northeast-1:111111111111:cluster:alpha-dev-db",
+  "data_api": false
 }
 ```
 
-沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個，有沒有開 Proxy 與資料庫型態由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
+沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個，有沒有開 Proxy 與資料庫型態由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。`cluster_arn`（`rds` 型態是 `null`）與 `data_api` 給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
 
 ## 開啟 X-Ray 追蹤
 
