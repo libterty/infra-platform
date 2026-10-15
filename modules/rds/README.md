@@ -58,6 +58,8 @@ module "db" {
 - `app_endpoint` 與 `app_reader_endpoint` 是給應用程式的端點：有 Proxy 時是 Proxy（reader 優先用 read-only endpoint，沒有就用 Proxy 本身），沒有 Proxy 時是 DB 本身。
 - `shared_preload_libraries` 是靜態參數，module 設成 `pending-reboot`；其餘預設參數是動態參數。呼叫端另外給靜態參數時，module 用 `immediate` 套用，AWS 會拒絕，這種情況目前要自己處理（**未驗證**）。
 - 告警的 `connections_threshold`：`aurora_serverless` 沒給時為 `floor(min(max_capacity × 2 GiB ÷ 9,531,392, 5000) × 0.8)`；`rds` 與 `aurora` 的 `max_connections` 取決於 instance class，離線算不出來，必填。
+- **Data API（`data_api = true`）只給 Aurora。** Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取；KB 要的 cluster ARN 就是既有的 `arn` 輸出。Data API 對 Aurora PostgreSQL 有版本要求（AWS 文件寫 13.12、14.9、15.4、16.1 以上這類），**未查證**，沒有做成 validation（design §7.3）。
+- `deployment` 與 `database_name` 兩個輸出直接取變數，不讀 resource 屬性，plan 時就是已知值。
 - 以下都是 mock 驗不到的，列在 design §7.3：型態互換的實際行為、`min_capacity = 0`（閒置自動暫停）跟 engine 版本的關係、Aurora 自動 minor 升級造成的 `engine_version` 差異。
 
 ## 刻意不做
@@ -86,6 +88,7 @@ module "db" {
 | `backup_window` | `string` | `"18:00-19:00"` | 否 | UTC |
 | `maintenance_window` | `string` | `"sun:19:00-sun:20:00"` | 否 | UTC |
 | `deletion_protection` | `bool` | `true` | 否 | |
+| `data_api` | `bool` | `false` | 否 | 在 Aurora cluster 開 RDS Data API（`enable_http_endpoint`），Bedrock Knowledge Base 需要；只限 `aurora`、`aurora_serverless`，`rds` 配 `true` 會被 validation 擋下 |
 | `skip_final_snapshot` | `bool` | `false` | 否 | |
 | `cluster_parameters` | `map(string)` | `{}` | 否 | Aurora cluster 參數；`rds` 時必須為空 |
 | `instance_parameters` | `map(string)` | `{}` | 否 | rds 併入唯一的參數群組；Aurora 非空才另建 instance 參數群組 |
@@ -123,6 +126,8 @@ module "db" {
 | `arn` | `string` | instance 或 cluster ARN |
 | `resource_id` | `string` | `DbiResourceId` 或 `DbClusterResourceId` |
 | `alarm_arns` | `map(string)` | key 為 `cpu_high_writer`、`connections_high`、`proxy_pinned_high` 這類 |
+| `deployment` | `string` | 輸入的 `deployment` 原樣輸出：`rds`、`aurora` 或 `aurora_serverless` |
+| `database_name` | `string` | 輸入的 `database_name` 原樣輸出 |
 
 ## 測試
 

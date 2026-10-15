@@ -68,6 +68,8 @@ resource "aws_rds_cluster" "this" {
 
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
+  enable_http_endpoint = var.data_api
+
   dynamic "serverlessv2_scaling_configuration" {
     for_each = local.is_serverless ? [var.serverless] : []
     content {

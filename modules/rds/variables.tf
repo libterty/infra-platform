@@ -110,6 +110,17 @@ variable "deletion_protection" {
   default     = true
 }
 
+variable "data_api" {
+  description = "Enable the RDS Data API (enable_http_endpoint) on the Aurora cluster. Needed by Bedrock Knowledge Bases. Aurora only."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = var.deployment != "rds" || !var.data_api
+    error_message = "data_api needs deployment aurora or aurora_serverless; the Data API does not support RDS DB instances."
+  }
+}
+
 variable "skip_final_snapshot" {
   description = "Skip the final snapshot on destroy."
   type        = bool
