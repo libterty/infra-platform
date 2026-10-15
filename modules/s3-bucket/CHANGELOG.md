@@ -7,6 +7,7 @@
 - 新變數 `never_expire`（預設 `false`，`nullable = false`）：`true` 時 lifecycle rule 沒有 `expiration`，只留未完成 multipart upload 的 7 天清除，rule id 改成 `abort-incomplete-uploads`。給 Knowledge Base 語料這類不能過期的內容 bucket。
 - `expiration_days` 的預設從 `90` 改成 `null`，module 內當成 90；`never_expire = true` 又給了 `expiration_days` 會被 validation 擋下。
 - 既有消費端換版、不改程式碼時 plan 應零差異：`never_expire = false` 時 rule id 仍是 `expire-objects`，`expiration.days` 與 multipart upload 清除都跟 0.1.0 相同。**這是讀程式推論的，沒有用 plan 驗證。**
+- `never_expire = true` 搭配非空的 `log_delivery` 會被 validation 擋下：log bucket 一定要過期。`never_expire` 是這一版才有的，0.1.0 的呼叫端不會撞到。
 - 放寬：`expiration_days` 明寫 `null` 以前會被 validation 擋下，現在當成 90。
 
 ## 0.1.0（未發布）

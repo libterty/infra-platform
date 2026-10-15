@@ -56,7 +56,7 @@ module "kb_corpus" {
 - bucket 名稱不可含 `.`（會破壞 TLS virtual-host 定址）。
 - `force_destroy` 預設 `false`，只放可重建的觀測資料時才在呼叫端打開。
 - **不過期一律要明寫 `never_expire = true`。** `expiration_days = null` 代表預設的 90 天，不是不過期：呼叫端常用 `optional(number)` 轉傳，沒給值時就是 null，如果 null 代表不過期，log bucket 會在沒人注意時變成永久保存。
-- `never_expire = true` 時不能再給 `expiration_days`，validation 會擋下。
+- `never_expire = true` 時不能再給 `expiration_days`，也不能有 `log_delivery`（log bucket 一定要過期），兩種都會被 validation 擋下。
 - 內容 bucket 的物件被刪掉之後救不回來（沒有 versioning）；放 Knowledge Base 語料時，物件被刪，下一次同步就會清掉對應的向量。
 
 ## 刻意不做
@@ -72,7 +72,7 @@ versioning、replication、object lock、bucket 本身的 access logging、event
 | `name` | `string` | 無 | 是 | bucket 名稱，3–63 字元，小寫英數與連字號，不可含 `.` 或 `--` |
 | `kms_key_arn` | `string` | `null` | 否 | `null` 用 SSE-S3；有給用 SSE-KMS。與 `alb_access_logs` 互斥 |
 | `expiration_days` | `number` | `null` | 否 | 物件過期天數，1–3650；null 當成 90。`never_expire = true` 時必須是 null |
-| `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除；給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket。null 當成 `false` |
+| `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除；給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。null 當成 `false` |
 | `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`alb_access_logs`、`vpc_flow_logs` |
 | `force_destroy` | `bool` | `false` | 否 | 是否允許刪除非空 bucket |
 | `tags` | `map(string)` | `{}` | 否 | bucket 的 tag；`Name` 由 module 加上 |

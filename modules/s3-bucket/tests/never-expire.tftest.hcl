@@ -115,3 +115,52 @@ run "never_expire_rejects_expiration_days" {
 
   expect_failures = [var.never_expire]
 }
+
+run "never_expire_rejects_flow_log_delivery" {
+  command = plan
+
+  variables {
+    never_expire = true
+    log_delivery = ["vpc_flow_logs"]
+  }
+
+  expect_failures = [var.never_expire]
+}
+
+run "never_expire_rejects_alb_log_delivery" {
+  command = plan
+
+  variables {
+    never_expire = true
+    log_delivery = ["alb_access_logs"]
+  }
+
+  expect_failures = [var.never_expire]
+}
+
+run "never_expire_accepts_empty_log_delivery" {
+  command = plan
+
+  variables {
+    never_expire = true
+    log_delivery = []
+  }
+
+  assert {
+    condition     = length(one(aws_s3_bucket_lifecycle_configuration.this.rule).expiration) == 0
+    error_message = "never_expire with no log delivery must be accepted"
+  }
+}
+
+run "log_delivery_keeps_expiration" {
+  command = plan
+
+  variables {
+    log_delivery = ["vpc_flow_logs"]
+  }
+
+  assert {
+    condition     = one(one(aws_s3_bucket_lifecycle_configuration.this.rule).expiration).days == 90
+    error_message = "Log buckets must keep the 90-day default expiration"
+  }
+}
