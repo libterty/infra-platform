@@ -65,7 +65,7 @@ source = "../../../../../modules/vpc"
 source = "git::https://github.com/<org>/<repo>.git//modules/vpc?ref=vpc-v0.1.0"
 ```
 
-一次改完 9 個 stack 的指令（在專案 repo 的根目錄跑；macOS 與 Linux 的 `sed` 都適用）。先把每個 module 換成 `v0.1.0`，再把 LLM 增補動到的 9 個 module 改成 `v0.1.1`：7 個新 module 沒有 `v0.1.0`，範本的 `data` 用到 `rds-v0.1.1` 的輸出，`agent` 用到 `s3-bucket-v0.1.1` 的 `never_expire`，留在 `v0.1.0` 會 init 失敗或 plan 失敗。
+一次改完 9 個 stack 的指令（在專案 repo 的根目錄跑；macOS 與 Linux 的 `sed` 都適用）。先把每個 module 換成 `v0.1.0`，再把 LLM 增補動到的 10 個 module 改成 `v0.1.1`：7 個新 module 沒有 `v0.1.0`，範本的 `data` 用到 `rds-v0.1.1` 的輸出，`agent` 用到 `s3-bucket-v0.1.1` 的 `never_expire`，`iam-base` 的 agent 服務 role 用到 `iam-role-v0.1.1` 的 `trust.source_arn`，留在 `v0.1.0` 會 init 失敗或 plan 失敗。
 
 ```bash
 PLATFORM_URL="https://github.com/<org>/<repo>.git"   # 換成實際的 org 與 repo
@@ -76,7 +76,8 @@ done
 
 # LLM 增補動到的 module 只有 v0.1.1；之後 module 再發版，照下一節〈升版〉一個一個改
 for mv in bedrock-guardrail=0.1.1 bedrock-inference-profile=0.1.1 agentcore-runtime=0.1.1 agentcore-memory=0.1.1 \
-          agentcore-gateway=0.1.1 log-delivery=0.1.1 bedrock-knowledge-base=0.1.1 rds=0.1.1 s3-bucket=0.1.1; do
+          agentcore-gateway=0.1.1 log-delivery=0.1.1 bedrock-knowledge-base=0.1.1 rds=0.1.1 s3-bucket=0.1.1 \
+          iam-role=0.1.1; do
   m="${mv%%=*}"; v="${mv#*=}"
   grep -rlE --include='*.tf' "//modules/${m}\?ref=" infra/terraform | while IFS= read -r f; do
     sed -E -i.bak "s#(//modules/${m}\?ref=)${m}-v[0-9]+\.[0-9]+\.[0-9]+#\1${m}-v${v}#" "$f" && rm -f "$f.bak"
@@ -84,7 +85,7 @@ for mv in bedrock-guardrail=0.1.1 bedrock-inference-profile=0.1.1 agentcore-runt
 done
 
 grep -rnE --include='*.tf' 'source *= *"\.\./' infra/terraform   # 預期沒有輸出
-grep -rhoE --include='*.tf' 'ref=[a-z0-9-]+-v0\.1\.1' infra/terraform | sort -u   # 預期剛好是上面 9 個 module 的 v0.1.1
+grep -rhoE --include='*.tf' 'ref=[a-z0-9-]+-v0\.1\.1' infra/terraform | sort -u   # 預期剛好是上面 10 個 module 的 v0.1.1
 ```
 
 改完逐一 init，確認每個 tag 都抓得到：
