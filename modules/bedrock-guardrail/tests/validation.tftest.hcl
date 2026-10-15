@@ -340,3 +340,81 @@ run "only_grounding_is_enough" {
     contextual_grounding = { grounding_threshold = 0.5 }
   }
 }
+
+# pii_entities keys
+
+run "pii_all_documented_types_pass" {
+  command = plan
+
+  variables {
+    pii_entities = {
+      for t in [
+        "ADDRESS", "AGE", "AWS_ACCESS_KEY", "AWS_SECRET_KEY", "CA_HEALTH_NUMBER", "CA_SOCIAL_INSURANCE_NUMBER",
+        "CREDIT_DEBIT_CARD_CVV", "CREDIT_DEBIT_CARD_EXPIRY", "CREDIT_DEBIT_CARD_NUMBER", "DRIVER_ID", "EMAIL",
+        "INTERNATIONAL_BANK_ACCOUNT_NUMBER", "IP_ADDRESS", "LICENSE_PLATE", "MAC_ADDRESS", "NAME", "PASSWORD", "PHONE",
+        "PIN", "SWIFT_CODE", "UK_NATIONAL_HEALTH_SERVICE_NUMBER", "UK_NATIONAL_INSURANCE_NUMBER",
+        "UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER", "URL", "USERNAME", "US_BANK_ACCOUNT_NUMBER", "US_BANK_ROUTING_NUMBER",
+        "US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER", "US_PASSPORT_NUMBER", "US_SOCIAL_SECURITY_NUMBER",
+        "VEHICLE_IDENTIFICATION_NUMBER",
+      ] : t => { action = "BLOCK" }
+    }
+  }
+}
+
+run "pii_unknown_type_rejected" {
+  command = plan
+
+  variables {
+    pii_entities = { SSN = { action = "BLOCK" } }
+  }
+
+  expect_failures = [var.pii_entities]
+}
+
+run "pii_lowercase_type_rejected" {
+  command = plan
+
+  variables {
+    pii_entities = { email = { action = "BLOCK" } }
+  }
+
+  expect_failures = [var.pii_entities]
+}
+
+# kms_key_arn
+
+run "kms_key_arn_key_passes" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+  }
+}
+
+run "kms_key_arn_multi_region_key_accepted" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/mrk-0123456789abcdef0123456789abcdef"
+  }
+}
+
+run "kms_key_arn_alias_rejected" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:alias/alpha-dev"
+  }
+
+  expect_failures = [var.kms_key_arn]
+}
+
+run "kms_key_arn_wildcard_rejected" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/*"
+  }
+
+  expect_failures = [var.kms_key_arn]
+}
