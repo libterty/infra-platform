@@ -40,6 +40,11 @@ variable "never_expire" {
     condition     = !(var.never_expire && var.expiration_days != null)
     error_message = "never_expire cannot be combined with expiration_days; leave expiration_days unset."
   }
+
+  validation {
+    condition     = !(var.never_expire && length(var.log_delivery) > 0)
+    error_message = "never_expire cannot be combined with log_delivery; log buckets must expire."
+  }
 }
 
 variable "log_delivery" {
