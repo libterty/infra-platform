@@ -56,7 +56,12 @@ variable "strategies" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key for the Memory. null uses an AWS owned key. The key policy must allow AgentCore to use it."
+  description = "Customer managed key ARN (key/<uuid>, not an alias) for the Memory. null uses an AWS owned key. The key policy must allow AgentCore to use it."
+
+  validation {
+    condition     = var.kms_key_arn == null || can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
+    error_message = "kms_key_arn must be a KMS key ARN (arn:aws:kms:<region>:<account>:key/<uuid>), not an alias or a wildcard."
+  }
 }
 
 variable "tags" {
