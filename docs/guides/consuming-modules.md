@@ -65,17 +65,25 @@ source = "../../../../../modules/vpc"
 source = "git::https://github.com/<org>/<repo>.git//modules/vpc?ref=vpc-v0.1.0"
 ```
 
-一次改完 8 個 stack 的指令（在專案 repo 的根目錄跑；macOS 與 Linux 的 `sed` 都適用）：
+一次改完 9 個 stack 的指令（在專案 repo 的根目錄跑；macOS 與 Linux 的 `sed` 都適用）。先把每個 module 換成 `v0.1.0`，再把已經發過新版的 module 改成範本需要的版本：範本的 `data` 用到 `rds-v0.2.0` 的輸出，`agent` 用到 `s3-bucket-v0.2.0` 的 `never_expire`，留在 `v0.1.0` 會 init 成功但 plan 失敗。
 
 ```bash
 PLATFORM_URL="https://github.com/<org>/<repo>.git"   # 換成實際的 org 與 repo
-VERSION="0.1.0"                                        # 第一次一律 0.1.0
 
 grep -rlE --include='*.tf' '"(\.\./){5}modules/' infra/terraform | while IFS= read -r f; do
-  sed -E -i.bak "s#\"(\.\./){5}modules/([a-z0-9-]+)\"#\"git::${PLATFORM_URL}//modules/\2?ref=\2-v${VERSION}\"#" "$f" && rm -f "$f.bak"
+  sed -E -i.bak "s#\"(\.\./){5}modules/([a-z0-9-]+)\"#\"git::${PLATFORM_URL}//modules/\2?ref=\2-v0.1.0\"#" "$f" && rm -f "$f.bak"
+done
+
+# 範本需要的新版；之後 module 再發版，照下一節〈升版〉一個一個改
+for mv in rds=0.2.0 s3-bucket=0.2.0; do
+  m="${mv%%=*}"; v="${mv#*=}"
+  grep -rlE --include='*.tf' "//modules/${m}\?ref=" infra/terraform | while IFS= read -r f; do
+    sed -E -i.bak "s#(//modules/${m}\?ref=)${m}-v[0-9]+\.[0-9]+\.[0-9]+#\1${m}-v${v}#" "$f" && rm -f "$f.bak"
+  done
 done
 
 grep -rnE --include='*.tf' 'source *= *"\.\./' infra/terraform   # 預期沒有輸出
+grep -rhoE --include='*.tf' 'ref=(rds|s3-bucket)-v[0-9.]+' infra/terraform | sort -u   # 預期只有 rds-v0.2.0 與 s3-bucket-v0.2.0
 ```
 
 改完逐一 init，確認每個 tag 都抓得到：
