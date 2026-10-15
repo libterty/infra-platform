@@ -21,6 +21,7 @@
     "modules/ssm-publish": { "release-type": "terraform-module", "component": "ssm-publish" },
     "modules/ssm-read": { "release-type": "terraform-module", "component": "ssm-read" },
     "modules/vpc": { "release-type": "terraform-module", "component": "vpc" },
+    "modules/vpc-interface-endpoints": { "release-type": "terraform-module", "component": "vpc-interface-endpoints" },
     "modules/xray": { "release-type": "terraform-module", "component": "xray" }
   }
 }

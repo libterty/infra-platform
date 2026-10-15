@@ -149,10 +149,15 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
         modules/iam-role-policy/*) scan_pattern S4 'modules/iam-role-policy 只允許 aws_iam_role_policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_role_policy"' ;;
         *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role 與 modules/iam-role-policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
       esac
-      # S4: security groups and their rules only in security-group and vpc
+      # S4: security groups and their rules only in security-group and vpc-interface-endpoints
       case "$r" in
-        modules/security-group/* | modules/vpc/*) ;;
-        *) scan_pattern S4 'aws_security_group* 與 aws_vpc_security_group_*_rule 只能出現在 modules/security-group 與 modules/vpc' "$f" '^[[:space:]]*resource[[:space:]]+"(aws_security_group|aws_vpc_security_group_(ingress|egress)_rule)' ;;
+        modules/security-group/* | modules/vpc-interface-endpoints/*) ;;
+        *) scan_pattern S4 'aws_security_group* 與 aws_vpc_security_group_*_rule 只能出現在 modules/security-group 與 modules/vpc-interface-endpoints' "$f" '^[[:space:]]*resource[[:space:]]+"(aws_security_group|aws_vpc_security_group_(ingress|egress)_rule)' ;;
+      esac
+      # S4: the default security group is adopted only by the module that creates the VPC
+      case "$r" in
+        modules/vpc/*) ;;
+        *) scan_pattern S4 'aws_default_security_group 只能出現在 modules/vpc' "$f" '^[[:space:]]*resource[[:space:]]+"aws_default_security_group"' ;;
       esac
       ;;
   esac
