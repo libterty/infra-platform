@@ -80,7 +80,7 @@ terraform plan -var-file=envs/dev.tfvars
 
 這份範本在本 repo 裡用相對路徑引用 module（`../../../../../modules/<name>`），這樣 module 的 tag 還沒打出來時也能驗證。複製到專案 repo 之後，先做這幾件事：
 
-1. 把每個 module 的 `source` 從相對路徑改成釘版本的 git 路徑：`git::https://github.com/<org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`。一個 module 一行，改完跑 `terraform init -backend=false` 確認抓得到 tag。完整指令見 `docs/guides/consuming-modules.md`（Phase 9 補）。
+1. 把每個 module 的 `source` 從相對路徑改成釘版本的 git 路徑：`git::https://github.com/<org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`。一個 module 一行，改完跑 `terraform init -backend=false` 確認抓得到 tag。完整指令見 `docs/guides/consuming-modules.md`。
 2. 改 `common.tf` 的 `accounts_by_env`，填入各環境的帳號；8 個 stack 要同步改，保持一字不差。
 3. 改每份 `envs/*.tfbackend` 的 `bucket`（目前是 `<state-bucket>` 佔位符）與 key 的 `alpha` 前綴。
 4. 改每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及各 stack 的佔位值：告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 CIDR 或 prefix list。

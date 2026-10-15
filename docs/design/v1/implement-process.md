@@ -1,6 +1,6 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–7 已完成（HEAD `30f1b38`），Phase 8 起待執行。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–8 已完成（HEAD `5858bf4`），Phase 9 執行中。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 文中路徑除非特別註明，都相對於 `<workspace>/`；本 repo 內的路徑直接寫 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
@@ -8,7 +8,7 @@
 
 第一版是 19 個 module 加 1 份 8 個 stack 的範本，做出最小三層架構：ALB 在 public subnet，AP 層與 DB 層在 private subnet。範本的 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 secret 容器；IAM 只由 `iam-role`、`iam-role-policy` 建，SG 只由 `security-group`、`vpc-interface-endpoints` 建，`vpc` 只建 `aws_default_security_group`（design §1、§4.1、§5.6 S4）。
 
-分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 39 個 commit，剩下 2 個（Phase 10 有修正才多一個），合計 41 個。全量 `scripts/validate.sh`：44 個目錄通過。
+分 11 個 Phase（0 到 10），Phase 7 分成 A–D（7 個基礎 module）、E（觀測性）、F（拆出 `vpc-interface-endpoints`）。一次做一個，主 agent 自己重跑驗證通過後 commit，才進下一個。**一個 module 一個 commit**。已完成 41 個 commit，剩下 1 個（Phase 9；Phase 10 有修正才多一個），合計 42 個。全量 `scripts/validate.sh`：52 個目錄通過（19 個 module、它們的 example、8 個 stack，約 9 分鐘）。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
@@ -27,8 +27,9 @@
 | 7E | 觀測性：共用設定、設計文件、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 已完成 | 6：`d40c452`、`1c13dda`、`e34f41b`、`cc0b2c4`、`27e7dda`、`d199577` |
 | 7F | 拆出 `vpc-interface-endpoints`：設計文件、`refactor(vpc)`、新 module、共用設定（release-please 19 個、S4） | 已完成 | 4：`eeb17d2`、`30de94a`、`07e80f2`、`30f1b38` |
 | — | 兩個 IAM module 加上「Allow 不准搭配 `NotResource`」 | 已完成（計畫外） | 2：`e6655ec`、`b51b79e` |
-| 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 待執行 | 1 |
-| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh` | 待執行 | 1 |
+| — | 記錄 Phase 7 完成、更新 Phase 8 計畫 | 已完成（計畫外） | 1：`4d4865f` |
+| 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 已完成：8 個 stack 共 317 個測試，全量 52 個目錄全過（約 9 分鐘） | 1：`5858bf4` |
+| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 執行中 | 1 |
 | 10 | 整體驗收 | 待執行 | 有修正才 1 |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
@@ -535,7 +536,9 @@ scripts/validate.sh                                                # 全量
 | `07e80f2 feat(vpc-interface-endpoints)` | interface endpoint 加專用 SG（只對 `allowed_cidrs` 開 443，獨立 rule 資源，沒有 egress） | 22 |
 | `30f1b38 chore(repo)` | release-please 改成 19 個；S4 改成 SG 只能在 `security-group` 與 `vpc-interface-endpoints`、`aws_default_security_group` 只能在 `vpc` | — |
 
-### Phase 8：`templates/project-infra`（8 個 stack）
+### Phase 8：`templates/project-infra`（8 個 stack，已完成，`5858bf4`）
+
+結果：8 個 stack 共 317 個測試全過，全量 `scripts/validate.sh` 52 個目錄全過（約 9 分鐘）。跟下面計畫的差異：`reads_only_listed_keys`、`publishes_under_stack_path` 改成斷言 local 與 `module.ssm_publish.names`；loadbalancer 的 tfvars 與 examples 測試改成每個 run 釘住 `certificate_arn`；設計面的差異記在 design §9.4 D20、D21。
 
 **目標**：照 design §5。8 個 stack 只呼叫 module，唯一的原生 resource 是 `foundation` 的 `aws_secretsmanager_secret`（S8）；跨 stack 讀寫一律透過 `ssm-read`／`ssm-publish`；兩個以上 stack 都要知道的開關只由上游一個 stack 決定（design §5.6「單一決定點」），下游用 precondition 檢查自己的設定跟上游一致。
 
@@ -620,8 +623,8 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `env_format` | `Dev`、`d` 被擋；`dev` 通過 |
 | `account_must_match_env` | `dev` 配 prod 的帳號被擋；表外的 env 被擋；對得上時通過（照 `project-a/infra-v2/terraform/bridge/tests/guard.tftest.hcl`） |
 | `account_is_required` | 不給 `expected_account_id` → 報缺變數 |
-| `reads_only_listed_keys` | `ssm-read` 的 `strings`／`lists` 輸入等於這個 stack 預期的 key 清單（foundation 除外） |
-| `publishes_under_stack_path` | `ssm-publish` 的 `stack` 等於目錄名，key 集合等於上表（application 除外） |
+| `reads_only_listed_keys` | `ssm-inputs.tf` 的 local（`ssm_input_strings`、`ssm_input_lists`，`iam-base` 與 `application` 另有 `ssm_service_strings`）等於這個 stack 預期的 key 清單（foundation 除外）。斷言 local 而不是 `ssm-read` 的輸入，因為 `terraform test` 讀不到 module 的輸入值（R16） |
+| `publishes_under_stack_path` | `module.ssm_publish.names` 等於上表每個 key 對應的 `/<project>/<env>/<stack>/<key>`，路徑裡的 stack 等於目錄名（application 除外） |
 | tfvars（`tests/tfvars/`） | dev、prod 各跑一次：主要 module 有被呼叫，鎖住「開關預設全關、tfvars 不完整就規劃刪除」的坑 |
 
 `allowed_account_ids` 本身在 mock 下測不到，只鎖 validation。
@@ -767,7 +770,7 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `wired_from_upstream` | `subnet_ids`、`security_group_ids`、`sns_topic_arns`、`access_logs.bucket` 都等於 SSM 讀到的值 |
 | `tls_must_match_network` | `alb_https = true` 但沒有憑證 → precondition 失敗；`false` 但給了憑證 → 失敗；一致時通過 |
 | `publishes_listener_keys` | 發布 6 個 key |
-| examples（`tests/examples/`） | 沒有憑證時 `listener_protocol = "HTTP"`；有憑證時是 `HTTPS`（每組各自用 `override_data` 讓 `alb_https` 跟憑證一致） |
+| tfvars（`tests/tfvars/`）與 examples（`tests/examples/`） | 測試讀不到 `-var-file` 的值（R16），所以每個 run 在 `variables {}` 釘住 `certificate_arn`，並用 `override_data` 給對應的 `alb_https`：沒有憑證時 `listener_protocol = "HTTP"`、有憑證時是 `HTTPS`。tfvars 另加一個 run，用 `file()` 讀 `envs/<env>.tfvars` 與 `../network/envs/<env>.tfvars`，比對「這邊有 `certificate_arn`」等於「network 那邊 `https = true`」。**限制**：examples 檔自己寫的憑證值被每個 run 釘住的值蓋掉，驗不到；examples 只驗得到其他設定（access log、idle timeout） |
 
 #### application
 
@@ -868,7 +871,7 @@ git tag                                            # 預期沒有輸出：tag �
 | stack 清單、SSM key、單一決定點 | 範本 README、`project-infra-standard.md`、ADR 0002、design §5.3、§5.6 | 一致 |
 | 介面與 design 一致 | 19 個 module 的變數名、預設值、輸出對照 design §4.2–§4.21 | 不一致要揭露，不自行改 design |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與各 Phase 回報一致 |
-| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 41 個 commit（Phase 10 有修正時 42 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
+| commit 歷史 | `git log --format='%ae %s'`、`git remote -v` | 42 個 commit（Phase 10 有修正時 43 個），每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote；沒有 tag |
 
 ## 驗證指令的具體寫法
 
@@ -960,6 +963,8 @@ git tag                                            # 預期沒有輸出：tag �
 | R12 | 範本 8 個 stack 的測試要 override 的 key 很多 | 漏一個就整個測試檔失敗 | 每個測試檔開頭集中寫齊，個別 run 只覆寫要測的值 |
 | R13 | release-please 本機沒有、也不能 push 驗證 | 設定寫錯要等上 GitHub 才知道 | 只驗 JSON；`releasing-modules.md` 標「未實測」 |
 | R14 | 範本複製出去忘了把相對路徑改成 git source | 專案 repo 的 source 指不到東西 | 範本 README 第一步就寫；`consuming-modules.md` 寫一次改完的指令 |
+| R15 | tflint 用變數的預設值求值 local（Phase 8 實測） | 物件變數預設是 `null` 時，tflint 對 `var.x.attr` 這類 local 報錯，`terraform validate` 與 `test` 卻都過 | 相關 local 寫成 null 安全：`try(var.vpc.flow_log, false)`、`var.x == null ? ... : ...` |
+| R16 | 測試檔的 `override_*` 與 `variables {}` 讀不到 `-var-file` 的值（Phase 8 實測） | 想在 tfvars／examples 測試裡依 tfvars 的值給對應的 SSM 值（例如憑證有無對應 `alb_https`）寫不出來；`terraform test` 也讀不到 module 的輸入值 | 每個 run 自己釘住相關變數並給一致的 override；跨檔一致性改用 `file()` 讀 tfvars 比對；要斷言 module 輸入時，先把輸入放進 local 再斷言 local |
 
 ## 已判斷與已拍板
 

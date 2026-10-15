@@ -2853,19 +2853,21 @@ variable "alb_ingress" {
 | 至少一個來源 | `alb_ingress.https = true` 時，`cidrs` 與 `prefix_list_ids` 也至少一個非空（要開全網就明寫 `0.0.0.0/0`） |
 | 模式 A 的 id 存在 | `data "aws_vpc"`、`data "aws_subnet"` 用 `for_each` 讀一次，id 不存在時 plan 失敗 |
 
-規則表（由 locals 展開成 `security-group` 的 `rules`；module 裡一律用 `aws_vpc_security_group_ingress_rule`／`egress_rule` 搭配 `for_each`，來源用 `peer_group`（同一次呼叫裡的 SG，對應 `referenced_security_group_id`）、CIDR 或 prefix list，沒有 inline 規則）：
+規則表（由 locals 展開成 `security-group` 的 `rules`；module 裡一律用 `aws_vpc_security_group_ingress_rule`／`egress_rule` 搭配 `for_each`，來源用 `peer_group`（同一次呼叫裡的 SG，對應 `referenced_security_group_id`）、CIDR 或 prefix list，沒有 inline 規則）。SG 之間的每一條連線都展開成**兩條**規則：來源 SG 的 egress 加目的 SG 的 ingress。Terraform 建 SG 時會移除 AWS 預設的全部對外放行，只寫 ingress 的話來源端出不去。規則 key 是 `<來源>_out_<目的>` 與 `<目的>_in_<來源>`（SG key，例如 `api_out_db_proxy`、`db_proxy_in_api`），跟 §4.16 展開後的範例同一個做法：
 
-| 從 | 到 | port | 條件 |
-|---|---|---|---|
-| `alb_ingress` 的 CIDR／prefix list | ALB SG | 443 與 80（80 只做轉址） | `https = true` |
-| `alb_ingress` 的 CIDR／prefix list | ALB SG | 80 | `https = false` |
-| ALB SG（egress） | 服務 SG | 該服務的 `port` | `from_alb = true` |
-| 呼叫端服務 SG | 被呼叫的服務 SG | 被呼叫端的 `port` | `callers` |
-| 服務 SG（egress） | `0.0.0.0/0` | 443 | 一律（經 NAT 或 VPC endpoint 呼叫 AWS API） |
-| 服務 SG | Proxy SG | data store 的 `port` | `data_access` 且 `proxy = true` |
-| 服務 SG | DB SG | data store 的 `port` | `data_access` 且 `proxy = false` |
-| Proxy SG | DB SG | data store 的 `port` | `proxy = true` |
-| `allowed_cidrs`（通常是 VPC CIDR） | VPC endpoint SG | 443 | 由 `vpc-interface-endpoints` module 建 |
+| 從 | 到 | port | 條件 | 展開成 |
+|---|---|---|---|---|
+| `alb_ingress` 的 CIDR／prefix list | ALB SG | 443 與 80（80 只做轉址） | `https = true` | ALB SG 的 ingress，每個來源、每個 port 各一條（key `alb_in_<port>_<來源>`） |
+| `alb_ingress` 的 CIDR／prefix list | ALB SG | 80 | `https = false` | 同上，只有 80 |
+| ALB SG | 服務 SG | 該服務的 `port` | `from_alb = true` | ALB SG 的 egress ＋ 服務 SG 的 ingress |
+| 呼叫端服務 SG | 被呼叫的服務 SG | 被呼叫端的 `port` | `callers` | 呼叫端的 egress ＋ 被呼叫端的 ingress |
+| 服務 SG | `0.0.0.0/0` | 443 | 一律（經 NAT 或 VPC endpoint 呼叫 AWS API） | 服務 SG 的 egress 一條 |
+| 服務 SG | Proxy SG | data store 的 `port` | `data_access` 且 `proxy = true` | 服務的 egress ＋ Proxy 的 ingress |
+| 服務 SG | DB SG | data store 的 `port` | `data_access` 且 `proxy = false` | 服務的 egress ＋ DB 的 ingress |
+| Proxy SG | DB SG | data store 的 `port` | `proxy = true` | Proxy 的 egress ＋ DB 的 ingress |
+| `allowed_cidrs`（通常是 VPC CIDR） | VPC endpoint SG | 443 | 由 `vpc-interface-endpoints` module 建 | 不在 `rules` 裡 |
+
+規則數等於上表展開後的數量，範本測試 `sg_rules_expand_from_services` 鎖住整個 key 集合。例：`alb_ingress = { https = true, cidrs = ["0.0.0.0/0"] }`、`api = { port = 8080, from_alb = true, data_access = ["db"] }`、`worker = { port = 9000, callers = ["api"] }`、`db` 不開 Proxy，展開成 10 條：ALB ingress 2、ALB→api 2、api→worker 2、兩個服務的 443 egress 2、api→db 2。
 
 Proxy 的 SG 一律建立（沒有費用），`sg_db_proxy_id` 一律發布；`proxy = false` 時它沒有任何規則。ALB 的 egress 只開到各服務 SG 的服務 port，不開全網。
 
@@ -3014,7 +3016,7 @@ project-a 踩過的坑：uat 與 prod 的 state 在同一個 bucket，只靠 key
 | `network` | `subnet_ids_public`、`subnet_ids_app`、`subnet_ids_data` | StringList | 依 AZ 排序。新增其他 tier 時多發布 `subnet_ids_<tier>`，只有需要它的 stack 才去讀 |
 | `network` | `subnet_cidrs_<tier>` | StringList | 同上 |
 | `network` | `sg_alb_id`、`sg_<service>_id`、`sg_db_id`、`sg_db_proxy_id`、`sg_vpce_id` | String | `sg_vpce_id` 來自 `vpc-interface-endpoints` 的 `security_group_id`；沒有 interface endpoint 時不發布 |
-| `network` | `nat` | String（JSON） | `{"mode":"per_az","ids":["nat-...","nat-..."]}`；`none` 時 `ids` 為 `[]` |
+| `network` | `nat` | String（JSON） | `{"mode":"per_az","ids":["nat-...","nat-..."]}`；`none` 時 `ids` 為 `[]`；客戶自管模式 A（登記既有 VPC）時是 `{"mode":"external","ids":[]}`，客戶 VPC 的 NAT 不由我們回報 |
 | `network` | `alb_https`、`db_proxy` | String（JSON） | `{"enabled":true}` |
 | `network` | `data_access` | String（JSON） | `{"db":["api"]}` |
 | `iam-base` | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn` | String | — |
@@ -3062,28 +3064,49 @@ JSON 欄位的增減照 module 的 semver 想：新增欄位是相容的；刪�
 | 改既有 tier 的 CIDR 大小 | 清單內容變，subnet 會重建 | 不用改程式碼，但這是**會重建 subnet 的變更**，上面的 ENI 要先清空；實務上用新增 tier 再遷移，不直接改 |
 | 改 tier 名稱 | — | **不允許**。`public`、`app`、`data` 寫進合約，改名等於改合約 |
 
-讀取寫法（`ssm-inputs.tf`，一律呼叫 `ssm-read`，§4.13）：
+讀取寫法（`ssm-inputs.tf`，一律呼叫 `ssm-read`，§4.13）。key 清單先放進 local，再傳給 `module "in"`：`terraform test` 讀不到 module 的輸入值，測試要斷言「這個 stack 只讀這些 key」（範本測試的 `reads_only_listed_keys`）時只能斷言 local，所以 module 輸入一律先放 local。
 
 ```hcl
-module "in" {
-  source     = "../../../../../modules/ssm-read" # 複製出去後改成 git::...?ref=ssm-read-v<semver>
-  ssm_prefix = local.ssm_prefix
-
-  strings = {
+locals {
+  ssm_input_strings = {
     alarm_topic_arn        = "foundation/alarm_topic_arn"
     vpc_id                 = "network/vpc_id"
     role_ecs_execution_arn = "iam-base/role_ecs_execution_arn"
     database               = "data/database"
   }
-  lists = {
+  ssm_input_lists = {
     subnet_ids_app = "network/subnet_ids_app"
   }
+}
+
+module "in" {
+  source     = "../../../../../modules/ssm-read" # 複製出去後改成 git::...?ref=ssm-read-v<semver>
+  ssm_prefix = local.ssm_prefix
+  strings    = local.ssm_input_strings
+  lists      = local.ssm_input_lists
 }
 
 locals {
   database = jsondecode(module.in.strings["database"]) # 條件值
 }
 ```
+
+**每個服務一組的 key 要第二個 `ssm-read`**。`iam-base` 要讀 `containerimage/ecr_<service>_arn`、`application` 要讀 `ecr_<service>_url`、`sg_<service>_id`、`role_<service>_task_arn`、`ecs_exec_<service>`，這些 key 的名稱取決於服務清單，而 `iam-base` 的服務清單本身是從 SSM（`containerimage/services`）讀來的。同一個 module 呼叫的輸入不能依賴它自己的輸出，所以這兩個 stack 多一個 `module "in_services"`，key 清單同樣先放 local（`ssm_service_strings`）：
+
+```hcl
+locals {
+  service_key         = { for s in module.in.lists["services"] : s => replace(s, "-", "_") }
+  ssm_service_strings = { for s, k in local.service_key : "ecr_${k}_arn" => "containerimage/ecr_${k}_arn" }
+}
+
+module "in_services" {
+  source     = "../../../../../modules/ssm-read"
+  ssm_prefix = local.ssm_prefix
+  strings    = local.ssm_service_strings
+}
+```
+
+`application` 的服務清單取自自己的 `var.services`（precondition 檢查它等於 `containerimage/services`），同樣用 `module "in_services"` 讀每個服務的 key。
 
 下游引用 `module.in.strings["vpc_id"]`、`module.in.lists["subnet_ids_app"]`。本地名稱（map 的 key）通常跟 SSM key 同名；同一個 key 名稱在兩個 stack 都有時，本地名稱可以加前綴區分。測試時用 `override_data { target = module.in.data.aws_ssm_parameter.this["network/vpc_id"] ... }` 餵值。
 
@@ -3626,3 +3649,5 @@ tflint 的 aws ruleset（`tflint-ruleset-aws`，能抓到不存在的 instance t
 | D17 | （第二輪增補）8 個 module 實作與 design 的差異 | 已回寫到各 module 章節：vpc 移除中間 AZ 時 CIDR 位移、多兩條檢查；rds 的 `[0]` 位址、`<name>-writer`／`<name>-reader-N`、random provider、`pending-reboot` 只用在 `shared_preload_libraries`、validation 較多、`sns_topic_arns` 的 regex 結尾 `.+` 較寬；ecs-service 的 `step[...]`／`scaling[...]` 位址與 key、`service_arn` 取 `.id`、region 從 `cluster_arn` 拆、log driver 多兩個固定選項；ecs-service-alarms 告警集中在 `this[<key>]`；alb ELB 5xx 用 `GreaterThanOrEqualToThreshold`、404 本文 `Not Found`。另外：examples 目錄不是 `basic`（alb 是 `http-only`、`https`，rds 是 `rds`、`aurora-serverless-proxy`），測試依主題拆多檔，§4.1 已放寬；alb 的 listener 與告警、ecs-service-alarms 的告警只帶 `var.tags`、沒有加 `Name`，rds 的告警有加，**各 module 不一致** | 以程式碼為準。兩項列為**待統一**，這次不改程式碼：(1) 會建告警與 listener 的 module 一律在 tags 加 `Name`；(2) `sns_topic_arns` 的 ARN regex 統一成同一條（建議 alb／ecs-service-alarms 的 `[A-Za-z0-9_-]+$` 結尾）。之後一起以 PATCH 版發布 |
 | D18 | （Phase 7 A–D）7 個新 module 的實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 的 validation 改成三條（`Statement[0]` 要求非空清單、迴圈用 `try(..., [])` 讓非 JSON 能被 `expect_failures` 接到、Allow 不准 `NotAction`），兩個 module 一字不差；`kms-key` 的 `administrator_arns` regex 結尾 `[^*]+$` 擋 `role/*`，管理者 statement 的動作清單與服務 statement 的 Sid 規則寫進 §4.10；`s3-bucket` 在 SSE-KMS 時 `bucket_key_enabled = true`；`security-group` 的 `ip_protocol` 只收 `tcp`／`udp`／`-1`、`vpc_id` 有格式 validation、規則的 `Name` tag 是規則的 key，另記兩個已知限制（主機位元、兩個 `/1` 繞過 `allow_internet`）。`ecr-repository`、`ssm-read` 核對後與 design 一致 | 以程式碼為準 |
 | D19 | （Phase 7 完成）實作與 design 的差異 | 已回寫：`iam-role`、`iam-role-policy` 新增第四條「Allow 不准 `NotResource`」（決策 35）；`log-group` 的 subscription filter 名稱用 `var.name`，`role_arn` 是 provider 的 optional 加 computed，Lambda 目的地時為 null 只能靠程式碼保證；`log-metric-alarm` 的 `default_value` 在 module 內 `tostring()`，metric filter 不帶 tag；`xray` 的 `version = 1`、`resource_arn = "*"` 寫死；ADOT 範例的 sidecar 改成 `essential = false`；`vpc-interface-endpoints` 的 ingress rule 加 `Name` tag。另外：`allowed_cidrs` 有多個時，每條 ingress rule 的 `Name` 都是同一個 `<name>-vpce-https`，不影響運作，只是在 console 分不出哪一條對應哪個 CIDR | 以程式碼為準；`Name` 相同這點建議下一個 PATCH 版改成帶 CIDR，列為待統一 |
+| D20 | （Phase 8 完成，`5858bf4`）範本 8 個 stack 的實作與 design 的差異 | 已回寫：`network/nat` 在客戶自管模式 A 發布 `{"mode":"external","ids":[]}`（§5.6 合約表）；`ssm-inputs.tf` 一律先把 key 清單放進 local 再傳給 `module "in"`，因為 `terraform test` 讀不到 module 的輸入值；`iam-base` 與 `application` 多一個 `module "in_services"` 讀每個服務一組的 key（§5.6 讀取寫法）；SG 之間的每條連線展開成「來源 egress ＋ 目的 ingress」兩條，規則數等於展開後的數量（§5.3 規則表）。另外：規則 key 實作是 `alb_in_<port>_<來源>`、`<來源>_out_<目的>`、`<目的>_in_<來源>`，跟 §4.16 範例的 `alb_in_https`、`api_out_proxy`、`db_in_proxy` 寫法不同（範例的規則 key 把 `db_proxy` 簡寫成 `proxy`，實作一律用完整的 SG key，例如 `api_out_db_proxy`、`db_in_db_proxy`）；測試的寫法差異記在 implement-process 的 Phase 8 節與風險表 R15、R16 | 以程式碼為準；§4.16 的範例只示意展開方式，規則 key 不改 |
+| D21 | （Phase 8 發現）三個 module 的小問題，之後的 PATCH 版處理 | `ecs-service` 的 `cpu`、`memory`、`cpu_architecture`、`desired_count` 有預設值但沒有 `nullable = false`，呼叫端傳 `null` 時不會套預設（`cpu_architecture` 會直接被 validation 擋下），範本在 `application` 的 `optional(..., 預設)` 補上同樣的值；`rds` 的輸出沒有 `deployment` 與資料庫名稱，`data` stack 發布 `database` JSON 時只能取自己的 `var.db`；`vpc-interface-endpoints` 在 `services = []`、什麼都不建時仍然要求至少 2 個 subnet；範本兩種模式的 app tier 都至少有 2 個 subnet，目前不受影響，但其他呼叫端不建 endpoint 也得給 subnet | 列為之後 PATCH 的待辦（`nullable = false`、新增輸出、`services` 為空時不檢查 subnet）；修之前範本的寫法不用改。注意照 §3.5，新增輸出與放寬 validation 算 MINOR，實際發版時以 §3.5 判斷等級 |
