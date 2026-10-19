@@ -1,4 +1,9 @@
-docs/slides/
+# 簡報：只公開工具與範本，含客戶與內部資訊的簡報內容留在本機
+docs/slides/**/node_modules/
+docs/slides/**/dist/
+docs/slides/terraform-split/
+docs/slides/open-slide-redesign/slides/*/
+!docs/slides/open-slide-redesign/slides/getting-started/
 .terraform/
 .terraform-*/
 *.tfstate
