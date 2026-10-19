@@ -25,6 +25,8 @@ fix(iam-role): reject allow statements with NotResource
 
 不要手改 `CHANGELOG.md` 的版本段落，那是 release-please 產生的；PR 描述裡寫清楚消費端 plan 會看到什麼，release-please 會把 commit message 帶進 CHANGELOG。
 
+範本從 HCP registry 引用已發佈的版本（ADR-0004），不是 `main` 上的程式碼。module 與範本要一起改時分兩次：先合併 module 的 PR 並等 release-please 發版、HCP 讀到新版，再開範本的 PR（MINOR 以上要改 `version`）。順序反過來，範本的 PR 在 CI 會 init 或 validate 失敗。
+
 `modules/` 底下不放 `provider`、`backend`、`.terraform.lock.hcl`；module 之間不互相呼叫；不用 `enable_xxx` 開關，資源要不要建由相依的輸入有沒有給決定。
 
 ## semver：看消費端換版後 plan 會看到什麼

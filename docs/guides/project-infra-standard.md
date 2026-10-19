@@ -13,7 +13,7 @@ cp -R <platform-repo>/templates/project-infra/infra ./infra
 
 | 步驟 | 改什麼 | 在哪裡 |
 |---|---|---|
-| 1 | 每個 module 的 `source` 從相對路徑換成 `git::...?ref=<module>-v<semver>` | 指令見 [`consuming-modules.md`](./consuming-modules.md)〈從範本複製出去〉 |
+| 1 | module 的 `source` 已經是 `app.terraform.io/libterty/<module>/aws`。用自己的 HCP organization 時換掉 `libterty`；拿不到 HCP token 時改成 `git::...?ref=<module>-v<semver>` | 指令見 [`consuming-modules.md`](./consuming-modules.md)〈從範本複製出去〉與〈備案〉 |
 | 2 | `common.tf` 的 `accounts_by_env`：填入各環境的帳號。8 個 stack 的 `common.tf` 必須一字不差，改一份就複製到其他 7 份 | `infra/terraform/*/common.tf` |
 | 3 | 每份 `envs/<env>.tfbackend` 的 `bucket`（`<state-bucket>` 佔位符）與 key 的 `alpha` 前綴 | `infra/terraform/*/envs/*.tfbackend` |
 | 4 | 每份 `envs/<env>.tfvars` 的 `project`、`expected_account_id`；以及告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 | `infra/terraform/*/envs/*.tfvars` |

@@ -48,14 +48,16 @@ module "api" {
 * `<org>` 是 HCP Terraform 的 organization 名稱。module 名稱與目錄名稱相同，provider 一律填 `aws`。
 * 0.x 期間 MINOR 可能是破壞性變更（設計文件 §3.5），所以約束寫到 PATCH（`~> 0.1.0`，等於 `>= 0.1.0, < 0.2.0`）。到 1.0 之後改成 `~> 1.2`。
 * HCP 的每個 module 都登記成 tag-based 發佈：Source Directory 填 `modules/<module>`，Module Tag Prefix 填 `<module>-v`。tag `s3-bucket-v0.1.1` 會發佈成 `s3-bucket` 的 `0.1.1`。
-* 範本在本 repo 裡仍用相對路徑（設計文件決策 #2 不變），CI 驗的是當下的 module 程式碼；複製出去時換成 registry 寫法，指令見 [`consuming-modules.md`](../guides/consuming-modules.md)。
+* 範本本身也用 registry 寫法（`app.terraform.io/libterty/<module>/aws`），每個 module 區塊的 `source` 上方有一行註解指向 [`consuming-modules.md`](../guides/consuming-modules.md)；複製出去即可用，換 organization 或改 git source 的指令在那份文件。2026-10-19 起取代設計文件決策 #2（範本用相對路徑），原因是讓讀者打開範本就看到消費端實際的寫法。
 
 ### Consequences
 
 * Good: 有版本範圍；patch 版不用每個專案開 PR，`init -upgrade` 就吃得到。
-* Good: 範本複製出去時每個 module 都寫 `~> 0.1.0`，不必記哪 10 個要釘 `v0.1.1`。
+* Good: 範本複製出去時每個 module 都是 `~> 0.1.0`，不必記哪 10 個要釘 `v0.1.1`；範本就是消費端實際的樣子。
 * Good: 發版流程、tag、CHANGELOG、module 程式碼都不變；HCP 透過 webhook 讀新 tag。
 * Bad: 多了一層憑證。消費端與 CI 要有 HCP token（`terraform login` 或 `TF_TOKEN_app_terraform_io`），這是 ADR-0001 刻意避開的。
+* Bad: 範本測的是已發佈的 module 版本，不是 `main` 上的程式碼。module 與範本要一起改時，先合併並發佈 module，範本的 PR 再升 `version`；module 自己的 `tests/` 照舊測當下的程式碼。
+* Bad: CI 在 pull request 上也要讀 token，同一個 repo 開的 PR 讀得到它；fork 來的 PR 拿不到 secret，範本的 stack 會失敗。
 * Bad: 多一個外部依賴。HCP 掛掉或 token 過期時 `terraform init` 抓不到 module；已經 init 過的 `.terraform/modules` 不受影響，必要時退回 git source。
 * Bad: 每個 module 都要在 HCP 登記一次，新增 module 時也要記得登記（[`hcp-registry-setup.md`](../guides/hcp-registry-setup.md) 有網頁與 API 兩種做法）。登記用的 API 欄位不在官方文件裡，HCP 改版時可能要改回網頁登記。
 * Bad: 有版本範圍代表 `init -upgrade` 可能吃到新的 patch 版。PATCH 必須真的不改 plan，這條規則照舊由 platform team 在 review 時把關。
@@ -65,8 +67,7 @@ module "api" {
 
 * `scripts/vendor-modules.sh --registry <host>/<namespace>` 只改寫「source 是 `<host>/<namespace>/<module>/aws`，而且 `modules.json` 解析到的版本等於指定 tag」的 module 區塊，同時拿掉該區塊的 `version`；版本不同或沒有 init 過的區塊不動並列出來，結束碼 3。
 * HCP 上的版本清單要跟 GitHub 的 tag 對得上：登記完之後照 [`hcp-registry-setup.md`](../guides/hcp-registry-setup.md) 的檢查步驟，對每個 module 跑一次 `terraform init`。
-* 本 repo 的 CI 不連 HCP，驗的仍是當下的程式碼。
-* 另一個 Registry workflow（`.github/workflows/registry.yml`）在 push 到 `main`、每週一與手動觸發時，用 `scripts/template-to-registry.sh` 把範本轉成 registry 寫法，對已發佈的版本跑 `init` 與 `validate`。它讀 HCP token，所以不在 pull request 跑。org 是 Personal 方案、建不了唯讀 team，目前用 30 天到期的 owners team token；這是安全例外，風險與補償措施記在 [`hcp-registry-setup.md`](../guides/hcp-registry-setup.md)。轉換收成腳本是為了讓文件與 CI 共用同一份邏輯，取代設計文件決策 J9「範本轉換是手動步驟、不寫腳本」。
+* CI 的 `scripts/validate.sh` 對範本的 9 個 stack 從 registry 抓已發佈的版本跑 `init`、`validate`、`test`、`tflint`，job summary 列出解析到的版本；每週一排程跑一次，確認 registry 與 token 還能用。org 是 Personal 方案、建不了唯讀 team，CI 用 30 天到期的 owners team token，而且 pull request 也讀得到；這是安全例外，風險、暴露面與補償措施記在 [`hcp-registry-setup.md`](../guides/hcp-registry-setup.md)〈CI 的 token〉。
 
 ## Pros and Cons of the Options
 

@@ -1,6 +1,6 @@
 # infra-platform
 
-[![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://github.com/libterty/infra-platform/actions/workflows/registry.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/registry.yml)
+[![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml)
 
 Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，透過 HCP Terraform private registry 提供給各專案用版本範圍引用，不再每個專案各寫一套。
 
@@ -61,7 +61,7 @@ module "api" {
 
 ## 開發
 
-只需要 terraform（1.15.8）、tflint（0.64.0）與 bash，不需要任何 AWS 憑證：
+只需要 terraform（1.15.8）、tflint（0.64.0）、bash 與 jq，不需要任何 AWS 憑證。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要先 `terraform login`（要是該 organization 的成員）：
 
 ```bash
 scripts/validate.sh                      # 全部

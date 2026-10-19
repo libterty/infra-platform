@@ -116,20 +116,21 @@ rm -rf "$tmp"
 | CI | 環境變數 `TF_TOKEN_app_terraform_io`，放在 CI 的 secret。優先用不給任何權限的 team token，不要用個人的 token；方案建不了自訂 team 時見下一節的例外 |
 | 客戶環境 | 不給我們的 token。FDE 用 `scripts/vendor-modules.sh --registry` 把 module 複製進客戶 repo（[`delivering-to-customer.md`](./delivering-to-customer.md)） |
 
-### 本 repo 的 Registry workflow
+### CI 的 token
 
-`.github/workflows/registry.yml` 每次 push 到 `main`、每週一與手動觸發時，跑 `scripts/check-template-registry.sh`：把範本轉成 registry 寫法，對已發佈的版本跑 `init -backend=false` 與 `validate`，並在 job summary 列出每個 module 解析到的版本。它讀 repo secret `TF_TOKEN_APP_TERRAFORM_IO`；沒設時整個檢查跳過，不算失敗。
+範本的 stack 直接從 `app.terraform.io/libterty` 引用 module（ADR-0004），所以 CI（`.github/workflows/ci.yml`）的 `scripts/validate.sh` 要讀 repo secret `TF_TOKEN_APP_TERRAFORM_IO` 才能 init 範本。CI 在 pull request、push 到 `main`、每週一與手動觸發時跑，跑完在 job summary 列出範本解析到的 module 版本。本機跑 `validate.sh` 用 `terraform login` 的 token；沒有 token 時它會在 init 前直接報錯。
 
-本 repo 目前用的是 **owners team token**：org 是 Personal 方案，Teams 頁面只有 `owners`，建不了唯讀 team（2026-10-19 確認）。這是安全規範的例外，記錄如下：
+本 repo 用的是 **owners team token**：org 是 Personal 方案，Teams 頁面只有 `owners`，建不了唯讀 team（2026-10-19 確認）。這是安全規範的例外，記錄如下：
 
 | 項目 | 內容 |
 |---|---|
 | 風險 | token 能管理整個 `libterty` organization，包括刪除 module、改設定、管理成員；外洩時 registry 可能被改或被刪 |
+| 暴露面 | CI 在 pull request 上也會跑，**同一個 repo 開的 PR 的程式碼讀得到這個 token**（例如在 PR 裡改 `validate.sh` 或 workflow 就能印出或送出 token）。fork 來的 PR 拿不到 secret，範本的 stack 會在 init 失敗 |
 | 影響範圍 | HCP 上的 `libterty` organization；GitHub 與 AWS 不受影響 |
-| 補償措施 | 只放在 repo secret，只給 workflow 裡的一個 step；workflow 不在 `pull_request` 跑，PR 的程式碼碰不到；`permissions: contents: read`；action 都釘 commit SHA；token 30 天到期，到期後每週一的排程會轉紅，提醒換新 |
-| 外洩時 | HCP organization 設定 → API tokens 撤銷，重新產生後照下面步驟換掉 secret；到 HCP 的 audit 與 registry 頁面確認 module 沒被改 |
+| 補償措施 | 只有 repo owner 能推 branch、開同 repo 的 PR；secret 只給 Validate 這一步；`permissions: contents: read`；action 都釘 commit SHA；token 30 天到期，到期後每週一的排程會轉紅，提醒換新 |
+| 外洩時 | HCP organization 設定 → API tokens 撤銷，重新產生後照下面步驟換掉 secret；到 HCP 的 registry 頁面確認 module 與版本沒被改 |
 | 負責人 | repo owner（`libterty`） |
-| 移除例外的時點 | HCP 方案能建自訂 team 時，改成不給任何權限的 team token（照下面的步驟，Team 選那個 team），刪掉 owners token |
+| 移除例外的時點 | HCP 方案能建自訂 team 時，改成不給任何權限的 team token（Team 選那個 team），刪掉 owners token。repo 開放其他人推 branch 之前也要先做到這一點 |
 
 設定或換新 secret：
 
@@ -138,10 +139,10 @@ rm -rf "$tmp"
 
    ```bash
    read -rs TOKEN
-   TF_TOKEN_app_terraform_io="$TOKEN" scripts/check-template-registry.sh app.terraform.io/<org>
+   TF_TOKEN_app_terraform_io="$TOKEN" scripts/validate.sh templates/project-infra/infra/terraform/*/
    ```
 
-   最後一行是 `All stacks passed init and validate.` 才往下做。
+   最後一行是 `OK：9 個目錄全部通過` 才往下做。
 3. 存成 secret 並清掉變數：
 
    ```bash
@@ -149,7 +150,7 @@ rm -rf "$tmp"
    unset TOKEN
    ```
 
-4. Actions 頁面手動觸發 Registry workflow，確認是綠的。
+4. Actions 頁面手動觸發 CI workflow，確認是綠的。
 5. 舊的 token 到 HCP 撤銷。
 
 ## 之後的維護
