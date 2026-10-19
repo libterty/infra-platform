@@ -9,7 +9,9 @@ locals {
 }
 
 module "ecr" {
-  source   = "../../../../../modules/ecr-repository"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/ecr-repository/aws"
+  version  = "~> 0.1.0"
   for_each = local.repositories
 
   name            = each.value.name
@@ -28,7 +30,9 @@ locals {
 }
 
 module "ecr_mirror" {
-  source   = "../../../../../modules/ecr-repository"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/ecr-repository/aws"
+  version  = "~> 0.1.0"
   for_each = local.mirror_repositories
 
   name            = each.value.name
@@ -47,7 +51,9 @@ locals {
 }
 
 module "ecr_agent" {
-  source   = "../../../../../modules/ecr-repository"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/ecr-repository/aws"
+  version  = "~> 0.1.0"
   for_each = local.agent_repositories
 
   name            = each.value.name

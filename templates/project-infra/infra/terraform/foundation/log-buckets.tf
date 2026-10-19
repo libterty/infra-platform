@@ -19,7 +19,9 @@ locals {
 }
 
 module "log_bucket" {
-  source   = "../../../../../modules/s3-bucket"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/s3-bucket/aws"
+  version  = "~> 0.1.0"
   for_each = local.log_buckets
 
   name            = each.value.name

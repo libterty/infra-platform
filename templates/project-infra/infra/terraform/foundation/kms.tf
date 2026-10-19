@@ -14,7 +14,9 @@ locals {
 }
 
 module "kms" {
-  source = "../../../../../modules/kms-key"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/kms-key/aws"
+  version = "~> 0.1.0"
 
   name               = local.name_prefix
   description        = "Shared key of ${local.name_prefix}"

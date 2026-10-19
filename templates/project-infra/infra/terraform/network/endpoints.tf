@@ -9,7 +9,9 @@ locals {
 }
 
 module "vpce" {
-  source = "../../../../../modules/vpc-interface-endpoints"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/vpc-interface-endpoints/aws"
+  version = "~> 0.1.0"
 
   name          = local.name_prefix
   vpc_id        = local.interface_endpoints.vpc_id

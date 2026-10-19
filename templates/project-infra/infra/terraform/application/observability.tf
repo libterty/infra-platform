@@ -13,7 +13,9 @@ locals {
 }
 
 module "log_alarms" {
-  source   = "../../../../../modules/log-metric-alarm"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/log-metric-alarm/aws"
+  version  = "~> 0.1.0"
   for_each = local.log_alarm_inputs
 
   name_prefix    = each.value.name_prefix
@@ -24,7 +26,9 @@ module "log_alarms" {
 }
 
 module "xray" {
-  source = "../../../../../modules/xray"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/xray/aws"
+  version = "~> 0.1.0"
 
   name_prefix    = local.name_prefix
   sampling_rules = var.xray_sampling_rules

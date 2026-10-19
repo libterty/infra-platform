@@ -35,7 +35,9 @@ locals {
 }
 
 module "proxy_secret_access" {
-  source   = "../../../../../modules/iam-role-policy"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role-policy/aws"
+  version  = "~> 0.1.0"
   for_each = local.database.enabled ? { proxy = true } : {}
 
   role_arn = local.proxy_secret_access.role_arn

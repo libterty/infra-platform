@@ -62,13 +62,17 @@ locals {
 }
 
 module "cluster" {
-  source = "../../../../../modules/ecs-cluster"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/ecs-cluster/aws"
+  version = "~> 0.1.0"
 
   name = "${local.name_prefix}-app"
 }
 
 module "service" {
-  source   = "../../../../../modules/ecs-service"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/ecs-service/aws"
+  version  = "~> 0.1.0"
   for_each = local.service_inputs
 
   name                   = each.value.name
@@ -91,7 +95,9 @@ module "service" {
 }
 
 module "service_alarms" {
-  source   = "../../../../../modules/ecs-service-alarms"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/ecs-service-alarms/aws"
+  version  = "~> 0.1.0"
   for_each = local.service_inputs
 
   name           = module.service[each.key].service_name

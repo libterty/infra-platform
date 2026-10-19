@@ -5,8 +5,10 @@ locals {
 }
 
 module "vpc" {
-  source = "../../../../../modules/vpc"
-  count  = local.create_vpc ? 1 : 0
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/vpc/aws"
+  version = "~> 0.1.0"
+  count   = local.create_vpc ? 1 : 0
 
   name     = local.name_prefix
   cidr     = var.vpc.cidr

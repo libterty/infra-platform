@@ -86,9 +86,9 @@ terraform plan -var-file=envs/dev.tfvars
 
 ## 複製出去之後要改什麼
 
-這份範本在本 repo 裡用相對路徑引用 module（`../../../../../modules/<name>`），這樣 module 的 tag 還沒打出來時也能驗證。複製到專案 repo 之後，先做這幾件事：
+這份範本從 HCP private registry 引用 module（`app.terraform.io/libterty/<module>/aws` 加 `version`，ADR-0004），每個 module 區塊的 `source` 上方有一行註解說明。複製到專案 repo 之後，先做這幾件事：
 
-1. 把每個 module 的 `source` 從相對路徑改成 HCP registry 寫法：`source = "app.terraform.io/<org>/<module>/aws"` 加 `version = "~> 0.1.0"`，改完跑 `terraform init -backend=false` 確認抓得到。一次改完的指令，以及拿不到 HCP token 時改用 `git::...?ref=<module>-v<semver>` 的備案，見 `docs/guides/consuming-modules.md`。
+1. module 的 `source`：用 `libterty` 這個 organization 就不用改，`terraform login` 後跑 `terraform init -backend=false` 確認抓得到。用自己的 organization 時換掉 `app.terraform.io/libterty/`；拿不到 HCP token 時改成 `git::...?ref=<module>-v<semver>`。兩種的一次改完指令見 `docs/guides/consuming-modules.md`。
 2. 改 `common.tf` 的 `accounts_by_env`，填入各環境的帳號；9 個 stack 要同步改，保持一字不差。
 3. 改每份 `envs/*.tfbackend` 的 `bucket`（目前是 `<state-bucket>` 佔位符）與 key 的 `alpha` 前綴。
 4. 改每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及各 stack 的佔位值：告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 CIDR 或 prefix list。

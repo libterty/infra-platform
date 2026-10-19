@@ -29,8 +29,10 @@ locals {
 }
 
 module "inference_profile" {
-  source = "../../../../../modules/bedrock-inference-profile"
-  count  = length(local.tracked_models) > 0 ? 1 : 0
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/bedrock-inference-profile/aws"
+  version = "~> 0.1.0"
+  count   = length(local.tracked_models) > 0 ? 1 : 0
 
   name_prefix = local.name_prefix
   profiles    = local.tracked_models

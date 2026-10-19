@@ -107,7 +107,9 @@ locals {
 }
 
 module "sg" {
-  source = "../../../../../modules/security-group"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/security-group/aws"
+  version = "~> 0.1.0"
 
   vpc_id          = local.vpc_id
   security_groups = local.security_groups
