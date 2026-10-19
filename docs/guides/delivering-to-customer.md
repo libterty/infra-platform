@@ -1,26 +1,69 @@
 # 交付到客戶環境（FDE）
 
-結論：客戶環境連不到我們的 GitHub 時，FDE 做三件事。用 `scripts/vendor-modules.sh` 把專案 repo 裡釘好 tag 的 `git::` source 換成客戶 repo 內的 vendored 目錄；用 `terraform providers mirror` 把 provider 準備成離線鏡像；跟客戶約定哪些 stack 由客戶自管、客戶照 SSM 合約發布哪些 key。客戶環境跟範本假設不同的地方，開 issue 回報給 platform team，不在交付 repo 裡直接改 module。
+結論：客戶環境連不到我們的 HCP registry 或 GitHub 時，FDE 做三件事。用 `scripts/vendor-modules.sh` 把專案 repo 裡的 registry source（或釘好 tag 的 `git::` source）換成客戶 repo 內的 vendored 目錄；用 `terraform providers mirror` 把 provider 準備成離線鏡像；跟客戶約定哪些 stack 由客戶自管、客戶照 SSM 合約發布哪些 key。客戶環境跟範本假設不同的地方，開 issue 回報給 platform team，不在交付 repo 裡直接改 module。
 
 ## 輸入與輸出
 
 | | 內容 |
 |---|---|
-| 輸入 | 一個已經釘好 tag 的專案 repo（`source` 都是 `git::https://github.com/<org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`，做法見 [`consuming-modules.md`](./consuming-modules.md)） |
+| 輸入 | 一個已經引用好 module 的專案 repo：registry 寫法（`app.terraform.io/<org>/<module>/aws` 加 `version`），或 git 寫法（`git::https://github.com/<github-org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`）。做法見 [`consuming-modules.md`](./consuming-modules.md) |
 | 輸出 | 客戶 repo：`vendor/modules/<module>/`、`vendor/modules/VERSIONS`、改寫過 `source` 的 `.tf`、provider 鏡像、SSM 合約表（`infra/README.md`）、這份文件 |
 
-`vendor-modules.sh` 只做「`git::...?ref=<tag>` → vendored 相對路徑」這一個方向。範本的相對路徑換成 `git::` 是專案 app team 複製範本時做的，不歸這支腳本。
+`vendor-modules.sh` 只做「registry 或 `git::...?ref=<tag>` → vendored 相對路徑」這一個方向。範本的相對路徑換成 registry 或 `git::` 是專案 app team 複製範本時做的，不歸這支腳本。
 
 ## 1. vendoring：`scripts/vendor-modules.sh`
 
-在本 repo（infra-platform）的 clone 裡執行，tag 要先 fetch 下來：
+在本 repo（infra-platform）的 clone 裡執行，tag 要先 fetch 下來。module 的內容一律從本 repo 的 tag 取，不從 registry 下載；registry 上的版本 `0.1.1` 就是 tag `<module>-v0.1.1`。
+
+### registry 寫法的專案
+
+registry 寫法有版本範圍，`.tf` 裡看不出實際用哪一版，所以先在每個 stack `terraform init`，讓 Terraform 把解析到的版本寫進 `modules.json`，腳本照這份紀錄 vendoring。這一步要有 HCP token（`terraform login`），在準備交付物的機器上做，不是在客戶環境。
+
+```bash
+CUSTOMER_REPO=/path/to/customer-repo      # 必須是 git repo 的根目錄，而且沒有未提交的變更
+PLATFORM_REGISTRY="app.terraform.io/<org>"
+export TF_DATA_DIR=.terraform-vendor      # 單一層的目錄名稱；下面的 init 與腳本要用同一個值
+
+# 0. init 產生的目錄必須被客戶 repo 的 .gitignore 忽略，否則腳本會當成未提交的變更而拒絕執行
+git -C "$CUSTOMER_REPO" check-ignore -q "infra/terraform/x/${TF_DATA_DIR}/" \
+  || echo "先在客戶 repo 的 .gitignore 加上 .terraform*/ 並 commit"
+
+# 1. 每個 stack init 一次（不連 backend），解析版本
+for d in "$CUSTOMER_REPO"/infra/terraform/*/; do
+  terraform -chdir="$d" init -backend=false -input=false >/dev/null || echo "FAIL $d"
+done
+
+# 2. 從 modules.json 撈出 <module>=<tag>；同一個 module 解析出兩個版本時會出現兩行，腳本會以碼 1 拒絕
+pairs="$(jq -r --arg reg "$PLATFORM_REGISTRY/" '
+    .Modules[]
+    | select(.Version and (.Source | ascii_downcase | startswith($reg | ascii_downcase)))
+    | (.Source | split("/")[2]) as $m | "\($m)=\($m)-v\(.Version)"
+  ' "$CUSTOMER_REPO"/infra/terraform/*/"$TF_DATA_DIR"/modules/modules.json | sort -u)"
+echo "$pairs"
+
+# 3. vendoring
+cd <platform-repo>
+git fetch --tags origin
+# shellcheck disable=SC2086  # pairs 要拆成多個參數
+scripts/vendor-modules.sh --registry "$PLATFORM_REGISTRY" "$CUSTOMER_REPO" $pairs
+
+# 4. 清掉 init 產生的目錄，之後用不到
+rm -rf "$CUSTOMER_REPO"/infra/terraform/*/"$TF_DATA_DIR"
+unset TF_DATA_DIR
+```
+
+腳本改寫的是「`source` 等於 `<registry>/<module>/aws`，而且 `modules.json` 解析到的版本等於指定 tag」的 module 區塊：`source` 換成相對路徑，同一個區塊的 `version` 那一行刪掉（本地路徑不能有 `version`）。比對 host 與 namespace 不分大小寫。module 區塊是靠大括號的層數找的，字串、註解與 heredoc 裡的內容不算；有檔案的大括號對不起來時，腳本以碼 1 拒絕。`modules.json` 比同目錄的 `.tf` 舊（init 之後又改過 `.tf`）時不採用，那個目錄的區塊會列為 `not resolved`。
+
+所有改動都先在暫存目錄準備好，全部 module 都處理完才寫進客戶 repo，所以結束碼 1 一定代表客戶 repo 沒有被改。只有改寫過的 `.tf` 會被寫回，其他檔案一個位元組都不動。
+
+### git 寫法的專案
 
 ```bash
 cd <platform-repo>
 git fetch --tags origin
 
 CUSTOMER_REPO=/path/to/customer-repo      # 必須是 git repo 的根目錄，而且沒有未提交的變更
-PLATFORM_URL="https://github.com/<org>/<repo>.git"
+PLATFORM_URL="https://github.com/<github-org>/<repo>.git"
 
 # 從客戶 repo 的 .tf 撈出所有 <module>=<tag>
 pairs="$(grep -rhoE --include='*.tf' '//modules/[a-z0-9-]+\?ref=[a-z0-9-]+-v[0-9]+\.[0-9]+\.[0-9]+' "$CUSTOMER_REPO" \
@@ -31,15 +74,17 @@ echo "$pairs"
 scripts/vendor-modules.sh --url "$PLATFORM_URL" "$CUSTOMER_REPO" $pairs
 ```
 
-腳本做的事：
+兩種寫法混用的專案，`--url` 與 `--registry` 可以一起給，`pairs` 合併兩邊撈出來的結果。
+
+### 腳本做的事
 
 | 步驟 | 做法 |
 |---|---|
-| 檢查輸入 | module 名稱符合 `^[a-z][a-z0-9-]*$` 且是 `modules/` 底下的目錄；tag 符合 `<module>-v<MAJOR>.<MINOR>.<PATCH>`、前綴等於 module 名稱、在本 repo 存在；`--url` 必須是 `https://github.com/<org>/<repo>.git` |
-| 檢查目標 | 必須是 git repo 的根目錄、工作目錄乾淨（含未追蹤的檔案）；`vendor`、`vendor/modules` 不得是 symlink |
+| 檢查輸入 | module 名稱符合 `^[a-z][a-z0-9-]*$` 且是 `modules/` 底下的目錄；tag 符合 `<module>-v<MAJOR>.<MINOR>.<PATCH>`、前綴等於 module 名稱、在本 repo 存在；`--url` 必須是 `https://github.com/<org>/<repo>.git`；`--registry` 必須是小寫 host 加 namespace（例如 `app.terraform.io/acme`），而且 `TF_DATA_DIR` 是單一層的目錄名稱 |
+| 檢查目標 | 必須是 git repo 的根目錄、工作目錄乾淨（含未追蹤的檔案）；`vendor`、`vendor/modules` 不得是 symlink；`--registry` 時讀得到的 `modules.json` 都要是合法 JSON |
 | 取檔 | `git archive <tag> modules/<module>`，不 checkout、不執行 module 裡的任何東西；內容有 symlink 或 submodule 就拒絕 |
 | 寫入 | 固定寫到 `vendor/modules/<module>/`，已經有就整個換掉 |
-| 改寫 | 只改 `source` 的值完全等於 `git::<url>//modules/<module>?ref=<tag>` 的那一行，換成相對路徑（例如 `../../../vendor/modules/vpc`），同一行後面的註解保留 |
+| 改寫 | `--url`：只改 `source` 的值完全等於 `git::<url>//modules/<module>?ref=<tag>` 的那一行。`--registry`：見上一節。換成相對路徑（例如 `../../../vendor/modules/vpc`），同一行後面的註解保留 |
 | 記錄 | `vendor/modules/VERSIONS` 每個 module 一行：名稱、tag、commit SHA |
 
 結束碼：
@@ -48,7 +93,7 @@ scripts/vendor-modules.sh --url "$PLATFORM_URL" "$CUSTOMER_REPO" $pairs
 |---|---|---|
 | 0 | 完成 | 往下做檢查 |
 | 1 | 輸入錯誤或目標不符合條件，**什麼都沒改** | 照訊息修正後重跑 |
-| 3 | 完成，但有指向同一個 module、ref 不同的 `source` 沒有改寫，清單印在 stderr | 同一個 module 在客戶 repo 裡釘了兩個版本。先在專案 repo 統一版本，再重新交付；不要手動把那一行改成 vendored 路徑，會變成用錯版本的程式碼 |
+| 3 | 完成，但有些 `source` 沒有改寫，清單印在 stderr：git 寫法是同一個 module、ref 不同；registry 寫法是解析到別的版本（`resolved to <版本>`）或沒有 init 過（`not resolved`） | `not resolved`：那個 stack 沒有 init 或 `TF_DATA_DIR` 不一致，補 init 後重跑。版本不同：同一個 module 在客戶 repo 裡用了兩個版本，先在專案 repo 統一版本，再重新交付；不要手動把那一行改成 vendored 路徑，會變成用錯版本的程式碼 |
 
 同一個 module 在參數裡出現兩次（例如上面撈出兩個不同的 tag）會直接以碼 1 拒絕，這也是「版本不一致」的訊號。
 
@@ -57,7 +102,7 @@ scripts/vendor-modules.sh --url "$PLATFORM_URL" "$CUSTOMER_REPO" $pairs
 ```bash
 cd "$CUSTOMER_REPO"
 git status --short                                                  # 只有 vendor/ 與改寫過的 .tf
-grep -rnE --include='*.tf' 'source *= *"git::' . | grep -v '^./vendor/'   # 預期沒有輸出
+grep -rnE --include='*.tf' 'source *= *"(git::|app\.terraform\.io/)' . | grep -v '^./vendor/'   # 預期沒有輸出
 cat vendor/modules/VERSIONS
 ```
 
@@ -81,7 +126,7 @@ stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init�
 
 ### 升版重新交付
 
-專案 repo 升了某個 module 的 `ref` 之後，客戶 repo 的那一行已經是 vendored 路徑，腳本找不到 `git::` 那一行可以改。做法是從專案 repo 重新產生交付內容：把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 `git::` 版本並 commit），再跑一次腳本。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
+專案 repo 升了某個 module 的 `version` 或 `ref` 之後（registry 寫法吃到新的 patch 版也算），客戶 repo 的那一行已經是 vendored 路徑，腳本找不到可以改的 `source`。做法是從專案 repo 重新產生交付內容：把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 registry 或 `git::` 版本並 commit），照上面的步驟再跑一次（registry 寫法要重新 init）。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
 
 ## 2. provider 的離線鏡像：`terraform providers mirror`
 

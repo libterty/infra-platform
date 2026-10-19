@@ -83,5 +83,6 @@ tag 由 release-please 以 `include-component-in-tag` 產生（第一批由人�
 
 ## More Information
 
+* 2026-10-19 更新：消費端預設改用 HCP Terraform private registry，見 [ADR-0004](./0004-hcp-terraform-private-registry.md)。本 ADR 的發版機制（monorepo、`<module>-v<semver>` tag、release-please）不變，`git::...?ref=<tag>` 降為備案。
 * 升級路徑：需要版本範圍、專案數多到手動追 patch 變成負擔、或 clone 時間影響 CI 時，改用 HCP Terraform Free（每個 module 登記一次，Source Directory 填 `modules/<name>`、Tag Prefix 填 `<name>-v`）；資料不能出自有或客戶環境時改用 boring-registry。消費端 `source` 從 `git::...?ref=<tag>` 改成 `<registry-host>/<namespace>/<name>/aws` 加 `version = "~> 1.2"`，module 程式碼不用改。
 * 設計文件：[`docs/design/v1/design-docs.md`](../design/v1/design-docs.md) §3。

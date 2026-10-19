@@ -1,6 +1,6 @@
 # infra-platform
 
-Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，各專案用 `?ref=<module>-v<semver>` 釘版本引用，不再每個專案各寫一套。
+Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，透過 HCP Terraform private registry 提供給各專案用版本範圍引用，不再每個專案各寫一套。
 
 ## module
 
@@ -39,11 +39,12 @@ Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo �
 
 ```hcl
 module "api" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/ecs-service?ref=ecs-service-v0.1.0"
+  source  = "app.terraform.io/<org>/ecs-service/aws"
+  version = "~> 0.1.0"
 }
 ```
 
-`<org>`、`<repo>` 尚未決定，先用佔位符。認證、升版與從範本複製出去的改法見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。
+`<org>` 是 HCP Terraform 的 organization，先用佔位符。認證、升版、從範本複製出去的改法，以及沒有 HCP token 時改用 `git::...?ref=<tag>` 的備案，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 不同團隊怎麼用
 
@@ -77,8 +78,9 @@ commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 是 modul
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 為什麼這樣設計、module 介面、stack 清單、SSM 合約                                                    | [`docs/design/v1/design-docs.md`](./docs/design/v1/design-docs.md)                                                                                                                                                                                           |
 | 實作步驟與每個 Phase 的驗收                                                                          | [`docs/design/v1/implement-process.md`](./docs/design/v1/implement-process.md)                                                                                                                                                                               |
-| 架構決策                                                                                             | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md) |
-| 怎麼引用 module、私有 repo 認證、升版                                                                | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md)                                                                                                                                                                                     |
+| 架構決策                                                                                             | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md)、[0004 HCP registry](./docs/adr/0004-hcp-terraform-private-registry.md) |
+| 怎麼引用 module、HCP 認證、升版、git 備案                                                                | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md)                                                                                                                                                                                     |
+| 怎麼把 module 登記到 HCP Terraform private registry | [`docs/guides/hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md) |
 | 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md)                                                                                |
 | 怎麼改 module、semver、release-please、第一次手動打 tag                                              | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md)                                                                                                                                                                                     |
 | ADOT sidecar、X-Ray 權限與抽樣、log 告警                                                             | [`docs/guides/observability.md`](./docs/guides/observability.md)                                                                                                                                                                                             |
