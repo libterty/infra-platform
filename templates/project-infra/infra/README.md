@@ -51,7 +51,7 @@ infra/
 | 8 | `loadbalancer` | foundation、network | `alb_*`、`listener_*` |
 | 9 | `application` | 前面的 stack（`iam-app/tracing`、`iam-app/agent_access` 一律讀；有服務被追蹤時才另讀 `network/nat`、`network/interface_endpoints`，映像用 mirror 時再讀 `containerimage/mirrored_images` 與 `ecr_mirror_adot_collector_url`；`agent_access` 有列服務時才讀 `agent/*` 與 `network/nat`、`network/interface_endpoints`） | 不發布 |
 
-`agent` 一定要在 `iam-app` 之前 apply，即使什麼都沒開：`iam-app` 讀 `agent` 發布的 key。Runtime、Memory、guardrail 的權限在 `iam-app` 才附加，指向 `agent` 建好的確切 ARN（跟 RDS Proxy 一樣是兩段式）。
+即使什麼都沒開，`agent` 也一定要在 `iam-app` 之前 apply，因為 `iam-app` 讀 `agent` 發布的 key。Runtime、Memory、guardrail 的權限在 `iam-app` 才附加，指向 `agent` 建好的確切 ARN（跟 RDS Proxy 一樣是兩段式）。
 
 第一次部署有 Knowledge Base 時要分兩段 apply `agent`，步驟見〈Knowledge Base 第一次部署：兩段式步驟〉。沒有 Knowledge Base 時不用。
 
@@ -88,7 +88,7 @@ terraform plan -var-file=envs/dev.tfvars
 
 這份範本從 HCP private registry 引用 module（`app.terraform.io/libterty/<module>/aws` 加 `version`，ADR-0004），每個 module 區塊的 `source` 上方有一行註解說明。複製到專案 repo 之後，先做這幾件事：
 
-1. module 的 `source`：用 `libterty` 這個 organization 就不用改，`terraform login` 後跑 `terraform init -backend=false` 確認抓得到。用自己的 organization 時換掉 `app.terraform.io/libterty/`；拿不到 HCP token 時改成 `git::...?ref=<module>-v<semver>`。兩種的一次改完指令見 `docs/guides/consuming-modules.md`。
+1. module 的 `source`：用 `libterty` 這個 organization 就不用改，`terraform login` 後跑 `terraform init -backend=false` 確認抓得到。用自己的 organization 時換掉 `app.terraform.io/libterty/`；拿不到 HCP token 時改成 `git::...?ref=<module>-v<semver>`。兩種改法一次改完的指令見 `docs/guides/consuming-modules.md`。
 2. 改 `common.tf` 的 `accounts_by_env`，填入各環境的帳號；9 個 stack 要同步改，保持一字不差。
 3. 改每份 `envs/*.tfbackend` 的 `bucket`（目前是 `<state-bucket>` 佔位符）與 key 的 `alpha` 前綴。
 4. 改每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及各 stack 的佔位值：告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 CIDR 或 prefix list。
@@ -102,7 +102,7 @@ terraform plan -var-file=envs/dev.tfvars
 |---|---|---|---|
 | `containerimage/services` | `containerimage` 的 `services` | `network`、`iam-base`、`iam-app`、`application` | `network` 與 `application` 的服務設定 key 必須相同；`iam-app` 的 `ecs_exec_services` 必須是它的子集 |
 | `containerimage/mirrored_images` | `containerimage` 的 `mirrored_images` | `iam-base` | execution role 的 ECR 拉取權限涵蓋這些 mirror repository，沒有 mirror 時不變 |
-| `network/alb_https` | `network` 的 `alb_ingress.https` | `loadbalancer` | `certificate_arn` 有沒有給，必須等於 `enabled` |
+| `network/alb_https` | `network` 的 `alb_ingress.https` | `loadbalancer` | 有沒有給 `certificate_arn`，必須跟 `enabled` 一致 |
 | `network/db_proxy` | `network` 的 `data_stores.db.proxy` | `data` | `enabled` 為 true 才把 `proxy` 傳給 `rds` |
 | `network/data_access` | `network` 各服務的 `data_access` | `iam-app`、`application` | 名單上的服務，task role 才能讀資料庫 secret，也才拿得到 `DB_*` 環境變數 |
 | `iam-app/ecs_exec_<service>` | `iam-app` 的 `ecs_exec_services` | `application` | 直接當 `enable_execute_command`，`application` 自己沒有這個變數 |
@@ -202,7 +202,7 @@ terraform plan -var-file=envs/dev.tfvars
 - 客戶自管 VPC（模式 A，`nat.mode` 是 `external`）：NAT 由客戶負責，範本不檢查。客戶 VPC 沒有 NAT 時，要自己準備 mirror 映像、三個 interface endpoint，並且 **VPC 要有 S3 gateway endpoint**（ECR 映像的 layer 存在 S3，範本不管客戶 VPC 的 gateway endpoint）。自建 VPC 的 `modules/vpc` 預設就有 S3 gateway endpoint，不用另外處理。
 - 服務的 security group 本來就開 443 對外，endpoint 的 security group 對 VPC CIDR 開 443，追蹤不需要新的 security group 規則。
 - 抽樣規則（`application` 的 `xray_sampling_rules`、`xray_groups`）跟追蹤開關無關，維持原樣；規則的 `service_name` 要寫 `<project>-<env>-<service>`，跟 `OTEL_SERVICE_NAME` 一致。sampling rule 只對向 X-Ray 拉規則的 SDK 或 collector 生效，條件見 observability 指南。
-- 示範：`application/envs/examples/high.tfvars` 示範了 `adot_collector` 與抽樣規則。
+- `application/envs/examples/high.tfvars` 有 `adot_collector` 與抽樣規則的示範。
 - 整套接線都沒有在真實帳號驗證過，見下面〈驗證〉的清單。
 
 ## 依流量調整規格
@@ -245,7 +245,7 @@ terraform plan -var-file=envs/dev.tfvars
 - 路由、internet gateway、NAT、gateway endpoint、default security group 一律不碰，`nat` 發布 `{"mode":"external","ids":[]}`。
 - `azs` 取自 `app` tier subnet 的 AZ；三個 tier 的 subnet 要用同一個 AZ 順序，這一點程式不檢查。
 
-模式 B 與其他 stack 交給客戶時，沒有檔案就無法 `init`，誤跑的機會從根本消失。建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter` 於客戶擁有的路徑。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
+模式 B 與其他 stack 交給客戶時，沒有檔案就無法 `init`，也就不會誤跑。建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter`。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
 
 ## RDS Proxy 第一次部署：兩段式步驟（未驗證）
 
