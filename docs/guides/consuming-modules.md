@@ -184,7 +184,7 @@ module "api" {
 source = "git::https://github.com/<github-org>/<repo>.git//modules/ecs-service?ref=<commit-sha>" # ecs-service-v0.1.0
 ```
 
-從範本複製出去時換成 git source 的指令。git source 沒有範圍，每個 module 釘到本 repo `.release-please-manifest.json` 記的目前版本；同時拿掉 `version` 行與 registry 的那行註解。在專案 repo 的根目錄跑，`MANIFEST` 指到本 repo 的 manifest（需要 `jq`）：
+從範本複製出去時，用下面的指令換成 git source。git source 沒有範圍，所以每個 module 釘到本 repo `.release-please-manifest.json` 記的目前版本；指令同時拿掉 `version` 行與 registry 的那行註解。在專案 repo 的根目錄跑，`MANIFEST` 指到本 repo 的 manifest（需要 `jq`）：
 
 ```bash
 PLATFORM_URL="https://github.com/<github-org>/<repo>.git"     # 換成實際的 org 與 repo

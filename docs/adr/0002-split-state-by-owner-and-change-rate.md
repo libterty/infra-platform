@@ -62,7 +62,7 @@ IAM 拆成兩個的理由：
 
 * Good: 換版只 plan `application`，影響範圍小；客戶可以接手任何低頻 stack。
 * Good: 權限審查只看 `iam-base`、`iam-app` 兩處。
-* Bad: stack 多，要手動依序 apply 8 次；沒有 `stacks.sh`（project-a 那支已失效，一支沒人維護的腳本比手動順序更不可靠），順序寫在範本的 `infra/README.md`。
+* Bad: stack 多，要手動依序 apply 8 次。不提供 `stacks.sh`：project-a 那支已失效，一支沒人維護的腳本比照順序手動跑更不可靠。順序寫在範本的 `infra/README.md`。
 * Bad: 第一次部署時，Proxy 建立到 `iam-app` apply 之間 Proxy 讀不到 secret；建立當下是否失敗未實測。
 * Neutral: 跨 stack 的值只經 SSM 傳遞，見 [ADR-0003](./0003-cross-stack-values-via-ssm-only.md)。
 
