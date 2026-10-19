@@ -782,7 +782,7 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | `wired_from_upstream` | `subnet_ids`、`security_group_ids`、`sns_topic_arns`、`access_logs.bucket` 都等於 SSM 讀到的值 |
 | `tls_must_match_network` | `alb_https = true` 但沒有憑證 → precondition 失敗；`false` 但給了憑證 → 失敗；一致時通過 |
 | `publishes_listener_keys` | 發布 6 個 key |
-| tfvars（`tests/tfvars/`）與 examples（`tests/examples/`） | 測試讀不到 `-var-file` 的值（R16），所以每個 run 在 `variables {}` 釘住 `certificate_arn`，並用 `override_data` 給對應的 `alb_https`：沒有憑證時 `listener_protocol = "HTTP"`、有憑證時是 `HTTPS`。tfvars 另加一個 run，用 `file()` 讀 `envs/<env>.tfvars` 與 `../network/envs/<env>.tfvars`，比對「這邊有 `certificate_arn`」等於「network 那邊 `https = true`」。**限制**：examples 檔自己寫的憑證值被每個 run 釘住的值蓋掉，驗不到；examples 只驗得到其他設定（access log、idle timeout） |
+| tfvars（`tests/tfvars/`）與 examples（`tests/examples/`） | 測試讀不到 `-var-file` 的值（R16），所以每個 run 在 `variables {}` 釘住 `certificate_arn`，並用 `override_data` 給對應的 `alb_https`：沒有憑證時 `listener_protocol = "HTTP"`、有憑證時是 `HTTPS`。tfvars 另加一個 run，用 `file()` 讀 `envs/<env>.tfvars` 與 `../network/envs/<env>.tfvars`，比對「這邊有 `certificate_arn`」等於「network 那邊 `https = true`」。**限制**：每個 run 釘住的值會蓋掉 examples 檔自己寫的憑證值，所以驗不到；examples 只驗得到其他設定（access log、idle timeout） |
 
 #### application
 
@@ -968,7 +968,7 @@ grep -nE '[a-z-]+/v[0-9]' docs/design/v1/design-docs.md | grep -v 'v1/'   # 沒�
 | `docs/adr/0001-*`、`docs/guides/releasing-modules.md` | 「19 個」改成「v1 的 19 個加增補的 7 個」；手動打 tag 的步驟加上 Phase 16 的 9 個 tag（7 個 `<module>-v0.1.0`、`rds-v0.2.0`、`s3-bucket-v0.2.0`）（版本號已被 design 決策 54 取代：9 個都是 `<module>-v0.1.1`，兩份文件要跟著改） |
 | design §3.2 | tag regex 加 7 個 module 名稱 |
 
-**commit 2（`feat(rds)`）**：照 design §4.31（決策 39、52）。`variables.tf` 加 `data_api`（含 validation）、`cluster.tf` 加 `enable_http_endpoint = var.data_api`、`outputs.tf` 加 `deployment`、`database_name` 兩個輸出（值取變數）、README 的輸入表與輸出表、`examples/aurora-serverless-proxy` 不動（預設維持原行為）、`CHANGELOG.md` 加 `## 0.2.0`（版本號已被 design 決策 54 取代：改成 `## 0.1.1`）一段（寫明兩件事：新變數 `data_api`，既有消費端 plan 應零差異，這是讀 schema 推論，未以 plan 驗證；新輸出 `deployment`、`database_name`，D21 的待辦）、新測試檔 `tests/data-api.tftest.hcl` 與 `tests/deployment-outputs.tftest.hcl`。
+**commit 2（`feat(rds)`）**：照 design §4.31（決策 39、52）。`variables.tf` 加 `data_api`（含 validation）、`cluster.tf` 加 `enable_http_endpoint = var.data_api`、`outputs.tf` 加 `deployment`、`database_name` 兩個輸出（值取變數）、README 的輸入表與輸出表、`examples/aurora-serverless-proxy` 不動（預設維持原行為）、`CHANGELOG.md` 加一段 `## 0.2.0`（版本號已被 design 決策 54 取代：改成 `## 0.1.1`），寫明兩件事（一是新變數 `data_api`，既有消費端 plan 應零差異，這是讀 schema 推論，未以 plan 驗證；二是新輸出 `deployment`、`database_name`，屬於 D21 的待辦）、新測試檔 `tests/data-api.tftest.hcl` 與 `tests/deployment-outputs.tftest.hcl`。
 
 | run | 斷言 |
 |---|---|
@@ -1086,12 +1086,12 @@ git show --stat HEAD                               # 只動 modules/<name>/
 | `application` | 67（57） | 注入 Runtime ARN 與模型、guardrail、KB 的 id，沒有 NAT 時的 endpoint 檢查 |
 | `foundation`、`loadbalancer` | 22、27（不變） | 沒有改 |
 
-run 區塊數是數各 stack `tests/**/*.tftest.hcl` 裡的 `run "` 區塊，9 個 stack 共 462 個；`validate.sh` 回報的 `n passed` 比這個多，因為 `tests/tfvars/` 對 dev、prod 各跑一次、`tests/examples/` 對每個範例各跑一次。主 agent 對 9 個 stack 重跑 `scripts/validate.sh`，全部通過；9 份 `common.tf` 一字不差（S5）。
+run 區塊數是各 stack `tests/**/*.tftest.hcl` 裡 `run "` 區塊的數量，9 個 stack 共 462 個；`validate.sh` 回報的 `n passed` 比這個多，因為 `tests/tfvars/` 對 dev、prod 各跑一次、`tests/examples/` 對每個範例各跑一次。主 agent 對 9 個 stack 重跑 `scripts/validate.sh`，全部通過；9 份 `common.tf` 一字不差（S5）。
 
 跟計畫的差異（設計面的細節回寫在 design §5.3、§5.4、§5.6、§7.1、§7.3、§8.8，總表在 design §9.4 D37–D46）：
 
 - `agent/knowledge_bases` 每個 KB 多發布 `data_source_ids`（data source key → id），給 `StartIngestionJob` 用（D39）。
-- design 的 precondition 表多數實作成變數 validation，`guards.tf` 只留要讀 SSM 才判斷得了的；`subnet_tier` 存不存在由讀 `subnet_ids_<tier>` 失敗擋下；design 那句「跨帳號時 KB 不得引用模型」跟 J66 矛盾，照 J66 不擋（D37）。
+- design 的 precondition 表多數實作成變數 validation，`guards.tf` 只留要讀 SSM 才判斷得了的；`subnet_tier` 不存在時，讀 `subnet_ids_<tier>` 會失敗，靠這個擋下；design 那句「跨帳號時 KB 不得引用模型」跟 J66 矛盾，照 J66 不擋（D37）。
 - `agent` 不讀 `foundation`；Runtime 的 `OTEL_*` 固定六個；log delivery 的 destination 名稱是 `<project>-<env>-<rt>` 與 `<project>-<env>-xray_traces`（D38）。
 - `iam-base` 的 Runtime log 權限拆成 log group 與 log stream 兩條；Runtime 的 DB 權限與 `DB_*` 只看 `agent_data_access` 的 `db`；沒有任何權限的 Runtime 不附加 policy；`application` 只在 `agent_access` 有列服務時才讀 `agent`（D40）。
 - 安全審查後的修正：`agent/agentcore_gateway` 多發布 `tool_schema_arns`，Gateway role 多 `ReadToolSchemas`（D42）；KB 的 `credentials_secret_arn` 必須是帶 6 字元後綴的完整 ARN，`iam-app` 在授權端再檢查一次（D43）；沒有 NAT 時連 DB 的 VPC Runtime 要 `secretsmanager` endpoint（D44，未實測）；範本 README 寫了已部署環境的升級順序（D45）。審查列出但這一輪不修的 M1、M4、L1–L5 記在 design §8.8（D46）。
@@ -1180,7 +1180,7 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 - **module 只用英文**：通過；唯一的非 ASCII 是 `bedrock-guardrail/examples/zh-tw-standard` 的中文資料值，它就是要示範擋中文。
 - **commit 歷史**：`28a8647..HEAD` 的 author 都是 `<author-email>`；每個 module 的 commit 只動該 module 目錄。repo 已有 remote，沒有推送。
 - **Phase 14 的安全審查**：沒有 BLOCKER；兩個 HIGH（Gateway 讀不到 S3 工具定義、KB secret ARN 可用萬用字元）與 M3 已修並補雙向測試、做過突變驗證，其餘記在 design §8.8（D42–D46）。
-- **manifest 與 tag**：`81ac4d3` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。9 個 `<module>-v0.1.1` annotated tag 照 `releasing-modules.md` 的指令原樣在 zsh 執行打在 `81ac4d3`；跑的時候發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
+- **manifest 與 tag**：`81ac4d3` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。在 zsh 原樣執行 `releasing-modules.md` 的指令，把 9 個 `<module>-v0.1.1` annotated tag 打在 `81ac4d3`；執行時發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
 - **後續（Phase 17）**：~~9 個 `v0.1.1` 在 `81ac4d3`~~ 那 9 個 tag 從未推送，Phase 17 補強後刪掉，在 `54f2837` 重打 10 個（加 `iam-role`，design 決策 54 附註、決策 56）。下面的預期值已改成 Phase 17 之後的數字。
 
 由主 agent 自己做，不派 subagent。

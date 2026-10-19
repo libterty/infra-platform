@@ -120,13 +120,13 @@ scripts/validate.sh "$CUSTOMER_REPO"
 | `vendor/modules/<module>/` | 跟本 repo 的 `modules/<module>/` 相同（S2 放行 `ssm-publish`、S3 放行 `ssm-read`、S4 放行 `iam-role`、`iam-role-policy`、`security-group`、`vpc-interface-endpoints`、`vpc`） |
 | `infra/terraform/<stack>/` | 跟範本的 stack 相同（S4、S8 一律不准直接宣告 IAM、SG 或其他原生 resource；S5 比對客戶這幾個 stack 的 `common.tf` 彼此是否一致） |
 
-stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；放在別處的目錄會被當成一般目錄，S2、S3 不放行。
+stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。這套換算要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；放在別處的目錄會被當成一般目錄，S2、S3 不放行。
 
 確認沒問題之後在客戶 repo 裡 commit，commit message 帶上 `VERSIONS` 的內容，之後誰要追是哪個版本都查得到。
 
 ### 升版重新交付
 
-專案 repo 升了某個 module 的 `version` 或 `ref` 之後（registry 寫法吃到新的 patch 版也算），客戶 repo 的那一行已經是 vendored 路徑，腳本找不到可以改的 `source`。做法是從專案 repo 重新產生交付內容：把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 registry 或 `git::` 版本並 commit），照上面的步驟再跑一次（registry 寫法要重新 init）。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
+專案 repo 升了某個 module 的 `version` 或 `ref` 之後（registry 寫法吃到新的 patch 版也算），因為客戶 repo 的那一行已經是 vendored 路徑，腳本找不到可以改的 `source`，所以要從專案 repo 重新產生交付內容：把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 registry 或 `git::` 版本並 commit），照上面的步驟再跑一次（registry 寫法要重新 init）。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
 
 ## 2. provider 的離線鏡像：`terraform providers mirror`
 
@@ -171,11 +171,11 @@ provider_installation {
 | 其他 | 我們 | 放 |
 
 - **模式 A**（客戶管 VPC、我們管 SG）：`network` 照跑，tfvars 改給 `existing = { vpc_id, subnet_ids }`。客戶 VPC 要開 `enable_dns_support` 與 `enable_dns_hostnames`，三個 tier 的 subnet 數量相同、AZ 順序一致（程式只檢查數量）。我們不碰路由、IGW、NAT、gateway endpoint、default SG；`network/nat` 發布 `{"mode":"external","ids":[]}`。
-- **模式 B**（整個 stack 由客戶管）：我們的 repo 在那個環境不放這個 stack 的 tfbackend 與 tfvars，沒有檔案就無法 init。客戶照 `infra/README.md` 的 SSM 合約表，在 `/<project>/<env>/<stack>/<key>` 發布**全部** key，包括 JSON 值（`alb_https`、`db_proxy`、`data_access`、`nat`、`interface_endpoints`、`database`、`ecs_exec_<service>`、`tracing`）。路徑裡的 `<stack>` 照寫，即使客戶那邊沒有叫這個名字的東西。
+- **模式 B**（整個 stack 由客戶管）：我們的 repo 在那個環境不放這個 stack 的 tfbackend 與 tfvars，沒有檔案就無法 init。客戶照 `infra/README.md` 的 SSM 合約表，在 `/<project>/<env>/<stack>/<key>` 發布**全部** key，包括 JSON 值（`alb_https`、`db_proxy`、`data_access`、`nat`、`interface_endpoints`、`database`、`ecs_exec_<service>`、`tracing`）。即使客戶那邊沒有叫這個名字的東西，路徑裡的 `<stack>` 也照寫。
 - 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要用模式 B 交給客戶。
-- 建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter` 於客戶擁有的路徑。
+- 建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter`。
 
-交付前用客戶發布的值做一次檢查：客戶發布完之後，下游 stack 第一次 plan 就會讀那些 key，缺 key 會直接失敗（`ssm-read` 不給預設值），JSON 格式錯會在 `jsondecode` 失敗。這是好事，代表缺什麼在 plan 就看得到。
+交付前用客戶發布的值做一次檢查：客戶發布完之後，下游 stack 第一次 plan 就會讀那些 key，缺 key 會直接失敗（`ssm-read` 不給預設值），JSON 格式錯會在 `jsondecode` 失敗，所以缺什麼在 plan 就看得到。
 
 ## 4. 客戶環境差異怎麼回報
 

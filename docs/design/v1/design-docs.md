@@ -7,7 +7,7 @@
 
 ## 1. 結論
 
-infra-platform 是Terraform private registry 的範例 repo。它用「Git tag 版本化的 monorepo」發布共用 module，讓各專案用 `?ref=<module>-v<semver>` 釘版本引用，不再每個專案各寫一套 VPC、資料庫、ECS、告警、跨 stack 傳值的程式碼。
+infra-platform 是 Terraform private registry 的範例 repo。它用「Git tag 版本化的 monorepo」發布共用 module，讓各專案用 `?ref=<module>-v<semver>` 釘版本引用，不再每個專案各寫一套 VPC、資料庫、ECS、告警、跨 stack 傳值的程式碼。
 
 第一版做出一個最小的三層架構：ALB 放 public subnet，ECS 服務（AP 層）與資料庫（DB 層）放 private subnet。內容是：
 
@@ -119,7 +119,7 @@ infra-platform/
 | module 共用只能靠 submodule | project-b 用 git submodule 引用 project-c 的 app module，沒有版本號 | `project-b/.gitmodules` |
 | 各 repo 都沒有 tflint、terraform-docs | — | 三個 repo 的根目錄 |
 
-共同的好做法也存在，這次直接收進 module 當預設值：Fargate＋awsvpc、ARM64、`initProcessEnabled`、`stopTimeout = 120`、部署 min 100％／max 200％、私有子網不配公有 IP、`ignore_changes = [desired_count]`、execution role 與 task role 分開、每個服務一個 log group。
+各專案也有共同的好做法，這次直接收進 module 當預設值：Fargate＋awsvpc、ARM64、`initProcessEnabled`、`stopTimeout = 120`、部署 min 100％／max 200％、私有子網不配公有 IP、`ignore_changes = [desired_count]`、execution role 與 task role 分開、每個服務一個 log group。
 
 ### 2.2 長期目標：四個團隊
 
@@ -132,7 +132,7 @@ infra-platform/
 
 ### 2.3 這個 repo 怎麼成為前身
 
-簡報（`infra-platform/docs/slides/terraform-split/v7/07-infra-core-framework.pptx`）的敘事是「先從 ECS 開始、先試行」。第一版以 ECS 為主，再補上 VPC、ALB、RDS 湊成最小三層架構，以及 KMS、ECR、S3、IAM、SSM 讀取這些每個專案都會用到的基礎 module，用一個專案範本證明「引用 → 升版 → 交付」整條路走得通。四個團隊還沒拆，這個 repo 先用 CODEOWNERS 與文件把邊界畫出來；團隊成立時，邊界不用重畫，只要把 team slug 填進去。
+簡報（`infra-platform/docs/slides/terraform-split/v7/07-infra-core-framework.pptx`）的敘事是「先從 ECS 開始、先試行」。第一版以 ECS 為主，再補上 VPC、ALB、RDS 湊成最小三層架構，以及 KMS、ECR、S3、IAM、SSM 讀取這些每個專案都會用到的基礎 module，再用一個專案範本證明「引用 → 升版 → 交付」整條路走得通。四個團隊還沒拆，這個 repo 先用 CODEOWNERS 與文件把邊界畫出來；團隊成立時，邊界不用重畫，只要把 team slug 填進去。
 
 ## 3. Registry 設計
 
@@ -4607,8 +4607,8 @@ locals {
 共通做法：
 
 1. 客戶照同一份 SSM 合約（`infra/README.md` 的合約表）在 `/<project>/<env>/<stack>/<key>` 發布 key。路徑裡的 `<stack>` 照寫（例如客戶發布 `/<project>/prod/network/vpc_id`），即使客戶那邊沒有叫 `network` 的東西。
-2. 客戶自管的 stack 在那個環境**不放** `envs/<env>.tfbackend` 與 `envs/<env>.tfvars`。沒有檔案就無法 init，誤跑的機會從根本消失。
-3. 建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter`／`ssm:DeleteParameter` 於客戶擁有的路徑，作為第二道防線。
+2. 客戶自管的 stack 在那個環境**不放** `envs/<env>.tfbackend` 與 `envs/<env>.tfvars`。沒有檔案就無法 init，也就不會誤跑。
+3. 建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter`／`ssm:DeleteParameter`，當成第二道防線。
 4. 跨帳號部署用 `providers.tf` 的可選 `assume_role`（`deploy_role_arn`，空字串代表用呼叫者身分），跟 project-a 相同。
 5. 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。這也是「只有 `iam-role` 建 IAM、而且只在兩個 IAM stack 呼叫」的原因：其他 module 一旦自己建 role，這種環境就 apply 不過。
 6. 客戶環境連不到我們的 GitHub 時，FDE 用 `scripts/vendor-modules.sh` 把專案 repo 裡已釘 tag 的 `git::` source 換成 vendored 相對路徑，provider 用 `terraform providers mirror` 鏡像（§8.7、`docs/guides/delivering-to-customer.md`）。

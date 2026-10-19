@@ -52,13 +52,13 @@ adot_collector = { tag = "v0.43.1", source = "public" }
 被追蹤的服務會得到：
 
 - 一個 `adot-collector` sidecar，欄位跟 `modules/ecs-service/examples/adot-sidecar/main.tf` 逐行相同（見下表）。
-- 主 container 多兩個環境變數：`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`（同一個 task 的 container 共用網路介面，localhost 到得了 collector）與 `OTEL_SERVICE_NAME=<project>-<env>-<service>`。應用程式的 OTel SDK 讀這兩個變數即可，不用另外設定。服務名稱跟 `xray_sampling_rules` 的 `service_name` 要寫的名稱一致。
+- 主 container 多兩個環境變數：`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`（同一個 task 的 container 共用網路介面，localhost 到得了 collector）與 `OTEL_SERVICE_NAME=<project>-<env>-<service>`。應用程式的 OTel SDK 讀這兩個變數即可，不用另外設定。`xray_sampling_rules` 的 `service_name` 要寫同一個服務名稱。
 
 沒被追蹤的服務 `sidecars = []`，環境變數也不變，task definition 跟沒有這個功能時一致（`application` 測試鎖住）。
 
 ### 3. 沒有 NAT 時：mirror 映像加 endpoint
 
-`network/nat` 的 `mode` 是 `none` 時，`application` 在有服務被追蹤的情況下，要求三件事同時成立，缺任何一項 plan 就停，錯誤訊息會列出缺什麼：
+`network/nat` 的 `mode` 是 `none`、又有服務被追蹤時，`application` 要求下面三件事同時成立。缺任何一項 plan 就停，錯誤訊息會列出缺什麼：
 
 1. `adot_collector.source = "mirror"`。
 2. `containerimage` 的 `mirrored_images` 含 `adot-collector`，映像已複製進去（下一節）。
@@ -154,7 +154,7 @@ ECR 的 pull-through cache 規則讓帳號自己的 ECR 在第一次被拉取時
 
 ### 為什麼 `essential = false`
 
-collector 只負責送 trace，不在請求路徑上。`essential = true` 時 collector 一掛掉，ECS 會停掉整個 task 重開，等於追蹤元件的故障變成服務中斷。設成 `false`，collector 掛了只是少一段時間的 trace，主 container 照常服務。參考來源 project-c 的寫法是 `true`（`project-c-app/modules/app-service/ecs-standard.tf`），這裡刻意不同。
+collector 只負責送 trace，不在請求路徑上。`essential = true` 時 collector 一掛掉，ECS 會停掉整個 task 重開，追蹤元件的故障就變成服務中斷。設成 `false`，collector 掛了只是少一段時間的 trace，主 container 照常服務。參考來源 project-c 的寫法是 `true`（`project-c-app/modules/app-service/ecs-standard.tf`），這裡刻意不同。
 
 `app_depends_on = "START"` 讓主 container 等 collector 啟動後才啟動，減少開機時第一批 trace 送不出去的機會；用 `START` 而不是 `HEALTHY`，是不讓 collector 的健康狀態卡住服務啟動。
 
@@ -265,4 +265,4 @@ log_alarms = {
 
 ## 驗證怎麼做
 
-改完 `iam-app`、`application`、`network` 後，在專案 repo 裡離線跑三個 stack 的測試（見 [`project-infra-standard.md`](./project-infra-standard.md)〈驗證〉）。測試鎖住的是：被追蹤的服務恰好有四個 X-Ray 動作、沒被追蹤的服務一個都沒有、`application` 的 sidecar 只出現在被追蹤的服務、沒有追蹤時 task definition 不變、沒有 NAT 的安全網。mock 驗不到的是 collector 真的送得出 trace、remote sampling 真的生效、IAM 真的夠、沒有 NAT 時映像真的拉得到，這些要部署到沙箱帳號，用一次真實請求確認 X-Ray console 有 trace、health check 沒有進來。
+改完 `iam-app`、`application`、`network` 後，在專案 repo 裡離線跑三個 stack 的測試（見 [`project-infra-standard.md`](./project-infra-standard.md)〈驗證〉）。測試鎖住的是：被追蹤的服務恰好有四個 X-Ray 動作、沒被追蹤的服務一個都沒有、`application` 的 sidecar 只出現在被追蹤的服務、沒有追蹤時 task definition 不變、沒有 NAT 的安全網。mock 驗不到的是 collector 真的送得出 trace、remote sampling 真的生效、IAM 真的夠、沒有 NAT 時映像真的拉得到。這些要部署到沙箱帳號，送一次真實請求，確認 X-Ray console 有 trace、health check 沒有進來。

@@ -20,7 +20,7 @@ cp -R <platform-repo>/templates/project-infra/infra ./infra
 | 5 | 環境不只 dev、prod 時，每個 stack 加一組 `envs/<env>.tfvars` 與 `envs/<env>.tfbackend`，並在 `common.tf` 的 `accounts_by_env` 加一列 | 同上 |
 | 6 | 範本 README 裡指向設計文件的相對連結會失效，改成指向本 repo 的網址或刪掉 | `infra/README.md` |
 
-`common.tf` 一字不差這件事，在本 repo 由 `scripts/validate.sh` 的 S5 比對雜湊；複製出去之後專案 CI 要自己比，最簡單的寫法：
+在本 repo，`scripts/validate.sh` 的 S5 會比對雜湊，確認 `common.tf` 一字不差；複製出去之後要由專案 CI 自己比，最簡單的寫法：
 
 ```bash
 test "$(sha256sum infra/terraform/*/common.tf | cut -d' ' -f1 | sort -u | wc -l)" -eq 1
@@ -85,7 +85,7 @@ IAM 只在 `iam-base`、`iam-app` 兩個 stack 呼叫 IAM module，權限審查�
 | `iam-base` | `data` 之前 | execution role、Proxy role（只有 trust，沒有 policy）、Enhanced Monitoring role |
 | `iam-app` | `data` 之後 | 對 Proxy role 附加讀 secret 的 policy（Resource 恰為那個 secret）、各服務 task role、ECS Exec 開關 |
 
-Proxy role 在還沒有讀 secret 權限時，AWS 會讓 Proxy 建立失敗，還是建立成功但連不上，**未驗證**。兩種結果的第一次部署步驟寫在 `infra/README.md`〈RDS Proxy 第一次部署：兩段式步驟〉。
+Proxy role 還沒有讀 secret 的權限時，AWS 是讓 Proxy 建立失敗，還是建立成功但連不上，**未驗證**。兩種結果的第一次部署步驟寫在 `infra/README.md`〈RDS Proxy 第一次部署：兩段式步驟〉。
 
 ## 單一決定點
 
@@ -128,7 +128,7 @@ module "in" {
 }
 ```
 
-每個服務一組的 key（例如 `containerimage/ecr_<service>_arn`），名稱取決於服務清單，而服務清單本身是從 SSM 讀來的。這種 stack 要第二個 `ssm-read`，範本的 `iam-base` 與 `application` 都是這樣寫：
+有些 key 每個服務一組（例如 `containerimage/ecr_<service>_arn`），名稱要看服務清單，而服務清單本身也是從 SSM 讀來的。讀這類 key 的 stack 要用第二個 `ssm-read`，範本的 `iam-base` 與 `application` 都是這樣寫：
 
 ```hcl
 locals {
@@ -175,7 +175,7 @@ data tier 每個 AZ   ≥ DB instance 數 + Proxy 的 ENI + 5
 
 ## 環境切換：四件事
 
-手打 `terraform` 時，環境由四個彼此獨立的選擇決定，沒有任何東西把它們綁在一起，最容易留在上一個環境的是 AWS 身分。
+手打 `terraform` 時，環境由四個彼此獨立的選擇決定，沒有任何東西把它們綁在一起。其中最容易忘了換、還留在上一個環境的是 AWS 身分。
 
 | 選擇 | 怎麼指定 | 忘了換的後果 |
 |---|---|---|
@@ -206,7 +206,7 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 
 `foundation`、`containerimage`、`iam-base`、`data`、`iam-app` 也可以照模式 B 交給客戶。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶。
 
-建議客戶給我們的部署 role 明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter` 於客戶擁有的路徑，當第二道防線。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
+建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter`，當第二道防線。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
 
 交付到連不到我們 GitHub 的客戶環境，見 [`delivering-to-customer.md`](./delivering-to-customer.md)。
 

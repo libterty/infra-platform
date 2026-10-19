@@ -1,6 +1,6 @@
 # LLM 與 AgentCore：guardrail、Runtime、Memory、Gateway、Knowledge Base
 
-結論：範本的 `agent` stack 已經把 7 個 LLM 與 AgentCore module 接好，**預設關閉**，所有輸入預設是空的時候 `agent` 什麼都不建、只發布空的 JSON，其他 stack 的 plan 跟沒有這個功能時一樣。要開一個 Runtime，改 `containerimage`、`network`、`agent` 三份 tfvars（ECS 服務要呼叫它時再改 `iam-app`；有 Knowledge Base 或 Gateway 時另改 `iam-base`，有 Knowledge Base 時再改 `data`；`application` 不用改），照 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `agent` → `iam-app` → `loadbalancer` → `application` 的順序 apply。有 Knowledge Base 時分兩段：第一段 `agent` 只建 KB 帳號的 secret（不含值）與語料 bucket；專案寫入 secret 的值、跑 migration、設密碼之後，把 `database_user_ready` 改成 `true` 再 apply 一輪，KB 才建出來。
+結論：範本的 `agent` stack 已經把 7 個 LLM 與 AgentCore module 接好，**預設關閉**：所有輸入預設是空的，這時 `agent` 什麼都不建、只發布空的 JSON，其他 stack 的 plan 跟沒有這個功能時一樣。要開一個 Runtime，改 `containerimage`、`network`、`agent` 三份 tfvars（ECS 服務要呼叫它時再改 `iam-app`；有 Knowledge Base 或 Gateway 時另改 `iam-base`，有 Knowledge Base 時再改 `data`；`application` 不用改），照 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `agent` → `iam-app` → `loadbalancer` → `application` 的順序 apply。有 Knowledge Base 時分兩段：第一段 `agent` 只建 KB 帳號的 secret（不含值）與語料 bucket；專案寫入 secret 的值、跑 migration、設密碼之後，把 `database_user_ready` 改成 `true` 再 apply 一輪，KB 才建出來。
 
 最容易出事、而且出事時看起來一切正常的三件事：guardrail 用了 `CLASSIC`（中文全部放行）、guardrail 發布了版本（apply 改的是 `DRAFT`，線上跑的是舊版）、繞過 Terraform 換 Runtime 映像（下一次 apply 退版）。範本與 module 都已經擋掉，這份 guide 講為什麼、以及擋不到的部分怎麼自己確認。
 
@@ -30,7 +30,7 @@
 | `log-delivery` | CloudWatch vended log 三件組（source、destination、delivery）；source 的 ARN 換了 delivery 跟著換 | log group 本身（用 `log-group`）、跨帳號 destination | 有（project-a） |
 | `bedrock-knowledge-base` | `VECTOR` 型 KB，向量只存 Aurora PostgreSQL pgvector；S3 data source。Aurora cluster、secret、語料 bucket 都必須在同一個帳號（bucket 另外可以在 `allowed_account_ids` 列的帳號） | extension、表、索引、資料庫帳號（專案的 migration）；secret 與語料 bucket（範本的 `agent` 建）；ingestion job；其他向量儲存 | **沒有** |
 
-另外三個既有 module 為了這次增補發了新版。照 semver 表是 MINOR，這一版照使用者決定跟新 module 一起用 `v0.1.1`（design 決策 54）：
+另外三個既有 module 為了這次增補發了新版。照 semver 表算 MINOR；這一版依使用者的決定，跟新 module 一起用 `v0.1.1`（design 決策 54）：
 
 | module | 版本 | 多了什麼 | 誰需要 |
 |---|---|---|---|
@@ -38,7 +38,7 @@
 | `s3-bucket` | `s3-bucket-v0.1.1` | `never_expire`（lifecycle 不帶過期，只清未完成的分段上傳） | 範本的 `agent`：每個 KB 的語料 bucket |
 | `iam-role` | `iam-role-v0.1.1` | `trust.source_arn`（trust policy 多一個 `aws:SourceArn` 條件，預設不帶） | 範本的 `iam-base`：Runtime execution role、KB role、Gateway role 都帶上。用的 ARN 形狀（`arn:aws:bedrock-agentcore:<region>:<account>:*`、`arn:aws:bedrock:<region>:<account>:knowledge-base/*`）**未實測**，形狀不對時 AgentCore 或 Bedrock assume 不了 role |
 
-三者既有消費端換 `ref` 之後 plan 應該零差異，這是讀 schema 與程式推論的，沒有 plan 證明（§7.3 第 21、25 項）。換版之後跑一次 plan 確認。
+這三個 module 的既有消費端換 `ref` 之後，plan 應該零差異。這是讀 schema 與程式推論出來的，沒有實際跑 plan 證明（§7.3 第 21、25 項）。換版之後跑一次 plan 確認。
 
 ## 怎麼引用
 
@@ -218,7 +218,7 @@ aws-vault exec <dev-profile> -- terraform apply -var-file=envs/dev.tfvars
 
 `session_lifecycle` 的 `idle_session_timeout`（預設 900 秒）與 `max_lifetime`（預設 28800 秒）module 一律一起送。底層 API 是 PUT，只送一個時另一個會靜默回到 AWS 預設，不報錯（project-a 實測過）。範圍 60–1209600，`idle <= max`（後者未實測）。
 
-拉長 `idle_session_timeout` 不會改善冷啟動：project-a 量到冷配置約 11.5 秒，帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動是應用程式層的 session 分片，不是調這個值。
+拉長 `idle_session_timeout` 不會改善冷啟動：project-a 量到冷配置約 11.5 秒，帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動，靠的是應用程式層的 session 分片，不是調這個值。
 
 ### `VPC` 與 `PUBLIC`
 
@@ -318,7 +318,7 @@ aws logs describe-log-groups --log-group-name-prefix aws/spans \
 | 不發布 guardrail 版本 | 發布過版本之後，apply 只改 `DRAFT`，線上用的是那個版本號的舊政策，plan 乾淨 | module 不建 `aws_bedrock_guardrail_version`，`version` 輸出固定 `DRAFT`；`scripts/validate.sh` 的 S9 擋整個 repo 出現這個 resource；範本注入 `GUARDRAIL_VERSION=DRAFT` |
 | 輸入那支不放 PII 遮罩 | `ANONYMIZE` 也回 `GUARDRAIL_INTERVENED`，應用程式當成「被擋」，整輪對話就斷掉 | 不做成 validation（判斷在應用程式）。PII 遮罩放輸出那支；一定要放輸入時，應用程式要分辨「被擋」與「被遮罩」 |
 
-不發布版本代表：**apply 的改動就是線上的政策**，沒有「先發一版再切」的緩衝。調政策先在 dev apply 驗過，再推到 prod。也不要在 console 手動 Create version，應用程式又剛好寫死那個版本號，就會回到上面那個坑。
+不發布版本代表：**apply 的改動就是線上的政策**，沒有「先發一版再切」的緩衝。調政策先在 dev apply 驗過，再推到 prod。也不要在 console 手動 Create version：應用程式如果剛好寫死那個版本號，就會回到上面那個坑。
 
 其他規則：`pii_entities` 的 key 只收 Bedrock 列出的 PII 類型（大寫，例如 `EMAIL`、`PHONE`、`CREDIT_DEBIT_CARD_NUMBER`），拼錯在 plan 就擋；`STANDARD` 的 `cross_region_profile_id` 格式像 `apac.guardrail.v1:0`，validation 只擋得到格式，**id 對不對只有實際呼叫 `ApplyGuardrail` 驗得到**；`PROMPT_ATTACK` 的 `output_strength` 必須是 `NONE`；denied topic 最多 30 個，排除條件只能寫在 `definition`，`examples` 只放正面例子；topic 沒有 input／output 開關，要只作用在某一側就放在只有那一側會呼叫的那支。
 
@@ -424,7 +424,7 @@ bedrock_invoke = {
 
 ## Memory
 
-- 事件保留 `event_expiry_days` 是 **7–365** 的整數，預設 90。AWS 文件與 project-a 寫的下限 3，用 aws provider 6.69.0 送不出去（plan 就擋，`value must be between 7 and 365`）。改天數只影響之後寫入的事件。
+- 事件保留 `event_expiry_days` 是 **7–365** 的整數，預設 90。AWS 文件與 project-a 寫的下限是 3，但用 aws provider 6.69.0 送不出去（plan 就擋，`value must be between 7 and 365`）。改天數只影響之後寫入的事件。
 - 預設 90 而不是 project-a 的 365：保留越久、留存的個資越多。要更長自己明寫。
 - 名稱只能字母、數字、底線（範本把 `<project>-<env>-<key>` 的 `-` 換成 `_`）。
 - strategy 只收內建的三種，每個至少一個以 `/` 開頭的 namespace（例如 `/actors/{actorId}/facts`）。三個參考專案都沒用過 strategy，不給 Memory execution role 能不能產生長期記憶**未實測**（§7.3 第 24 項）。
@@ -654,7 +654,7 @@ psql -Atc "SELECT extversion FROM pg_extension WHERE extname = 'vector';"   # �
 
 AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA bedrock_integration`，並讓 KB 帳號自己建表。這裡表由 migration 建、owner 不是 KB 帳號，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`。
 
-這很重要，因為 `rds-data:ExecuteStatement` 本身不限資料庫帳號，KB role 能跑哪些 SQL 完全由它拿得到的那個帳號決定：**資料庫的 GRANT 是唯一的邊界**。
+要收這麼窄，是因為 `rds-data:ExecuteStatement` 本身不限資料庫帳號，KB role 能跑哪些 SQL，完全看它拿到的是哪個資料庫帳號，所以**資料庫的 GRANT 是唯一的邊界**。
 
 跑完 migration 後確認：
 

@@ -53,11 +53,11 @@ Chosen option: 「只經 SSM Parameter Store」，因為 SSM 是我們跟客戶�
 * Good: 下游不需要上游 state 的讀取權限。
 * Bad: 多一層 SSM 參數要維護；`aws_ssm_parameter` 的 `value` 會進 state，所以 secret 值絕不放進去。
 * Bad: SSM 不收空字串，可有可無的值要包 JSON，讀取端要 `jsondecode()`。
-* Bad: 「方向」那條規則第一版沒有自動檢查；project-a 的對應腳本用 awk 解析 HCL，格式一變就誤判，而且沒接進 CI 等於沒在跑。第一版靠各 stack 測試鎖住讀取清單，以及 `infra/README.md` 合約表標明每個 key 誰寫誰讀，PR 審查時對照。
+* Bad: 「方向」那條規則第一版沒有自動檢查。project-a 的對應腳本用 awk 解析 HCL，格式一變就誤判，而且沒接進 CI，等於沒在跑。第一版靠兩件事補位：各 stack 的測試鎖住讀取清單；`infra/README.md` 的合約表標明每個 key 誰寫誰讀，PR 審查時對照。
 
 ### Confirmation
 
-`scripts/validate.sh` 並接進 CI：
+`scripts/validate.sh` 檢查下面兩條，並接進 CI：
 
 * S2：只有 `modules/ssm-publish/` 可以宣告 `resource "aws_ssm_parameter"`。
 * S3：範本的 `ssm-inputs.tf` 不得讀 `.value`，只能讀 `insecure_value`。
