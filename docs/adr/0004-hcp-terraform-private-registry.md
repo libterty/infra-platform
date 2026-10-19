@@ -3,7 +3,7 @@ status: "accepted"
 date: 2026-10-19
 decision-makers: platform team
 outcome: "消費端預設改用 HCP Terraform private registry：`source = \"app.terraform.io/<org>/<module>/aws\"` 加 `version = \"~> <MAJOR>.<MINOR>.0\"`。發版機制不變（monorepo、`<module>-v<semver>` tag、release-please），HCP 用 Source Directory `modules/<module>` 與 Tag Prefix `<module>-v` 從同一批 tag 發佈。`git::...?ref=<tag>` 留作沒有 HCP token 時的備案；`vendor-modules.sh` 兩種寫法都能 vendoring。"
-notes: "補充 ADR-0001 的消費端寫法，不取代它的發版機制。HCP 的 module 登記要在網頁上逐個做（API 文件沒寫 Source Directory 與 Tag Prefix 欄位，2026-10-19 查）。Free 方案的現況各方說法不一，開 org 時以 HashiCorp 官方定價頁為準。"
+notes: "補充 ADR-0001 的消費端寫法，不取代它的發版機制。HCP 的 module 登記可以用 API 批次做：官方文件沒寫 `tag-prefix` 與 `source-directory`，但 API 實際接受（2026-10-19 用 26 個 module 驗證）。Free 方案的現況各方說法不一，開 org 時以 HashiCorp 官方定價頁為準。"
 ---
 
 # 消費端改用 HCP Terraform private registry
@@ -57,7 +57,7 @@ module "api" {
 * Good: 發版流程、tag、CHANGELOG、module 程式碼都不變；HCP 透過 webhook 讀新 tag。
 * Bad: 多了一層憑證。消費端與 CI 要有 HCP token（`terraform login` 或 `TF_TOKEN_app_terraform_io`），這是 ADR-0001 刻意避開的。
 * Bad: 多一個外部依賴。HCP 掛掉或 token 過期時 `terraform init` 抓不到 module；已經 init 過的 `.terraform/modules` 不受影響，必要時退回 git source。
-* Bad: 26 個 module 要在 HCP 網頁上逐個登記，新增 module 時也要記得登記（[`hcp-registry-setup.md`](../guides/hcp-registry-setup.md)）。
+* Bad: 每個 module 都要在 HCP 登記一次，新增 module 時也要記得登記（[`hcp-registry-setup.md`](../guides/hcp-registry-setup.md) 有網頁與 API 兩種做法）。登記用的 API 欄位不在官方文件裡，HCP 改版時可能要改回網頁登記。
 * Bad: 有版本範圍代表 `init -upgrade` 可能吃到新的 patch 版。PATCH 必須真的不改 plan，這條規則照舊由 platform team 在 review 時把關。
 * Neutral: `vendor-modules.sh` 改成兩種寫法都認得。registry 寫法沒有 tag 可以直接比對，改讀 `terraform init` 寫下的 `modules.json`，以 Terraform 實際解析到的版本為準。
 
