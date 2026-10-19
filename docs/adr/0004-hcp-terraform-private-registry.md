@@ -66,6 +66,7 @@ module "api" {
 * `scripts/vendor-modules.sh --registry <host>/<namespace>` 只改寫「source 是 `<host>/<namespace>/<module>/aws`，而且 `modules.json` 解析到的版本等於指定 tag」的 module 區塊，同時拿掉該區塊的 `version`；版本不同或沒有 init 過的區塊不動並列出來，結束碼 3。
 * HCP 上的版本清單要跟 GitHub 的 tag 對得上：登記完之後照 [`hcp-registry-setup.md`](../guides/hcp-registry-setup.md) 的檢查步驟，對每個 module 跑一次 `terraform init`。
 * 本 repo 的 CI 不連 HCP，驗的仍是當下的程式碼。
+* 另一個 Registry workflow（`.github/workflows/registry.yml`）在 push 到 `main`、每週一與手動觸發時，用 `scripts/template-to-registry.sh` 把範本轉成 registry 寫法，對已發佈的版本跑 `init` 與 `validate`。它讀 HCP token，所以不在 pull request 跑。org 是 Personal 方案、建不了唯讀 team，目前用 30 天到期的 owners team token；這是安全例外，風險與補償措施記在 [`hcp-registry-setup.md`](../guides/hcp-registry-setup.md)。轉換收成腳本是為了讓文件與 CI 共用同一份邏輯，取代設計文件決策 J9「範本轉換是手動步驟、不寫腳本」。
 
 ## Pros and Cons of the Options
 

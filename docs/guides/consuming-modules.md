@@ -72,31 +72,19 @@ source  = "app.terraform.io/<org>/vpc/aws"
 version = "~> 0.1.0"
 ```
 
-一次改完 9 個 stack 的指令（在專案 repo 的根目錄跑；macOS 與 Linux 的 `awk` 都適用）。每個 module 都寫 `~> 0.1.0` 就好：LLM 增補動到的 10 個 module（7 個新 module 加 `rds`、`s3-bucket`、`iam-role`）範圍內最新的是 `0.1.1`，`init` 會自己挑到，不必另外處理。
+一次改完 9 個 stack：在本 repo（infra-platform）的 clone 裡跑 `scripts/template-to-registry.sh`，第二個參數指到專案 repo 的 `infra/terraform`。腳本把每個相對路徑換成 registry 寫法，`version` 照本 repo `.release-please-manifest.json` 的目前版本寫成 `~> <MAJOR>.<MINOR>.0`（例如目前全部是 `~> 0.1.0`；LLM 增補動到的 10 個 module 範圍內最新的是 `0.1.1`，`init` 會自己挑到），最後跑 `terraform fmt`。需要 `jq` 與 `terraform`。
 
 ```bash
-PLATFORM_REGISTRY="app.terraform.io/<org>"   # 換成實際的 organization
+cd <platform-repo>
+git pull                                         # manifest 要是最新的，約束才對得上最新的發佈
+scripts/template-to-registry.sh app.terraform.io/<org> /path/to/project-repo/infra/terraform
 
-find infra/terraform -name '*.tf' -not -path '*/.terraform*' | while IFS= read -r f; do
-  awk -v reg="$PLATFORM_REGISTRY" '
-    match($0, /^[[:space:]]*source[[:space:]]*=[[:space:]]*"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/modules\/[a-z0-9-]+"/) {
-      m = substr($0, RSTART, RLENGTH)
-      sub(/^.*\/modules\//, "", m)
-      sub(/"$/, "", m)
-      indent = $0
-      sub(/[^[:space:]].*$/, "", indent)
-      print indent "source  = \"" reg "/" m "/aws\""
-      print indent "version = \"~> 0.1.0\""
-      next
-    }
-    { print }
-  ' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
-done
-terraform fmt -recursive infra/terraform
-
+cd /path/to/project-repo
+git diff --stat                                  # 只有 .tf 的 source／version 行
 grep -rnE --include='*.tf' 'source *= *"\.\./' infra/terraform   # 預期沒有輸出
-grep -rhoE --include='*.tf' 'app\.terraform\.io/[^/]+/[a-z0-9-]+/aws' infra/terraform | sort -u | wc -l   # 預期 26
 ```
+
+本 repo 的 Registry workflow（`.github/workflows/registry.yml`）每次 push 到 `main` 與每週一都會用同一支腳本轉換範本，對已發佈的版本跑 `init` 與 `validate`；它是綠的，就代表現在複製範本出去照這個步驟可以用。
 
 `ssm-inputs.tf` 裡 `source` 後面的英文註解（`After copying out of this repo, change to ...`）會跟著那一行一起被換掉，不用另外刪。
 

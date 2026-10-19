@@ -1,39 +1,41 @@
 # infra-platform
 
+[![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://github.com/libterty/infra-platform/actions/workflows/registry.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/registry.yml)
+
 Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，透過 HCP Terraform private registry 提供給各專案用版本範圍引用，不再每個專案各寫一套。
 
 ## module
 
 共 26 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
-| 分類             | module                        | 用途                                                                               |
-| ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- |
-| 網路與入口       | `vpc`                       | VPC、分層 subnet、NAT、gateway endpoint、flow log                                  |
-| 網路與入口       | `vpc-interface-endpoints`   | interface endpoint（PrivateLink）與共用的 SG                                       |
-| 網路與入口       | `alb`                       | ALB、listener、ELB 5xx 告警                                                        |
-| 資料             | `rds`                       | RDS、Aurora、Aurora Serverless v2，可選 RDS Proxy                                  |
-| 運算             | `ecs-cluster`               | Fargate cluster                                                                    |
-| 運算             | `ecs-service`               | Fargate service、autoscaling、Service Connect、可選 sidecar                        |
-| 運算             | `ecs-service-alarms`        | 服務告警                                                                           |
-| 觀測性           | `log-group`                 | CloudWatch log group：保留天數、KMS、可選 subscription filter                      |
-| 觀測性           | `log-metric-alarm`          | 從 log 產生指標並接告警                                                            |
-| 觀測性           | `xray`                      | X-Ray sampling rule 與 group                                                       |
-| 共用基礎         | `kms-key`                   | 對稱式 KMS key、key policy、alias                                                  |
-| 共用基礎         | `ecr-repository`            | ECR repository 與 lifecycle policy                                                 |
-| 共用基礎         | `s3-bucket`                 | log 用的 S3 bucket：封鎖公開存取、加密、生命週期、只允許 TLS                       |
-| 共用基礎         | `sns-alarm-topic`           | 告警 SNS topic                                                                     |
-| 共用基礎         | `security-group`            | 互相引用的 security group 與規則                                                   |
-| IAM              | `iam-role`                  | IAM role：trust policy 加 inline policy                                            |
-| IAM              | `iam-role-policy`           | 對已存在的 role 附加 inline policy                                                 |
-| 跨 stack 傳值    | `ssm-publish`               | 跨 stack 傳值的唯一寫入入口                                                        |
-| 跨 stack 傳值    | `ssm-read`                  | 跨 stack 傳值的唯一讀取入口                                                        |
-| LLM 與 AgentCore | `bedrock-guardrail`         | Bedrock guardrail，tier 預設 `STANDARD`                                          |
-| LLM 與 AgentCore | `bedrock-inference-profile` | application inference profile，給成本歸屬                                          |
-| LLM 與 AgentCore | `agentcore-runtime`         | AgentCore Runtime                                                                  |
-| LLM 與 AgentCore | `agentcore-memory`          | AgentCore Memory 與內建 strategy                                                   |
-| LLM 與 AgentCore | `agentcore-gateway`         | MCP Gateway，target 只收 Lambda 與 MCP server                                      |
-| LLM 與 AgentCore | `log-delivery`              | CloudWatch vended log 的 source、destination、delivery                             |
-| LLM 與 AgentCore | `bedrock-knowledge-base`    | Bedrock Knowledge Base（向量儲存只收 Aurora PostgreSQL pgvector）與 S3 data source |
+| 分類             | module                        | 用途                                                                               | 最新版 |
+| ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
+| 網路與入口       | `vpc`                       | VPC、分層 subnet、NAT、gateway endpoint、flow log                                  | [![vpc](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=vpc-v*&label=)](https://github.com/libterty/infra-platform/releases?q=vpc-v) |
+| 網路與入口       | `vpc-interface-endpoints`   | interface endpoint（PrivateLink）與共用的 SG                                       | [![vpc-interface-endpoints](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=vpc-interface-endpoints-v*&label=)](https://github.com/libterty/infra-platform/releases?q=vpc-interface-endpoints-v) |
+| 網路與入口       | `alb`                       | ALB、listener、ELB 5xx 告警                                                        | [![alb](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=alb-v*&label=)](https://github.com/libterty/infra-platform/releases?q=alb-v) |
+| 資料             | `rds`                       | RDS、Aurora、Aurora Serverless v2，可選 RDS Proxy                                  | [![rds](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=rds-v*&label=)](https://github.com/libterty/infra-platform/releases?q=rds-v) |
+| 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
+| 運算             | `ecs-service`               | Fargate service、autoscaling、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
+| 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |
+| 觀測性           | `log-group`                 | CloudWatch log group：保留天數、KMS、可選 subscription filter                      | [![log-group](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=log-group-v*&label=)](https://github.com/libterty/infra-platform/releases?q=log-group-v) |
+| 觀測性           | `log-metric-alarm`          | 從 log 產生指標並接告警                                                            | [![log-metric-alarm](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=log-metric-alarm-v*&label=)](https://github.com/libterty/infra-platform/releases?q=log-metric-alarm-v) |
+| 觀測性           | `xray`                      | X-Ray sampling rule 與 group                                                       | [![xray](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=xray-v*&label=)](https://github.com/libterty/infra-platform/releases?q=xray-v) |
+| 共用基礎         | `kms-key`                   | 對稱式 KMS key、key policy、alias                                                  | [![kms-key](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=kms-key-v*&label=)](https://github.com/libterty/infra-platform/releases?q=kms-key-v) |
+| 共用基礎         | `ecr-repository`            | ECR repository 與 lifecycle policy                                                 | [![ecr-repository](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecr-repository-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecr-repository-v) |
+| 共用基礎         | `s3-bucket`                 | log 用的 S3 bucket：封鎖公開存取、加密、生命週期、只允許 TLS                       | [![s3-bucket](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=s3-bucket-v*&label=)](https://github.com/libterty/infra-platform/releases?q=s3-bucket-v) |
+| 共用基礎         | `sns-alarm-topic`           | 告警 SNS topic                                                                     | [![sns-alarm-topic](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=sns-alarm-topic-v*&label=)](https://github.com/libterty/infra-platform/releases?q=sns-alarm-topic-v) |
+| 共用基礎         | `security-group`            | 互相引用的 security group 與規則                                                   | [![security-group](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=security-group-v*&label=)](https://github.com/libterty/infra-platform/releases?q=security-group-v) |
+| IAM              | `iam-role`                  | IAM role：trust policy 加 inline policy                                            | [![iam-role](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=iam-role-v*&label=)](https://github.com/libterty/infra-platform/releases?q=iam-role-v) |
+| IAM              | `iam-role-policy`           | 對已存在的 role 附加 inline policy                                                 | [![iam-role-policy](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=iam-role-policy-v*&label=)](https://github.com/libterty/infra-platform/releases?q=iam-role-policy-v) |
+| 跨 stack 傳值    | `ssm-publish`               | 跨 stack 傳值的唯一寫入入口                                                        | [![ssm-publish](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ssm-publish-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ssm-publish-v) |
+| 跨 stack 傳值    | `ssm-read`                  | 跨 stack 傳值的唯一讀取入口                                                        | [![ssm-read](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ssm-read-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ssm-read-v) |
+| LLM 與 AgentCore | `bedrock-guardrail`         | Bedrock guardrail，tier 預設 `STANDARD`                                          | [![bedrock-guardrail](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=bedrock-guardrail-v*&label=)](https://github.com/libterty/infra-platform/releases?q=bedrock-guardrail-v) |
+| LLM 與 AgentCore | `bedrock-inference-profile` | application inference profile，給成本歸屬                                          | [![bedrock-inference-profile](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=bedrock-inference-profile-v*&label=)](https://github.com/libterty/infra-platform/releases?q=bedrock-inference-profile-v) |
+| LLM 與 AgentCore | `agentcore-runtime`         | AgentCore Runtime                                                                  | [![agentcore-runtime](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=agentcore-runtime-v*&label=)](https://github.com/libterty/infra-platform/releases?q=agentcore-runtime-v) |
+| LLM 與 AgentCore | `agentcore-memory`          | AgentCore Memory 與內建 strategy                                                   | [![agentcore-memory](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=agentcore-memory-v*&label=)](https://github.com/libterty/infra-platform/releases?q=agentcore-memory-v) |
+| LLM 與 AgentCore | `agentcore-gateway`         | MCP Gateway，target 只收 Lambda 與 MCP server                                      | [![agentcore-gateway](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=agentcore-gateway-v*&label=)](https://github.com/libterty/infra-platform/releases?q=agentcore-gateway-v) |
+| LLM 與 AgentCore | `log-delivery`              | CloudWatch vended log 的 source、destination、delivery                             | [![log-delivery](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=log-delivery-v*&label=)](https://github.com/libterty/infra-platform/releases?q=log-delivery-v) |
+| LLM 與 AgentCore | `bedrock-knowledge-base`    | Bedrock Knowledge Base（向量儲存只收 Aurora PostgreSQL pgvector）與 S3 data source | [![bedrock-knowledge-base](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=bedrock-knowledge-base-v*&label=)](https://github.com/libterty/infra-platform/releases?q=bedrock-knowledge-base-v) |
 
 消費端寫法：
 
@@ -44,7 +46,7 @@ module "api" {
 }
 ```
 
-`<org>` 是 HCP Terraform 的 organization，先用佔位符。認證、升版、從範本複製出去的改法，以及沒有 HCP token 時改用 `git::...?ref=<tag>` 的備案，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+`<org>` 是 HCP Terraform 的 organization。本 repo 發佈在 `app.terraform.io/libterty`，是 private registry，要是該 organization 的成員才抓得到；其他人用 `git::...?ref=<tag>` 的備案。「最新版」欄是 GitHub 上各 module 最新的 tag，registry 上的版本就是 tag 去掉前綴。認證、升版、從範本複製出去的改法，以及沒有 HCP token 時改用 `git::...?ref=<tag>` 的備案，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 不同團隊怎麼用
 
