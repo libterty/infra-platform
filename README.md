@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://img.shields.io/badge/registry-app.terraform.io%2Flibterty-7B42BC?logo=terraform&logoColor=white)](https://app.terraform.io/app/libterty/registry/private/modules)
 
-Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，透過 HCP Terraform private registry 提供給各專案用版本範圍引用，不再每個專案各寫一套。
+Terraform private registry 的範例 repo。共用 module 放在同一個 monorepo，用 Git tag 標版本，透過 HCP Terraform private registry 發布，各專案用版本範圍引用，不用每個專案各寫一套。
 
 ## module
 
@@ -46,7 +46,7 @@ module "api" {
 }
 ```
 
-`<org>` 是 HCP Terraform 的 organization。本 repo 發佈在 `app.terraform.io/libterty`，是 private registry，要是該 organization 的成員才抓得到；其他人用 `git::...?ref=<tag>` 的備案。「最新版」欄是 GitHub 上各 module 最新的 tag，registry 上的版本就是 tag 去掉前綴。認證、升版、從範本複製出去的改法，以及沒有 HCP token 時改用 `git::...?ref=<tag>` 的備案，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+`<org>` 是 HCP Terraform 的 organization。本 repo 發佈在 `app.terraform.io/libterty`，是 private registry，只有該 organization 的成員抓得到；其他人或沒有 HCP token 時，改用 `git::...?ref=<tag>` 的備案。「最新版」欄是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本。認證、升版、從範本複製出去的改法，以及 git 備案的寫法，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 不同團隊怎麼用
 
@@ -57,7 +57,7 @@ module "api" {
 | 專案 app team | 複製 `templates/project-infra/` 到自己的 repo，釘版本引用 module                       |
 | 專案 FDE team | 用 `scripts/vendor-modules.sh` 把指定 tag 的 module 交付給客戶                         |
 
-團隊邊界由 [`.github/CODEOWNERS`](./.github/CODEOWNERS) 表達，team slug 目前是佔位符。
+團隊邊界寫在 [`.github/CODEOWNERS`](./.github/CODEOWNERS)，team slug 目前是佔位符。
 
 ## 開發
 
