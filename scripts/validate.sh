@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Offline validation: fmt, static rules, init -backend=false, validate, test (mock), tflint. Never touches AWS.
+# Validation: fmt, static rules, init -backend=false, validate, test (mock), tflint. Never touches AWS.
+# Template stacks take their modules from the HCP private registry (ADR-0004), so they need a registry token
+# (terraform login, or TF_TOKEN_app_terraform_io); modules and customer repos stay offline.
 # Usage: scripts/validate.sh [dir...]   Without arguments, scans modules and templates.
 set -euo pipefail
 
@@ -258,6 +260,17 @@ if [ "${#dirs[@]}" -eq 0 ]; then
 fi
 
 command -v tflint >/dev/null || { echo "找不到 tflint" >&2; exit 1; }
+
+# Template stacks resolve modules from the registry; without a token init fails with a vague "Module not found".
+for d in "${dirs[@]}"; do
+  case "$d" in "${repo_root}/${tf_stack_glob}"/*) ;; *) continue ;; esac
+  if [ -z "${TF_TOKEN_app_terraform_io:-}" ] &&
+    ! jq -e '.credentials["app.terraform.io"].token' "${HOME}/.terraform.d/credentials.tfrc.json" >/dev/null 2>&1; then
+    echo "範本的 stack 從 app.terraform.io 抓 module，需要 token：先跑 terraform login，或設定 TF_TOKEN_app_terraform_io" >&2
+    exit 1
+  fi
+  break
+done
 
 # Steps 4-7: init, validate, test, tflint for one directory.
 validate_dir() {

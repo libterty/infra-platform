@@ -19,7 +19,7 @@
 #   - vendor/modules/VERSIONS gets one line: <module> <tag> <commit>.
 # Lines that point at the same module with another ref, and registry blocks resolved to another version or not
 # resolved at all, are left alone and listed; the exit status is then 3.
-# Only this direction is handled. Turning the template's relative paths into registry or git:: sources is a manual
+# Only this direction is handled. Changing the template's registry org or switching to git:: sources is a manual
 # step (docs/guides/consuming-modules.md).
 #
 # Exit status: 0 done, 1 bad input or refused before any change, 3 done but some lines were left unrewritten.
