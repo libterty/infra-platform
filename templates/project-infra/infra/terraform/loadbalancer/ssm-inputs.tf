@@ -11,7 +11,7 @@ locals {
 }
 
 module "in" {
-  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to app.terraform.io/<org>/ssm-read/aws
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_input_strings
