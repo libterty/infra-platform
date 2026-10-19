@@ -2,11 +2,11 @@
 
 結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 10 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
-release-please 這條流程本機沒有、也沒有在 GitHub 上跑過，**未實測**；設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
+release-please 這條流程在本機和 GitHub 上都沒有跑過，**未實測**；設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
 
 ## 改一個 module
 
-1. 開分支，只改一個 module 的目錄（例如 `modules/ecs-service/`）。release-please 依路徑判斷 commit 屬於哪個 module，一個 commit 動兩個 module，兩邊的 CHANGELOG 都會被寫進去。
+1. 開分支，只改一個 module 的目錄（例如 `modules/ecs-service/`）。release-please 依路徑判斷 commit 屬於哪個 module；如果一個 commit 動到兩個 module，它會同時寫進兩邊的 CHANGELOG。
 2. 照 TDD 寫：先寫 `tests/` 的 run（至少一個因為條件不成立而失敗），再改實作到全過。每條 validation 正反兩個方向各一個 run。
 3. `.tf` 與 `.tftest.hcl` 裡的註解、`description`、`error_message` 只用英文，不中英混雜，不放 icon；註解只寫程式碼看不出來的原因。`README.md`、`CHANGELOG.md` 用台灣繁體中文。
 4. 介面有變就同步改 `README.md` 的輸入輸出表（目前手寫，之後改由 terraform-docs 產生）與 `examples/`。
