@@ -13,7 +13,7 @@ locals {
 }
 
 module "in" {
-  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to app.terraform.io/<org>/ssm-read/aws
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_input_strings
@@ -33,21 +33,21 @@ locals {
 }
 
 module "in_services" {
-  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to app.terraform.io/<org>/ssm-read/aws
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_service_strings
 }
 
 module "in_mirrors" {
-  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to app.terraform.io/<org>/ssm-read/aws
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_mirror_strings
 }
 
 module "in_agents" {
-  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to git::...?ref=ssm-read-v<semver>
+  source = "../../../../../modules/ssm-read" # After copying out of this repo, change to app.terraform.io/<org>/ssm-read/aws
 
   ssm_prefix = local.ssm_prefix
   strings    = local.ssm_agent_strings
