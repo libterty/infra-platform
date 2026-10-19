@@ -1,6 +1,6 @@
 # 怎麼引用這個 repo 的 module
 
-結論：從 HCP Terraform private registry 引用，`source = "app.terraform.io/<org>/<module>/aws"` 加 `version = "~> 0.1.0"`。patch 版用 `terraform init -upgrade` 就吃得到；MINOR 以上的升版是改 `version` 的 PR，先讀 CHANGELOG 再跑 plan。從範本複製出去時，相對路徑要一次換成這個格式，下面有可以照抄的指令。拿不到 HCP token 的環境改用 git source，見最後一節〈備案〉。
+結論：從 HCP Terraform private registry 引用，`source = "app.terraform.io/<org>/<module>/aws"` 加 `version = "~> 0.1.0"`。patch 版用 `terraform init -upgrade` 就吃得到；MINOR 以上的升版是改 `version` 的 PR，先讀 CHANGELOG 再跑 plan。範本本身已經是這個寫法（指向 `app.terraform.io/libterty`），複製出去就能用；用自己的 organization 時換掉一段字串即可。拿不到 HCP token 的環境改用 git source，見最後一節〈備案〉。
 
 `<org>` 是 HCP Terraform 的 organization 名稱，下面一律用佔位符，用之前換成實際值。為什麼改用 registry 見 [ADR-0004](../adr/0004-hcp-terraform-private-registry.md)。
 
@@ -58,35 +58,38 @@ terraform init -backend=false
 jq -r '.Modules[] | select(.Version) | "\(.Key) \(.Version)"' .terraform/modules/modules.json
 ```
 
-## 從範本複製出去：把相對路徑換成 registry
+## 從範本複製出去
 
-範本 `templates/project-infra/infra/` 在本 repo 裡用相對路徑 `../../../../../modules/<module>` 引用 module，這樣 tag 還沒打出來時也能驗證。複製到專案 repo 之後，每個 `source` 都要換成 registry 格式，並加上 `version`。
-
-一行的改法（以 `network/vpc.tf` 為例）：
+範本 `templates/project-infra/infra/` 的每個 module 呼叫已經是 registry 寫法，`source` 上方有一行註解指回這份文件：
 
 ```hcl
-# 之前
-source = "../../../../../modules/vpc"
-# 之後
-source  = "app.terraform.io/<org>/vpc/aws"
-version = "~> 0.1.0"
+module "gateway" {
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/agentcore-gateway/aws"
+  version  = "~> 0.1.0"
+  ...
 ```
 
-一次改完 9 個 stack：在本 repo（infra-platform）的 clone 裡跑 `scripts/template-to-registry.sh`，第二個參數指到專案 repo 的 `infra/terraform`。腳本把每個相對路徑換成 registry 寫法，`version` 照本 repo `.release-please-manifest.json` 的目前版本寫成 `~> <MAJOR>.<MINOR>.0`（例如目前全部是 `~> 0.1.0`；LLM 增補動到的 10 個 module 範圍內最新的是 `0.1.1`，`init` 會自己挑到），最後跑 `terraform fmt`。需要 `jq` 與 `terraform`。
+複製到專案 repo 之後：
+
+| 情況 | 要做什麼 |
+|---|---|
+| 用 `libterty` 這個 organization（是它的成員） | 不用改。`terraform login` 之後就能 `init` |
+| 用自己的 organization（module 已照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) 登記） | 把 `app.terraform.io/libterty/` 換成自己的，見下面的指令 |
+| 拿不到 HCP token | 改成 git source，見最後一節〈備案〉 |
+
+換 organization（在專案 repo 的根目錄跑；macOS 與 Linux 的 `sed` 都適用）：
 
 ```bash
-cd <platform-repo>
-git pull                                         # manifest 要是最新的，約束才對得上最新的發佈
-scripts/template-to-registry.sh app.terraform.io/<org> /path/to/project-repo/infra/terraform
+NEW_REGISTRY="app.terraform.io/<org>"   # 換成自己的 organization
 
-cd /path/to/project-repo
-git diff --stat                                  # 只有 .tf 的 source／version 行
-grep -rnE --include='*.tf' 'source *= *"\.\./' infra/terraform   # 預期沒有輸出
+grep -rlE --include='*.tf' '"app\.terraform\.io/libterty/' infra/terraform | while IFS= read -r f; do
+  sed -E -i.bak "s#\"app\.terraform\.io/libterty/#\"${NEW_REGISTRY}/#" "$f" && rm -f "$f.bak"
+done
+grep -rn --include='*.tf' 'app.terraform.io/libterty/' infra/terraform   # 預期沒有輸出
 ```
 
-本 repo 的 Registry workflow（`.github/workflows/registry.yml`）每次 push 到 `main` 與每週一都會用同一支腳本轉換範本，對已發佈的版本跑 `init` 與 `validate`；它是綠的，就代表現在複製範本出去照這個步驟可以用。
-
-`ssm-inputs.tf` 裡 `source` 後面的英文註解（`After copying out of this repo, change to ...`）會跟著那一行一起被換掉，不用另外刪。
+`version` 跟著本 repo 發版時的版本走（目前全部是 `~> 0.1.0`；LLM 增補動到的 10 個 module 範圍內最新的是 `0.1.1`，`init` 會自己挑到）。
 
 改完逐一 init，確認每個 module 都抓得到，並看解析到的版本：
 
@@ -181,26 +184,29 @@ module "api" {
 source = "git::https://github.com/<github-org>/<repo>.git//modules/ecs-service?ref=<commit-sha>" # ecs-service-v0.1.0
 ```
 
-從範本複製出去時換成 git source 的指令。git source 沒有範圍，要逐個 module 釘到能用的 tag：先全部換成 `v0.1.0`，再把 LLM 增補動到的 10 個 module 改成 `v0.1.1`（7 個新 module 沒有 `v0.1.0`；範本的 `data` 用到 `rds-v0.1.1` 的輸出，`agent` 用到 `s3-bucket-v0.1.1` 的 `never_expire`，`iam-base` 的 agent 服務 role 用到 `iam-role-v0.1.1` 的 `trust.source_arn`，留在 `v0.1.0` 會 init 失敗或 plan 失敗）：
+從範本複製出去時換成 git source 的指令。git source 沒有範圍，每個 module 釘到本 repo `.release-please-manifest.json` 記的目前版本；同時拿掉 `version` 行與 registry 的那行註解。在專案 repo 的根目錄跑，`MANIFEST` 指到本 repo 的 manifest（需要 `jq`）：
 
 ```bash
-PLATFORM_URL="https://github.com/<github-org>/<repo>.git"   # 換成實際的 org 與 repo
+PLATFORM_URL="https://github.com/<github-org>/<repo>.git"     # 換成實際的 org 與 repo
+MANIFEST="/path/to/infra-platform/.release-please-manifest.json"
 
-grep -rlE --include='*.tf' '"(\.\./){5}modules/' infra/terraform | while IFS= read -r f; do
-  sed -E -i.bak "s#\"(\.\./){5}modules/([a-z0-9-]+)\"#\"git::${PLATFORM_URL}//modules/\2?ref=\2-v0.1.0\"#" "$f" && rm -f "$f.bak"
+find infra/terraform -name '*.tf' -not -path '*/.terraform*' | while IFS= read -r f; do
+  awk -v url="$PLATFORM_URL" -v pins="$(jq -r 'to_entries[] | "\(.key | ltrimstr("modules/"))=\(.value)"' "$MANIFEST" | tr '\n' ' ')" '
+    BEGIN { n = split(pins, p, " "); for (i = 1; i <= n; i++) { split(p[i], kv, "="); ver[kv[1]] = kv[2] } }
+    /^[[:space:]]*# HCP private registry \(ADR-0004\)/ { next }
+    match($0, /^[[:space:]]*source[[:space:]]*=[[:space:]]*"app\.terraform\.io\/[^\/"]+\/[a-z0-9-]+\/aws"/) {
+      m = substr($0, RSTART, RLENGTH); sub(/\/aws"$/, "", m); sub(/^.*\//, "", m)
+      indent = $0; sub(/[^[:space:]].*$/, "", indent)
+      print indent "source = \"git::" url "//modules/" m "?ref=" m "-v" ver[m] "\""
+      drop_version = 1; next
+    }
+    drop_version && /^[[:space:]]*version[[:space:]]*=/ { drop_version = 0; next }
+    { drop_version = 0; print }
+  ' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 done
+terraform fmt -recursive infra/terraform
 
-for mv in bedrock-guardrail=0.1.1 bedrock-inference-profile=0.1.1 agentcore-runtime=0.1.1 agentcore-memory=0.1.1 \
-          agentcore-gateway=0.1.1 log-delivery=0.1.1 bedrock-knowledge-base=0.1.1 rds=0.1.1 s3-bucket=0.1.1 \
-          iam-role=0.1.1; do
-  m="${mv%%=*}"; v="${mv#*=}"
-  grep -rlE --include='*.tf' "//modules/${m}\?ref=" infra/terraform | while IFS= read -r f; do
-    sed -E -i.bak "s#(//modules/${m}\?ref=)${m}-v[0-9]+\.[0-9]+\.[0-9]+#\1${m}-v${v}#" "$f" && rm -f "$f.bak"
-  done
-done
-
-grep -rnE --include='*.tf' 'source *= *"\.\./' infra/terraform   # 預期沒有輸出
-grep -rhoE --include='*.tf' 'ref=[a-z0-9-]+-v0\.1\.1' infra/terraform | sort -u   # 預期剛好是上面 10 個 module 的 v0.1.1
+grep -rn --include='*.tf' 'app.terraform.io' infra/terraform   # 預期沒有輸出
 ```
 
 升版時改 `ref`（以 `ecs-service` 為例，不會動到 `ecs-service-alarms`）：

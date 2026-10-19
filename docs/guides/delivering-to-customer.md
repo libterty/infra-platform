@@ -9,7 +9,7 @@
 | 輸入 | 一個已經引用好 module 的專案 repo：registry 寫法（`app.terraform.io/<org>/<module>/aws` 加 `version`），或 git 寫法（`git::https://github.com/<github-org>/<repo>.git//modules/<module>?ref=<module>-v<semver>`）。做法見 [`consuming-modules.md`](./consuming-modules.md) |
 | 輸出 | 客戶 repo：`vendor/modules/<module>/`、`vendor/modules/VERSIONS`、改寫過 `source` 的 `.tf`、provider 鏡像、SSM 合約表（`infra/README.md`）、這份文件 |
 
-`vendor-modules.sh` 只做「registry 或 `git::...?ref=<tag>` → vendored 相對路徑」這一個方向。範本的相對路徑換成 registry 或 `git::` 是專案 app team 複製範本時做的，不歸這支腳本。
+`vendor-modules.sh` 只做「registry 或 `git::...?ref=<tag>` → vendored 相對路徑」這一個方向。範本本身已經是 registry 寫法；換 organization 或改成 `git::` 是專案 app team 複製範本時做的，不歸這支腳本。
 
 ## 1. vendoring：`scripts/vendor-modules.sh`
 
