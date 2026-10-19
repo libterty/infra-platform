@@ -55,7 +55,9 @@ locals {
 }
 
 module "runtime" {
-  source   = "../../../../../modules/agentcore-runtime"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/agentcore-runtime/aws"
+  version  = "~> 0.1.0"
   for_each = var.agent_runtimes
 
   name                  = local.runtime_inputs[each.key].name
@@ -68,7 +70,9 @@ module "runtime" {
 }
 
 module "runtime_log_group" {
-  source   = "../../../../../modules/log-group"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/log-group/aws"
+  version  = "~> 0.1.0"
   for_each = var.agent_runtimes
 
   name           = "/agentcore/${local.name_prefix}-${each.key}"
@@ -94,8 +98,10 @@ locals {
 }
 
 module "runtime_logs" {
-  source = "../../../../../modules/log-delivery"
-  count  = length(var.agent_runtimes) > 0 ? 1 : 0
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/log-delivery/aws"
+  version = "~> 0.1.0"
+  count   = length(var.agent_runtimes) > 0 ? 1 : 0
 
   name_prefix  = local.name_prefix
   sources      = local.log_delivery.sources

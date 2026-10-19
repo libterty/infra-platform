@@ -128,7 +128,9 @@ locals {
 }
 
 module "agent_runtime_policy" {
-  source   = "../../../../../modules/iam-role-policy"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role-policy/aws"
+  version  = "~> 0.1.0"
   for_each = local.agent_runtime_policies
 
   role_arn = each.value.role_arn
@@ -237,7 +239,9 @@ locals {
 }
 
 module "agent_service_policy" {
-  source   = "../../../../../modules/iam-role-policy"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role-policy/aws"
+  version  = "~> 0.1.0"
   for_each = merge(local.bedrock_kb_policy, local.agentcore_gateway_policy)
 
   role_arn = each.value.role_arn

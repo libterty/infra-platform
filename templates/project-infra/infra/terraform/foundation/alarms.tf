@@ -7,7 +7,9 @@ locals {
 }
 
 module "alarm_topic" {
-  source = "../../../../../modules/sns-alarm-topic"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/sns-alarm-topic/aws"
+  version = "~> 0.1.0"
 
   name                = local.alarm_topic.name
   email_subscriptions = local.alarm_topic.email_subscriptions

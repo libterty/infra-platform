@@ -19,8 +19,10 @@ locals {
 }
 
 module "db" {
-  source = "../../../../../modules/rds"
-  count  = var.db == null ? 0 : 1
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/rds/aws"
+  version = "~> 0.1.0"
+  count   = var.db == null ? 0 : 1
 
   name           = "${local.name_prefix}-db"
   deployment     = var.db.deployment

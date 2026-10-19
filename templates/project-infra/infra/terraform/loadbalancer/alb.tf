@@ -8,7 +8,9 @@ locals {
 }
 
 module "alb" {
-  source = "../../../../../modules/alb"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/alb/aws"
+  version = "~> 0.1.0"
 
   name                = "${local.name_prefix}-alb"
   subnet_ids          = local.alb_wiring.subnet_ids

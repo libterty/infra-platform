@@ -14,7 +14,9 @@ locals {
 }
 
 module "corpus_bucket" {
-  source   = "../../../../../modules/s3-bucket"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/s3-bucket/aws"
+  version  = "~> 0.1.0"
   for_each = local.corpus_buckets
 
   name          = each.value.name
@@ -69,7 +71,9 @@ locals {
 }
 
 module "knowledge_base" {
-  source   = "../../../../../modules/bedrock-knowledge-base"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/bedrock-knowledge-base/aws"
+  version  = "~> 0.1.0"
   for_each = local.knowledge_base_inputs
 
   name                 = each.value.name

@@ -54,7 +54,9 @@ locals {
 }
 
 module "task_role" {
-  source   = "../../../../../modules/iam-role"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role/aws"
+  version  = "~> 0.1.0"
   for_each = toset(local.services)
 
   name            = "${local.name_prefix}-${each.key}-task"

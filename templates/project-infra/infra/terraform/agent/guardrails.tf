@@ -1,7 +1,9 @@
 # Guardrails and Memories use AWS owned keys: which conditions the project key would need for Bedrock and AgentCore
 # has not been tested.
 module "guardrail" {
-  source   = "../../../../../modules/bedrock-guardrail"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/bedrock-guardrail/aws"
+  version  = "~> 0.1.0"
   for_each = var.guardrails
 
   name                    = "${local.name_prefix}-${each.key}"
@@ -21,7 +23,9 @@ module "guardrail" {
 }
 
 module "memory" {
-  source   = "../../../../../modules/agentcore-memory"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/agentcore-memory/aws"
+  version  = "~> 0.1.0"
   for_each = var.memories
 
   name              = replace("${local.name_prefix}-${each.key}", "-", "_")

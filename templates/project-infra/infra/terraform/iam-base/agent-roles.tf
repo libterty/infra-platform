@@ -70,7 +70,9 @@ locals {
 }
 
 module "agent_runtime_role" {
-  source   = "../../../../../modules/iam-role"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role/aws"
+  version  = "~> 0.1.0"
   for_each = local.agent_runtime_roles
 
   name            = each.value.name
@@ -79,7 +81,9 @@ module "agent_runtime_role" {
 }
 
 module "agent_service_role" {
-  source   = "../../../../../modules/iam-role"
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/iam-role/aws"
+  version  = "~> 0.1.0"
   for_each = local.agent_service_roles
 
   name            = each.value.name
