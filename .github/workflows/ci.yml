@@ -1,10 +1,14 @@
 name: CI
 
-# 離線驗證：不給任何雲端憑證，也不讀 repository secret。
+# 不給任何雲端憑證。範本的 stack 從 HCP private registry 引用 module（ADR-0004），所以 Validate 這一步讀 repo secret
+# TF_TOKEN_APP_TERRAFORM_IO；fork 來的 PR 拿不到 secret，範本的 stack 會在 init 失敗。
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 1 * * 1" # 每週一 01:17 UTC：registry 與 token 是否還能用
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,4 +44,25 @@ jobs:
           restore-keys: tf-plugins-${{ runner.os }}-
 
       - name: Validate
+        env:
+          # owners team token（Personal 方案不能建唯讀 team），30 天到期。只給這一步。
+          # 風險與補償措施見 docs/guides/hcp-registry-setup.md〈CI 的 token〉。
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
         run: scripts/validate.sh
+
+      - name: Registry versions
+        if: always()
+        run: |
+          {
+            echo "### Module versions resolved from the registry by the template stacks"
+            echo
+            echo "| module | version | stacks |"
+            echo "|---|---|---|"
+            for mj in .cache/tf-data/templates__project-infra__infra__terraform__*/modules/modules.json; do
+              [ -f "$mj" ] || continue
+              stack="$(basename "$(dirname "$(dirname "$mj")")")"
+              jq -r --arg s "${stack##*__}" '.Modules[] | select(.Version) | "\(.Source | split("/")[2])\t\(.Version)\t\($s)"' "$mj"
+            done | sort | awk -F'\t' '
+              { k = $1 "\t" $2; if (!(k in s)) { o[++n] = k; s[k] = $3 } else { s[k] = s[k] " " $3 } }
+              END { for (i = 1; i <= n; i++) { split(o[i], a, "\t"); print "| `" a[1] "` | " a[2] " | " s[o[i]] " |" } }'
+          } >>"$GITHUB_STEP_SUMMARY"
