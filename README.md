@@ -1,6 +1,6 @@
 # infra-platform
 
-[![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml)
+[![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://img.shields.io/badge/registry-app.terraform.io%2Flibterty-7B42BC?logo=terraform&logoColor=white)](https://app.terraform.io/app/libterty/registry/private/modules)
 
 Terraform private registry 的範例 repo：用 Git tag 版本化的 monorepo 發布共用 module，透過 HCP Terraform private registry 提供給各專案用版本範圍引用，不再每個專案各寫一套。
 
