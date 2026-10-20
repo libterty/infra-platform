@@ -19,6 +19,9 @@ override_module {
       agent_sg_id            = "sg-0123456789abcdef0"
       agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
       agent_runtimes         = "[\"agent\"]"
+      db_proxy_endpoint      = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_secret_arn          = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      db_name                = "app"
       ecr_repository_urls = jsonencode({
         api    = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api"
         worker = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-worker"
@@ -41,7 +44,13 @@ run "reads_only_tree_b" {
       agent_sg_id            = "infra/agent_sg_id"
       agent_runtime_role_arn = "infra/agent_runtime_role_arn"
       agent_runtimes         = "infra/agent_runtimes"
+      db_proxy_endpoint      = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_secret_arn          = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      db_name                = "app"
       ecr_repository_urls    = "infra/ecr_repository_urls"
+      db_proxy_endpoint      = "infra/db_proxy_endpoint"
+      db_secret_arn          = "infra/db_secret_arn"
+      db_name                = "infra/db_name"
     } && local.shared_input_lists == { agent_subnet_ids = "infra/agent_subnet_ids" }
     error_message = "agent reads its security group, role, Runtime list, image repositories and subnets from tree B"
   }
@@ -163,6 +172,9 @@ run "a_hyphenated_runtime_name_becomes_underscores" {
         agent_sg_id            = "sg-0123456789abcdef0"
         agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
         agent_runtimes         = "[\"agent\",\"agent-lite\"]"
+        db_proxy_endpoint      = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+        db_secret_arn          = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+        db_name                = "app"
         ecr_repository_urls = jsonencode({
           agent      = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-agent"
           agent-lite = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-agent-lite"
@@ -195,6 +207,9 @@ run "no_runtime_in_the_list_creates_none" {
         agent_sg_id            = "sg-0123456789abcdef0"
         agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
         agent_runtimes         = "[]"
+        db_proxy_endpoint      = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+        db_secret_arn          = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+        db_name                = "app"
         ecr_repository_urls    = "{}"
       }
       lists = {
@@ -236,7 +251,7 @@ run "environment_uses_generic_names_the_module_accepts" {
   assert {
     condition = toset(keys(local.runtime_environment)) == toset([
       "AWS_REGION", "AGENT_MODEL_ID", "AGENT_MEMORY_ID", "AGENT_BACKEND_MODE", "AGENT_MAX_OUTPUT_LENGTH",
-      "AGENT_OUTPUT_GUARDRAIL_ID",
+      "AGENT_OUTPUT_GUARDRAIL_ID", "AGENT_DB_HOST", "AGENT_DB_NAME", "AGENT_DB_AUTH_ARN", "AGENT_DB_SSLMODE",
     ])
     error_message = "Without a backend URL the optional variable is absent, not empty"
   }
@@ -349,5 +364,23 @@ run "publishes_the_runtime_memory_and_guardrail_values" {
   assert {
     condition     = jsondecode(local.published_strings.guardrail_ids) == { default = "gr0input00001", profile_a = "gr0input00001", output = "gr0output00003" }
     error_message = "Guardrail ids are published as a JSON map: one per input profile plus output"
+  }
+}
+
+run "runtime_connects_to_the_database_through_the_proxy" {
+  command = plan
+
+  assert {
+    condition = (
+      local.runtime_environment["AGENT_DB_HOST"] == "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com" &&
+      local.runtime_environment["AGENT_DB_NAME"] == "app" &&
+      local.runtime_environment["AGENT_DB_SSLMODE"] == "require"
+    )
+    error_message = "The Runtime reaches the database through the proxy endpoint and the database name tree B carries"
+  }
+
+  assert {
+    condition     = startswith(local.runtime_environment["AGENT_DB_AUTH_ARN"], "arn:aws:secretsmanager:")
+    error_message = "The Runtime gets the ARN of the database secret and reads the value with its role, as iam grants; the value never goes into the environment"
   }
 }

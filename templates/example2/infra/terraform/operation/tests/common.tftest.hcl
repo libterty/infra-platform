@@ -24,6 +24,7 @@ override_module {
       import_extract_role_arn = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn    = "arn:aws:iam::111111111111:role/example-dev-import-load"
       db_proxy_endpoint       = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_name                 = "app"
       db_secret_arn           = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       ecr_repository_urls = jsonencode({
         import-extract = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-import-extract"

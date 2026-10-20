@@ -18,6 +18,8 @@ locals {
     db_secret_arn                  = "infra/db_secret_arn"
     rate_limit_redis_endpoint      = "infra/rate_limit_redis_endpoint"
     stream_redis_endpoint          = "infra/stream_redis_endpoint"
+    db_name                        = "infra/db_name"
+    stream_shard_count             = "infra/stream_shard_count"
     ecr_repository_urls            = "infra/ecr_repository_urls"
   }
 

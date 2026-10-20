@@ -26,6 +26,8 @@ override_module {
       db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
       stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+      db_name                        = "app"
+      stream_shard_count             = "1"
       ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
       api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
       worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
@@ -49,7 +51,7 @@ run "publishes_exactly_the_keys_the_late_stacks_read" {
     condition = toset(keys(local.published_strings)) == toset([
       "alarm_topic_arn", "signing_private_key_secret_arn", "signing_public_key_secret_arn", "agent_runtimes",
       "ecr_repository_urls", "vpc_id", "alb_sg_id", "app_sg_id", "agent_sg_id", "bastion_sg_id",
-      "db_proxy_endpoint", "db_secret_arn", "rate_limit_redis_endpoint", "stream_redis_endpoint",
+      "db_proxy_endpoint", "db_secret_arn", "rate_limit_redis_endpoint", "stream_redis_endpoint", "db_name", "stream_shard_count",
       "ecs_execution_role_arn", "api_task_role_arn", "worker_task_role_arn", "import_extract_role_arn",
       "import_load_role_arn", "agent_runtime_role_arn",
     ])
@@ -101,6 +103,8 @@ run "rejects_an_empty_string_value" {
         db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
         rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+        db_name                        = "app"
+        stream_shard_count             = "1"
         ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
         api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
         worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
@@ -141,6 +145,8 @@ run "rejects_a_single_subnet" {
         db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
         rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+        db_name                        = "app"
+        stream_shard_count             = "1"
         ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
         api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
         worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
@@ -181,6 +187,8 @@ run "rejects_an_agent_runtimes_value_that_is_not_json" {
         db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
         rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+        db_name                        = "app"
+        stream_shard_count             = "1"
         ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
         api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
         worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
@@ -221,6 +229,8 @@ run "rejects_ecr_repository_urls_that_are_not_an_object" {
         db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
         rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+        db_name                        = "app"
+        stream_shard_count             = "1"
         ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
         api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
         worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"

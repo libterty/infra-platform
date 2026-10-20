@@ -96,12 +96,6 @@ variable "import_load_reserved_concurrency" {
   }
 }
 
-variable "db_name" {
-  description = "Database name. It must equal db_name in the database stack, which does not publish it."
-  type        = string
-  default     = "app"
-}
-
 variable "lambda_log_retention_days" {
   description = "Retention of the Lambda log groups."
   type        = number

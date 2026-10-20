@@ -30,14 +30,14 @@ locals {
     AWS_REGION                    = var.aws_region
     APP_ENV                       = var.env
     DB_HOST                       = module.shared.strings["db_proxy_endpoint"]
-    DB_NAME                       = var.db_name
+    DB_NAME                       = module.shared.strings["db_name"]
     DB_SSLMODE                    = "require"
     DB_SECRET_ARN                 = module.shared.strings["db_secret_arn"]
     SIGNING_PUBLIC_KEY_SECRET_ARN = module.shared.strings["signing_public_key_secret_arn"]
     STREAM_REDIS_HOST             = local.stream_redis[0]
     STREAM_REDIS_PORT             = local.stream_redis[1]
     STREAM_REDIS_TLS              = "true"
-    STREAM_SHARDS                 = tostring(var.stream_shard_count)
+    STREAM_SHARDS                 = module.shared.strings["stream_shard_count"]
     STREAM_LENGTH_CAP             = tostring(var.stream_length_cap)
   }
 

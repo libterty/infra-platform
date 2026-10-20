@@ -4,6 +4,9 @@ locals {
     agent_runtime_role_arn = "infra/agent_runtime_role_arn"
     agent_runtimes         = "infra/agent_runtimes"
     ecr_repository_urls    = "infra/ecr_repository_urls"
+    db_proxy_endpoint      = "infra/db_proxy_endpoint"
+    db_secret_arn          = "infra/db_secret_arn"
+    db_name                = "infra/db_name"
   }
 
   shared_input_lists = {

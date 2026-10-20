@@ -5,6 +5,7 @@ locals {
     import_extract_role_arn = "infra/import_extract_role_arn"
     import_load_role_arn    = "infra/import_load_role_arn"
     db_proxy_endpoint       = "infra/db_proxy_endpoint"
+    db_name                 = "infra/db_name"
     db_secret_arn           = "infra/db_secret_arn"
     ecr_repository_urls     = "infra/ecr_repository_urls"
   }

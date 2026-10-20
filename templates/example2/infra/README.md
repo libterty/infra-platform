@@ -71,9 +71,9 @@ infra/
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 24 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 26 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
 
-String（20 個，值不可為空）：
+String（22 個，值不可為空）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
@@ -87,10 +87,12 @@ String（20 個，值不可為空）：
 | `app_sg_id` | app 層的 security group | application、operation |
 | `agent_sg_id` | agent 層的 security group | agent |
 | `bastion_sg_id` | bastion 的 security group | operation |
-| `db_proxy_endpoint` | RDS Proxy endpoint | application、operation |
-| `db_secret_arn` | 資料庫 secret ARN | application、operation |
+| `db_proxy_endpoint` | RDS Proxy endpoint | agent、application、operation |
+| `db_secret_arn` | 資料庫 secret ARN | agent、application、operation |
+| `db_name` | 資料庫名稱 | agent、application、operation |
 | `rate_limit_redis_endpoint` | `host:port` | application |
 | `stream_redis_endpoint` | `host:port` | application |
+| `stream_shard_count` | stream Redis 的 shard 數（字串） | application |
 | `ecs_execution_role_arn` | ECS execution role | application |
 | `api_task_role_arn` | api task role | application |
 | `worker_task_role_arn` | worker task role | application |

@@ -33,6 +33,8 @@ override_module {
       db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint      = "clustercfg.example-dev-rate-limit.abc123.apne1.cache.amazonaws.com:6379"
       stream_redis_endpoint          = "clustercfg.example-dev-stream.abc123.apne1.cache.amazonaws.com:6379"
+      db_name                        = "app"
+      stream_shard_count             = "3"
       ecr_repository_urls = jsonencode({
         api    = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api"
         worker = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-worker"

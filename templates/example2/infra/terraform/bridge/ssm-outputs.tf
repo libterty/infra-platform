@@ -16,6 +16,8 @@ locals {
     db_secret_arn                  = module.in.strings["db_secret_arn"]
     rate_limit_redis_endpoint      = module.in.strings["rate_limit_redis_endpoint"]
     stream_redis_endpoint          = module.in.strings["stream_redis_endpoint"]
+    db_name                        = module.in.strings["db_name"]
+    stream_shard_count             = module.in.strings["stream_shard_count"]
     ecs_execution_role_arn         = module.in.strings["ecs_execution_role_arn"]
     api_task_role_arn              = module.in.strings["api_task_role_arn"]
     worker_task_role_arn           = module.in.strings["worker_task_role_arn"]

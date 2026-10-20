@@ -14,18 +14,6 @@ variable "app_port" {
   default     = 8080
 }
 
-variable "db_name" {
-  description = "Database name. It must equal db_name in the database stack, which does not publish it."
-  type        = string
-  default     = "app"
-}
-
-variable "stream_shard_count" {
-  description = "Shards of the stream Redis. It must equal that cluster's num_node_groups in the database stack."
-  type        = number
-  default     = 1
-}
-
 variable "stream_length_cap" {
   description = "Per-shard stream length cap; the worker's backlog thresholds are fractions of it."
   type        = number

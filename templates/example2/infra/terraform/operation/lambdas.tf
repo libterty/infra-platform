@@ -42,7 +42,7 @@ locals {
         EMBEDDING_MODEL_ID = local.embedding_model_id
         IMPORT_BUCKET_NAME = local.import_bucket_name
         DB_HOST            = module.shared.strings["db_proxy_endpoint"]
-        DB_NAME            = var.db_name
+        DB_NAME            = module.shared.strings["db_name"]
         DB_SSLMODE         = "require"
         DB_SECRET_ARN      = module.shared.strings["db_secret_arn"]
       }

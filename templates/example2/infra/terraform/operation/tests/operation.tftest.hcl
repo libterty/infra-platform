@@ -21,6 +21,7 @@ override_module {
       import_extract_role_arn = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn    = "arn:aws:iam::111111111111:role/example-dev-import-load"
       db_proxy_endpoint       = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_name                 = "app"
       db_secret_arn           = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       ecr_repository_urls = jsonencode({
         import-extract = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-import-extract"
@@ -45,6 +46,7 @@ run "reads_only_tree_b" {
       import_extract_role_arn = "infra/import_extract_role_arn"
       import_load_role_arn    = "infra/import_load_role_arn"
       db_proxy_endpoint       = "infra/db_proxy_endpoint"
+      db_name                 = "infra/db_name"
       db_secret_arn           = "infra/db_secret_arn"
       ecr_repository_urls     = "infra/ecr_repository_urls"
     } && local.shared_input_lists == { app_subnet_ids = "infra/app_subnet_ids" }

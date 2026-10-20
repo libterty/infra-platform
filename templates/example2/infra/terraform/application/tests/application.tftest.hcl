@@ -40,6 +40,8 @@ override_module {
       db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint      = "clustercfg.example-dev-rate-limit.abc123.apne1.cache.amazonaws.com:6379"
       stream_redis_endpoint          = "clustercfg.example-dev-stream.abc123.apne1.cache.amazonaws.com:6379"
+      db_name                        = "app"
+      stream_shard_count             = "3"
       ecr_repository_urls = jsonencode({
         api    = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api"
         worker = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-worker"
@@ -73,6 +75,11 @@ run "reads_the_late_stack_keys_from_tree_a_and_the_rest_from_tree_b" {
   }
 
   assert {
+    condition     = local.shared_input_strings["db_name"] == "infra/db_name" && local.shared_input_strings["stream_shard_count"] == "infra/stream_shard_count"
+    error_message = "The database name and the shard count come from tree B"
+  }
+
+  assert {
     condition     = !contains(keys(local.shared_input_strings), "alarm_topic_arn") && contains(keys(local.shared_input_lists), "services")
     error_message = "application raises no alarms; it reads the service list"
   }
@@ -96,6 +103,8 @@ run "fails_when_the_service_list_misses_a_service" {
         db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
         rate_limit_redis_endpoint      = "clustercfg.example-dev-rate-limit.abc123.apne1.cache.amazonaws.com:6379"
         stream_redis_endpoint          = "clustercfg.example-dev-stream.abc123.apne1.cache.amazonaws.com:6379"
+        db_name                        = "app"
+        stream_shard_count             = "3"
         ecr_repository_urls = jsonencode({
           api    = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api"
           worker = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-worker"
@@ -237,6 +246,11 @@ run "db_and_redis_endpoints_are_split_into_host_and_port" {
   assert {
     condition     = local.api_environment["STREAM_REDIS_HOST"] == "clustercfg.example-dev-stream.abc123.apne1.cache.amazonaws.com" && local.api_environment["STREAM_REDIS_PORT"] == "6379"
     error_message = "host:port is split"
+  }
+
+  assert {
+    condition     = local.worker_environment["STREAM_SHARDS"] == "3" && local.api_environment["STREAM_SHARDS"] == "3"
+    error_message = "The shard count is the one the database stack published, not a second copy"
   }
 
   assert {
