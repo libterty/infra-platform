@@ -392,7 +392,15 @@ run "publishes_the_cluster_services_and_log_groups" {
       worker_service_name   = "/example/dev/application/worker_service_name"
       api_log_group_name    = "/example/dev/application/api_log_group_name"
       worker_log_group_name = "/example/dev/application/worker_log_group_name"
+      api_max_capacity      = "/example/dev/application/api_max_capacity"
+      worker_max_capacity   = "/example/dev/application/worker_max_capacity"
+      stream_maxlen         = "/example/dev/application/stream_maxlen"
     }
-    error_message = "application publishes five keys under its own path"
+    error_message = "application publishes eight keys under its own path"
+  }
+
+  assert {
+    condition     = local.published_strings.api_max_capacity == "10" && local.published_strings.worker_max_capacity == "6" && local.published_strings.stream_maxlen == "100000"
+    error_message = "The scaling ceilings and the stream cap are published so postdeploy sizes its alarms from the same numbers"
   }
 }
