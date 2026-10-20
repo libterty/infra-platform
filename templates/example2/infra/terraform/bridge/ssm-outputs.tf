@@ -7,5 +7,5 @@
 # planned_strings: ecr_repository_urls vpc_id alb_sg_id app_sg_id agent_sg_id bastion_sg_id
 # planned_strings: db_proxy_endpoint db_secret_arn rate_limit_redis_endpoint stream_redis_endpoint
 # planned_strings: stream_redis_id ecs_execution_role_arn api_task_role_arn worker_task_role_arn
-# planned_strings: lambda_role_arn agent_runtime_role_arn
+# planned_strings: import_extract_role_arn import_load_role_arn agent_runtime_role_arn
 # planned_lists: services public_subnet_ids app_subnet_ids agent_subnet_ids

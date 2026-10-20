@@ -18,7 +18,8 @@ locals {
     ecs_execution_role_arn         = "iam/ecs_execution_role_arn"
     api_task_role_arn              = "iam/api_task_role_arn"
     worker_task_role_arn           = "iam/worker_task_role_arn"
-    lambda_role_arn                = "iam/lambda_role_arn"
+    import_extract_role_arn        = "iam/import_extract_role_arn"
+    import_load_role_arn           = "iam/import_load_role_arn"
     agent_runtime_role_arn         = "iam/agent_runtime_role_arn"
   }
 
