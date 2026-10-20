@@ -157,7 +157,8 @@ rm -rf "$tmp"
 
 | 情況 | 要做什麼 |
 |---|---|
-| 現有 module 發新版 | 不用做什麼。release-please 打 tag 之後，HCP 透過 webhook 發佈新版本；發版後在 HCP 上看一眼版本清單 |
+| 現有 module 發新版 | 不用做什麼。release-please 打 tag 之後，HCP 透過 webhook 發佈新版本；發版後在 HCP 上看一眼版本清單。手動推 tag 時**一次最多推 3 個**：GitHub 遇到一次 push 超過 3 個 tag 時不發 webhook，HCP 就收不到 |
+| 已登記的 module 沒收到新 tag | private registry 沒有 Resync。先確認 tag 名稱符合 `<module>-v<semver>`；再把那個 module 刪掉、照第 3 節的 API 迴圈重新登記，登記時 HCP 會讀所有 tag。刪掉到重新登記完成大約 15–30 秒，這段時間消費端 `init` 會失敗，一次只處理一個 module。2026-10-20 一次推了 12 個 tag，6 個已登記的 module 沒收到 `0.2.0`，就是這樣補的 |
 | 新增 module | 第一個 tag 推上去之後，照第 3 節登記一次 |
 | 刪除或改名 module | 在 HCP 上刪掉舊的登記；已經發佈的版本會跟著消失，先確認沒有消費端還在用 |
 | HCP 抓不到 module | 消費端暫時退回 `git::...?ref=<tag>` 寫法（[`consuming-modules.md`](./consuming-modules.md) 的〈備案〉一節），tag 是同一批，內容相同 |

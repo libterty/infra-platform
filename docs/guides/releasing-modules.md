@@ -99,7 +99,7 @@ for t in $(git tag -l "*-v${VERSION}"); do
 done                                        # 預期沒有輸出
 ```
 
-**push tag 是人做的事**，不要寫進任何腳本或 CI。確認上面的檢查都沒有輸出後，由 platform team 的人手動推：
+**push tag 是人做的事**，不要寫進任何腳本或 CI。確認上面的檢查都沒有輸出後，由 platform team 的人手動推。module 已經在 HCP 登記過的話，**一次最多推 3 個 tag**：GitHub 遇到一次 push 超過 3 個 tag 時不發 webhook，HCP 收不到新版本（補救方式見 [`hcp-registry-setup.md`](./hcp-registry-setup.md)〈之後的維護〉）。這一節的 19 個是在 HCP 登記之前推的，所以一次推完沒有問題：
 
 ```bash
 git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')

@@ -54,13 +54,22 @@ module "api" {
 
 `<org>` 是 HCP Terraform 的 organization。本 repo 發佈在 `app.terraform.io/libterty`，是 private registry，只有該 organization 的成員抓得到；其他人或沒有 HCP token 時，改用 `git::...?ref=<tag>` 的備案。「最新版」欄是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本。認證、升版、從範本複製出去的改法，以及 git 備案的寫法，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
+## 範本
+
+兩份專案 infra 範本，都是完整的 Terraform stack 目錄，複製到專案 repo 就能用；stack 只呼叫 module，跨 stack 只透過 SSM 傳值。
+
+| 範本 | 差異 |
+| --- | --- |
+| [`templates/project-infra/`](./templates/project-infra/infra/README.md) | 9 個 stack，環境是 `dev`、`prod`。資料庫與 IAM 各拆成兩個 stack（`iam-base`、`iam-app`、`data`），`agent`（AgentCore 與 Bedrock）預設關閉，支援客戶自管資源模式 |
+| [`templates/example2/`](./templates/example2/infra/README.md) | 11 個 stack，環境是 `dev`、`sit`。資料庫、IAM、ALB、AgentCore、ECS、bastion 與告警各自獨立，另有 `bridge` stack 把前段的值轉寫成後段讀的共用前綴，這個前綴也可以改由外部發布；附 `stacks.sh` 與 SSM 合約檢查腳本 |
+
 ## 不同團隊怎麼用
 
 | 團隊          | 在這個 repo 做什麼                                                                       |
 | ------------- | ---------------------------------------------------------------------------------------- |
 | platform team | 擁有 `modules/`、`.github/`、`scripts/`、`docs/adr/`；維護 module 介面、CI、發版 |
 | core app team | 暫無；AP 層共用元件之後比照本 repo 的發版模式另開 repo                                   |
-| 專案 app team | 複製 `templates/project-infra/` 到自己的 repo，釘版本引用 module                       |
+| 專案 app team | 複製 `templates/project-infra/` 或 `templates/example2/` 到自己的 repo，釘版本引用 module |
 | 專案 FDE team | 用 `scripts/vendor-modules.sh` 把指定 tag 的 module 交付給客戶                         |
 
 團隊邊界寫在 [`.github/CODEOWNERS`](./.github/CODEOWNERS)，team slug 目前是佔位符。
@@ -74,7 +83,7 @@ scripts/validate.sh                      # 全部
 scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 ```
 
-這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S9、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
+這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
 
 本專案禁止在這個 repo 跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
 
@@ -90,7 +99,7 @@ commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 是 modul
 | 架構決策                                                                                             | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md)、[0004 HCP registry](./docs/adr/0004-hcp-terraform-private-registry.md) |
 | 怎麼引用 module、HCP 認證、升版、git 備案                                                                | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md)                                                                                                                                                                                     |
 | 怎麼把 module 登記到 HCP Terraform private registry | [`docs/guides/hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md) |
-| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md)                                                                                |
+| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md) 與 [`templates/example2/infra/`](./templates/example2/infra/README.md)                                                                                |
 | 怎麼改 module、semver、release-please、第一次手動打 tag                                              | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md)                                                                                                                                                                                     |
 | ADOT sidecar、X-Ray 權限與抽樣、log 告警                                                             | [`docs/guides/observability.md`](./docs/guides/observability.md)                                                                                                                                                                                             |
 | LLM 與 AgentCore：Runtime、guardrail、Memory、Gateway、Knowledge Base（Aurora pgvector）怎麼接進範本 | [`docs/guides/llm-agentcore.md`](./docs/guides/llm-agentcore.md)                                                                                                                                                                                             |

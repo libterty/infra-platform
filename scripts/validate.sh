@@ -19,10 +19,16 @@ export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 export AWS_EC2_METADATA_DISABLED=true
 
-tf_stack_glob="templates/project-infra/infra/terraform"
+# Stack roots of every template (repo-relative), one per templates/<name>/infra/terraform.
+tf_stack_roots=()
+for d in "${repo_root}"/templates/*/infra/terraform; do
+  [ -d "$d" ] && tf_stack_roots+=("${d#"${repo_root}"/}")
+done
+# A stack of a customer repo is judged by the rules of this template (S8 matches on the stack name only).
+customer_stack_root="templates/project-infra/infra/terraform"
 
 # S8 allow-list, one entry per row of the table in docs/design/v1/design-docs.md section 5.3
-# (native resources allowed in template stacks). Format: <stack>:<resource type>.
+# (native resources allowed in template stacks, for every template). Format: <stack>:<resource type>.
 s8_allowed=(
   "foundation:aws_secretsmanager_secret"
   "agent:aws_secretsmanager_secret"
@@ -40,7 +46,7 @@ rel() {
 
 # Map a path to the in-repo path whose rules apply to it, so every rule below is written once:
 #   <anything>/vendor/modules/<name>/...  ->  modules/<name>/...            (vendored copy of a module)
-#   <anything>/infra/terraform/<stack>/.. ->  <tf_stack_glob>/<stack>/...   (a customer stack)
+#   <anything>/infra/terraform/<stack>/.. ->  <customer_stack_root>/<stack>/... (a customer stack)
 # Paths inside this repo map to themselves, so a vendor/modules/ directory nested in this repo cannot borrow a module's exemption.
 canon() {
   local p
@@ -53,9 +59,23 @@ canon() {
   p="/${1#/}"
   case "$p" in
     */vendor/modules/*) printf 'modules/%s\n' "${p##*/vendor/modules/}" ;;
-    */infra/terraform/*) printf '%s/%s\n' "${tf_stack_glob}" "${p##*/infra/terraform/}" ;;
+    */infra/terraform/*) printf '%s/%s\n' "${customer_stack_root}" "${p##*/infra/terraform/}" ;;
     *) rel "$1" ;;
   esac
+}
+
+# Print the stack root (from tf_stack_roots) that contains the repo-relative path $1; fails when there is none.
+stack_root_of() {
+  local root
+  for root in ${tf_stack_roots[@]+"${tf_stack_roots[@]}"}; do
+    case "$1" in
+      "${root}"/*)
+        printf '%s\n' "$root"
+        return 0
+        ;;
+    esac
+  done
+  return 1
 }
 
 sha256() {
@@ -69,7 +89,11 @@ if [ "$#" -eq 0 ]; then
   for r in modules templates; do
     [ -d "${repo_root}/${r}" ] && scan_roots+=("${repo_root}/${r}")
   done
-  for d in "${repo_root}"/modules/* "${repo_root}"/modules/*/examples/* "${repo_root}/${tf_stack_glob}"/*; do
+  stack_dirs=()
+  for root in ${tf_stack_roots[@]+"${tf_stack_roots[@]}"}; do
+    stack_dirs+=("${repo_root}/${root}"/*)
+  done
+  for d in "${repo_root}"/modules/* "${repo_root}"/modules/*/examples/* ${stack_dirs[@]+"${stack_dirs[@]}"}; do
     [ -d "$d" ] || continue
     ls "$d"/*.tf >/dev/null 2>&1 && dirs+=("$d")
   done
@@ -197,16 +221,15 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
     scan_pattern S7 'rds 不得宣告含 password 的變數' "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
   fi
   # S8: template stacks only declare the aws_* resources listed in s8_allowed
-  case "$r" in
-    "${tf_stack_glob}"/*)
-      stack="${r#"${tf_stack_glob}"/}"
-      scan_stack_resources "$f" "${stack%%/*}"
-      ;;
-  esac
+  if root="$(stack_root_of "$r")"; then
+    stack="${r#"${root}"/}"
+    scan_stack_resources "$f" "${stack%%/*}"
+  fi
 done
 
-# S5: common.tf must be identical across template stacks; stacks outside this repo (customer repo)
-# are compared with each other, not with the template, because their copy comes from another tag.
+# S5: common.tf must be identical across the stacks of one template (templates may differ from each other);
+# stacks outside this repo (customer repo) are compared with each other, not with the template,
+# because their copy comes from another tag.
 check_common_identical() {
   local f h first_common="" first_hash=""
   for f in "$@"; do
@@ -221,12 +244,14 @@ check_common_identical() {
     fi
   done
 }
-check_common_identical "${repo_root}/${tf_stack_glob}"/*/common.tf
+for root in ${tf_stack_roots[@]+"${tf_stack_roots[@]}"}; do
+  check_common_identical "${repo_root}/${root}"/*/common.tf
+done
 outside_common=()
 for f in ${files_tf[@]+"${files_tf[@]}"}; do
   case "$f" in "${repo_root}"/*) continue ;; esac
   [ "$(basename "$f")" = "common.tf" ] || continue
-  case "$(canon "$f")" in "${tf_stack_glob}"/*/common.tf) outside_common+=("$f") ;; esac
+  case "$(canon "$f")" in "${customer_stack_root}"/*/common.tf) outside_common+=("$f") ;; esac
 done
 if [ "${#outside_common[@]}" -gt 0 ]; then check_common_identical "${outside_common[@]}"; fi
 
@@ -249,6 +274,51 @@ for f in ${files_tfbackend[@]+"${files_tfbackend[@]}"}; do
   fi
 done
 
+# S10: every provider block of a stack lock file needs at least 2 "h1:" hashes (darwin + linux).
+# A lock written by init on macOS alone has only the darwin hash and fails in linux CI, which this machine cannot see.
+# Customer stacks are judged the same way (their path maps to a template stack through canon()).
+while IFS= read -r f; do
+  c="$(canon "$(dirname "$f")")"
+  case "$c" in "${customer_stack_root}"/*) ;; *) stack_root_of "$c" >/dev/null || continue ;; esac
+  out="$(awk '
+    /^provider[[:space:]]+"/ { name = $2; gsub(/"/, "", name); n = 0; inblk = 1; next }
+    inblk && /^[[:space:]]*"h1:/ { n++ }
+    inblk && /^}/ { if (n < 2) print name " (" n ")"; inblk = 0 }
+  ' "$f")"
+  if [ -n "$out" ]; then
+    while IFS= read -r line; do
+      echo "S10 $(rel "$f"): provider ${line} 的 h1: hash 少於 2 個（需要 darwin 與 linux 各一）；從已有兩個 h1: 的 lock 複製，不要在 macOS 上單獨 init 產生" >&2
+    done <<<"$out"
+    fail_static=1
+  fi
+done < <(for r in ${scan_roots[@]+"${scan_roots[@]}"}; do find "$r" -name '.terraform.lock.hcl' -not -path '*/.terraform/*' | sort; done)
+
+# Per template: the SSM contract check (when the template ships one) and its shell scripts (bash -n, shellcheck if installed).
+have_shellcheck=1
+command -v shellcheck >/dev/null || have_shellcheck=0
+shellcheck_notice=0
+for root in ${tf_stack_roots[@]+"${tf_stack_roots[@]}"}; do
+  tpl="${root%/infra/terraform}"
+  if [ -f "${repo_root}/${root}/check-ssm-contract.sh" ]; then
+    if ! bash "${repo_root}/${root}/check-ssm-contract.sh"; then
+      echo "FAIL ${root}/check-ssm-contract.sh 回傳非零" >&2
+      fail_static=1
+    fi
+  fi
+  while IFS= read -r f; do
+    if ! bash -n "$f"; then
+      echo "FAIL $(rel "$f"): bash -n 語法錯誤" >&2
+      fail_static=1
+    fi
+    if [ "$have_shellcheck" -eq 1 ]; then
+      shellcheck "$f" || fail_static=1
+    elif [ "$shellcheck_notice" -eq 0 ]; then
+      echo "略過 shellcheck：未安裝" >&2
+      shellcheck_notice=1
+    fi
+  done < <(find "${repo_root}/${tpl}" -name '*.sh' -not -path '*/.terraform*' | sort)
+done
+
 if [ "$fail_static" -ne 0 ]; then
   echo "FAIL fmt 或靜態規則未過，不進入後面的驗證步驟" >&2
   exit 1
@@ -263,7 +333,7 @@ command -v tflint >/dev/null || { echo "找不到 tflint" >&2; exit 1; }
 
 # Template stacks resolve modules from the registry; without a token init fails with a vague "Module not found".
 for d in "${dirs[@]}"; do
-  case "$d" in "${repo_root}/${tf_stack_glob}"/*) ;; *) continue ;; esac
+  stack_root_of "$(rel "$d")" >/dev/null || continue
   if [ -z "${TF_TOKEN_app_terraform_io:-}" ] &&
     ! jq -e '.credentials["app.terraform.io"].token' "${HOME}/.terraform.d/credentials.tfrc.json" >/dev/null 2>&1; then
     echo "範本的 stack 從 app.terraform.io 抓 module，需要 token：先跑 terraform login，或設定 TF_TOKEN_app_terraform_io" >&2
@@ -280,7 +350,7 @@ validate_dir() {
   data_dir="${cache_root}/tf-data/$(printf '%s' "$r" | sed 's|^/||; s|/|__|g')"
   export TF_DATA_DIR="$data_dir"
   case "$c" in
-    "${tf_stack_glob}"/*) lock=(-lockfile=readonly) ;;
+    *) stack_root_of "$c" >/dev/null && lock=(-lockfile=readonly) ;;
   esac
 
   echo "== ${r}"
@@ -292,11 +362,10 @@ validate_dir() {
   fi
 
   # Step 6a: stacks (decided by directory layout, not by path) run tests against their tfvars files.
-  local e x
-  for e in dev prod; do
-    if [ -f "$dir/envs/$e.tfvars" ] && [ -d "$dir/tests/tfvars" ]; then
-      terraform -chdir="$dir" test -test-directory=tests/tfvars -var-file="envs/$e.tfvars" || return 1
-    fi
+  local x
+  for x in "$dir"/envs/*.tfvars; do
+    [ -f "$x" ] && [ -d "$dir/tests/tfvars" ] || continue
+    terraform -chdir="$dir" test -test-directory=tests/tfvars -var-file="envs/$(basename "$x")" || return 1
   done
   for x in "$dir"/envs/examples/*.tfvars; do
     [ -f "$x" ] && [ -d "$dir/tests/examples" ] || continue
