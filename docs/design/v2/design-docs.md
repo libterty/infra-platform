@@ -223,7 +223,7 @@ templates/example2/infra/
 | 4 | `database` | foundation、network | DB endpoint、Proxy endpoint、secret ARN、Redis endpoint |
 | 5 | `iam` | foundation、containerimage、database | 各 role ARN |
 | 6 | `bridge` | 前面所有 stack | 樹 B；`EXTERNAL_SHARED_ENVS` 裡的環境不跑 |
-| 7 | `loadbalancer` | 樹 B | `alb_arn_suffix`、`target_group_arn_suffixes`、`waf_web_acl_name` |
+| 7 | `loadbalancer` | 樹 B | `alb_arn_suffix`、`target_group_arn_suffixes`、`api_target_group_arn` |
 | 8 | `agent` | 樹 B | Runtime 與 Memory 的 ARN／id、guardrail |
 | 9 | `application` | 樹 B、loadbalancer、agent | cluster 名稱、各服務名稱與 log group |
 | 10 | `operation` | 樹 B | bucket、Lambda 名稱 |

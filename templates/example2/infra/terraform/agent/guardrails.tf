@@ -61,7 +61,7 @@ locals {
     })
   }
 
-  output_guardrail_name = "${local.name_prefix}-output"
+  output_guardrail_title = "${local.name_prefix}-output"
 
   # The output guardrail screens generated text; the API rejects a prompt attack filter on the output side.
   guardrail_output_content_filters = {
@@ -98,7 +98,7 @@ module "output_guardrail" {
   source  = "app.terraform.io/libterty/bedrock-guardrail/aws"
   version = "~> 0.1.0"
 
-  name                    = local.output_guardrail_name
+  name                    = local.output_guardrail_title
   description             = "Output guardrail applied by the Runtime to generated text."
   blocked_input_message   = local.guardrail_profiles["default"].blocked_message
   blocked_output_message  = local.guardrail_blocked_output_message
