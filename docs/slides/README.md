@@ -7,6 +7,7 @@
 | `templates/pptx-deck/` | pptxgenjs 簡報範本：10 種版型，講稿 md 自動帶進備忘稿 |
 | `open-slide-redesign/` | [open-slide](https://www.npmjs.com/package/@open-slide/core) 工作區；repo 裡只有官方範例 `getting-started` |
 | `fixfonts.py` | 補上中文字型：pptxgenjs 只寫拉丁字型（`<a:latin>`），中文要另外寫 `<a:ea>` |
+| `pptx-preview.sh` | 把 pptx 轉成每頁一張 1920×1080 的 PNG（LibreOffice + poppler），給 open-slide 當預覽：`pptx-preview.sh deck.pptx open-slide-redesign/slides/<id>/assets`。在 watch 腳本裡每次重建 pptx 後呼叫它，瀏覽器就會跟著顯示最新的 pptx |
 | `fontconfig-retro.xml` | 用 LibreOffice 把 pptx 轉成 PDF 或圖檔預覽時，讓它找得到使用者字型目錄裡的中文字型 |
 | `package.json` | pptx 範本用的 pptxgenjs |
 
