@@ -28,7 +28,7 @@
 | A2 | A | 新 module：`metric-alarm`、`vpc-peering`、`ec2-bastion`、`lambda-function` | 已完成：主 agent 重跑 `validate.sh` 9 個目錄全過，218 個 run；lambda-function 的 tests 拆成 4 個檔（都在 800 行內）；差異已寫回 design §4.2 | 4：`adccd3f`、`aa36845`、`cc5bda0`、`22f25de` |
 | A3 | A | 新 module：`elasticache-redis`、`waf-web-acl` | 已完成：主 agent 重跑 `validate.sh` 4 個目錄全過，146 個 run；差異已寫回 design §4.2 | 2：`6a6f132`、`419996f` |
 | A4 | A | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG | 已完成：manifest 19 個 `0.1.0`、7 個 `0.1.1`、6 個 `0.2.0`；主 agent 全量 `validate.sh` 80 個目錄、2,046 個 test run 全過（5 分 24 秒）；PR-A 整段去機密掃描零命中。另補已發佈 29 段 CHANGELOG 的日期（`4b179c1`） | 1：`7c19a50` |
-| A5 | — | （使用者確認後）合併 PR-A、打 12 個 tag、補 GitHub Release、HCP 登記 6 個新 module | 未開始 | |
+| A5 | — | （使用者確認後）合併 PR-A、打 12 個 tag、補 GitHub Release、HCP 登記 6 個新 module | 已完成：PR #5 合併為 `cf56d43`，12 個 annotated tag 打在 `cf56d43`，12 個 GitHub Release（不設 latest）；HCP 登記 6 個新 module。一次推 12 個 tag 沒觸發 GitHub webhook，6 個已登記的 module 沒收到 `0.2.0`，逐一刪掉重新登記後補上。暫存目錄 `init -backend=false` 抓到 32 個 module，抽 4 個跟 tag 逐檔比對一致 | — |
 | B1 | B | `validate.sh` 與 `ci.yml` 支援多份範本 | 未開始 | |
 | B2 | B | example2 骨架：11 份 `common.tf`、`providers.tf`、`versions.tf`，envs 佔位檔，`stacks.sh`，`check-ssm-contract.sh` | 未開始 | |
 | B3 | B | 前段 stack：`containerimage`、`foundation`、`network`、`database`、`iam` | 未開始 | |
@@ -78,6 +78,7 @@
 2. 從 manifest 讀出 12 個 tag，在合併後的 commit 打 annotated tag，只 push 這 12 個。
 3. `gh release create <tag> --notes-file modules/<m>/CHANGELOG.md`，不設 latest。
 4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 6 個新 module，等狀態變成 `setup_complete`。
+5. 已登記的 module 有沒有收到新 tag：一次推超過 3 個 tag 時 GitHub 不發 webhook，要照 `hcp-registry-setup.md`〈之後的維護〉補。
 
 驗收：照 `hcp-registry-setup.md` §4 在暫存目錄 `terraform init -backend=false` 抓 32 個 module，版本跟 tag 一致。
 
