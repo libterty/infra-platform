@@ -328,6 +328,68 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - 外部發布者的 key 合約寫在 `templates/example2/infra/README.md`「樹 B 的 key 合約」。
 - tests 多一份 `tests/bridge.tftest.hcl`；`common` 與 `tfvars` 兩份測試也要 `override_module`，理由同 §5.8。run 層級的 `override_module` 不能引用 `module.in`，所以失敗案例各自寫出完整的 fixture。
 
+### 5.10 B5（後段 5 個 stack）的實作差異
+
+2026-10-20 完成 loadbalancer、agent、application、operation、postdeploy。11 個目錄 `scripts/validate.sh` 全過。
+
+**命名規則對照**（iam 用命名規則組 ARN，下表每一列都有 test 斷言）
+
+| iam 的來源（`iam/policies.tf`） | 後段建出的名稱 | stack | 一致 |
+|---|---|---|---|
+| ECS log group `/ecs/<project>-<env>-*` | `/ecs/<project>-<env>-api`、`/ecs/<project>-<env>-worker`（`ecs-service` 預設的 `/ecs/<name>`） | application | 是 |
+| Lambda log group `/aws/lambda/<project>-<env>-import-extract`、`-import-load` | `lambda-function` 建的 `/aws/lambda/<name>`，name 同上 | operation | 是 |
+| import bucket `arn:aws:s3:::<project>-<env>-import-<account>`，prefix `incoming/`（讀）、`extracted/`（寫、讀） | bucket 名稱同左；S3 通知的 prefix 也是 `incoming/`、`extracted/` | operation | 是 |
+| eval-batch bucket `<project>-<env>-eval-batch-<account>`，只在 dev | 名稱同左，`var.env == "dev"` 才建 | operation | 是 |
+| AgentCore Runtime `runtime/<project>_<env>_<runtime>-*`（連字號換底線） | `<project>_<env>_<runtime>` | agent | 是 |
+| AgentCore Memory `memory/<project>_<env>_memory-*` | `<project>_<env>_memory` | agent | 是 |
+| 自訂 metric namespace `<Project>/<env>`（worker 的 `PutMetricData` 條件） | worker 的 backlog 告警、operation 的 ETL 指標、postdeploy 的 stream 與 log 告警都用 `title(project)/env` | application、operation、postdeploy | 是 |
+| import-extract、import-load 各用自己的 role | `lambda-function` 的 `role_arn` 各自取 `import_extract_role_arn`、`import_load_role_arn` | operation | 是 |
+| `bedrock:ApplyGuardrail` 的資源 `guardrail/*` | guardrail 由 `bedrock-guardrail` 建，名稱 `<project>-<env>-input-<profile>`、`<project>-<env>-output` | agent | 符合；但缺 profile 的授權，見下面「待拍板」 |
+| Runtime 的 log group 授權 `/aws/bedrock-agentcore/runtimes/<name>-*` | 不一致：Runtime 的 application log 另建 `/aws/vendedlogs/bedrock-agentcore/<name>`，由 log delivery 寫入，不經過 Runtime 的 role | agent | 不影響（那條授權是給 Runtime 自己預設 log group 用的），但實際行為只能在真實環境確認 |
+
+**合約調整**（都在後段 stack 自己的讀取與發布範圍內，沒有動前段或 bridge）
+
+- agent 不讀 `alarm_topic_arn`；多發布 `agent_memory_arn`（postdeploy 的 Memory trace 需要完整 ARN）與 `guardrail_ids`（JSON：每個 profile 加 `output`）。`agent_runtime_arns` 是 JSON 物件，鍵是 Runtime 名稱。
+- application 多讀 `loadbalancer/alb_arn_suffix`（requests_per_target 與連線數的 metric 要用）與 `agent/guardrail_ids`；不讀 `agent_memory_id` 與 `alarm_topic_arn`（用不到）；多發布 `api_max_capacity`、`worker_max_capacity`、`stream_maxlen`，讓 postdeploy 的告警跟著同一組數字。
+- loadbalancer 發布的 `target_group_arn_suffixes` 是 JSON 物件（鍵是 target group key）。
+- operation 多讀 `ecr_repository_urls`、`db_proxy_endpoint`、`db_secret_arn`；不讀 `vpc_id`、`alarm_topic_arn`（用不到）。
+- postdeploy 多讀 application 的 `worker_log_group_name` 與三個數字、agent 的 `agent_memory_arn`；不讀 `waf_web_acl_name`、`stream_redis_id`（用不到）。結果：`stream_redis_id` 沒有任何 stack 讀，`waf_web_acl_name` 只有 loadbalancer 發布。
+- 沒有任何後段需要、而前段與 bridge 沒提供的 key：VPC CIDR 用 `data "aws_vpc"` 以 `vpc_id` 查；資料庫名稱、stream 的 shard 數用變數（預設值跟 database stack 相同）。
+
+**各 stack 的設計決定**
+
+- loadbalancer：`alb` module 用 `web_acl_arn == null` 當 count，Web ACL 跟 ALB 在同一個 stack 建時，ARN 在 plan 還不知道，會報 `Invalid count argument`。傳 `format("%s", module.waf.web_acl_arn)`：Terraform 知道 `format` 的結果不是 null，count 就能決定。這是 Terraform 核心的行為，mock 與真實 plan 一致。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
+- agent：guardrail 的 profile 是 `default`、`profile_a`；內容（topic、詞彙、拒絕文案）全是示意。輸入 guardrail 只評估輸入，輸出 guardrail 只評估輸出且沒有 prompt attack。Runtime 與 Memory 沒有連資料庫：tree B 沒有資料庫名稱，環境變數只有 `AGENT_*` 與 `AWS_REGION`。
+- application：`forwarded_allow_ips` 三種模式；VPC CIDR 用 `data "aws_vpc"` 查（tree B 沒有 `vpc_cidr`）。task 拿到的是 secret 的 ARN（環境變數名稱以 `_ARN` 結尾），值由 task role 自己取：execution role 沒有 secret 權限。api 與 worker 都設 TCP keepalive 的 `system_controls`。ECS Exec 用獨立的 `enable_execute_command`，不跟 bastion 綁在一起。
+- operation：`bastion_enabled` 用平的 tfvars key（不是 `bastion.enabled`），這樣 `check-ssm-contract.sh` 的 awk 解析得到；import bucket 沒有開關（Lambda 的觸發與 iam 的授權都依賴它）。import-load 由 `extracted/` 加 `ready.json` 後綴觸發，`ready.json` 由 import-extract 寫，是跟應用程式的約定。ETL 指標只做 import-load 的 rejected、failed、succeeded 三個。
+- postdeploy：四個功能（service 告警與 dashboard、stream 告警、log 告警、trace delivery）各有開關，預設全關，tfvars 全開。dashboard 沒有獨立開關：`ecs-service-alarms` 一定會建告警。
+
+**mock 驗不到、要真實環境才能確認的推論**
+
+- `format()` 讓 `alb` 的 count 在 plan 能決定：核心行為，但沒有對真實 provider 跑過。
+- ALB 加 access log 時 AWS 會試寫一個測試物件：`depends_on` 是否足以讓 bucket policy 先到位。
+- WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`（同 A3）。
+- `/aws/vendedlogs/...` 當 log delivery 的目的地，與 Runtime 的 `APPLICATION_LOGS` delivery 能否建立。
+- S3 通知：`incoming/`（無後綴）與 `extracted/` 加 `ready.json` 不重疊，S3 在 apply 時才會驗。
+- bastion 的 inline policy（Session Manager 的最小動作集合）是否足夠 agent 註冊與開 session；沒有 `ssm:ListAssociations` 等管理動作。
+- Lambda 放進 VPC 後，只靠 app security group 與 NAT 或 endpoint 的出口能否呼叫 Bedrock、S3、Secrets Manager。
+- 連線數的 step policy 用 metric math，`ecs-service` 的 `queries` 欄位是否被 provider 接受。
+- guardrail 的 `STANDARD` tier 加 cross-region profile 在 apply 的實際行為。
+
+**待使用者拍板**
+
+1. iam 的 `bedrock:ApplyGuardrail` 只授權 `guardrail/*`；`bedrock-guardrail` 的 README 說 `STANDARD` tier 另外需要 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`。iam 在 B3 完成，B5 沒改。要不要補（建議補，否則第一次真實呼叫可能被拒）？
+2. Runtime 要不要連資料庫：iam 給了 Runtime 讀 DB secret 的權限，但 tree B 沒有 `db_name`，agent 目前不傳任何 DB 設定。
+3. 資料庫名稱與 stream shard 數（application、operation 的變數，預設同 database stack）要不要改成 database 發布、bridge 轉寫，避免漂移。
+4. `stream_redis_id`（bridge 發布、沒人讀）與 `waf_web_acl_name`（loadbalancer 發布、沒人讀）要不要拿掉，或補上用得到它們的告警。
+5. ETL 指標只留 import-load 三個；原專案 extract 端還有一個 rejected 計數，要不要加回來。
+
+**技術債**
+
+- 資料庫名稱、stream shard 數、`app_port` 在不同 stack 各有一份變數，靠預設值一致；只有 `bastion_enabled` 有靜態檢查。
+- `check-ssm-contract.sh` 的 `bastion_enabled` 檢查沒有自動化 fixture（腳本不在 `validate.sh` 的測試範圍）；B5 用暫存複本改 tfvars 手動驗過會失敗。
+- 把 `ecs-service-alarms` 的 dashboard 與告警綁在同一個 module 呼叫，無法只開 dashboard。
+
 ## 6. `validate.sh` 與 CI
 
 - `tf_stack_glob` 改成 `tf_stack_roots`（用 `templates/*/infra/terraform` 找）。目錄掃描、S8 範圍、token 檢查、`-lockfile=readonly` 都改成迭代這個陣列。
