@@ -1,8 +1,8 @@
 # waf-web-acl
 
-建一個 REGIONAL 的 WAFv2 web ACL，可選 kill switch、rate limit（含 IP allowlist）、AWS managed rule groups、body size 例外規則與 CloudWatch logging。給掛在 ALB 前面的 API 用。
+建一個 REGIONAL 的 WAFv2 web ACL，可以選擇加上 kill switch、rate limit（含 IP allowlist）、AWS managed rule groups、body size 例外規則與 CloudWatch logging。給掛在 ALB 前面的 API 用。
 
-這個 module **不建 association**。ALB 的關聯由 `alb` 的 `web_acl_arn` 輸入負責，把這裡的 `web_acl_arn` 輸出傳過去。
+這個 module **不建 association**。ALB 的關聯由 `alb` 的 `web_acl_arn` 輸入負責，把這裡的 `web_acl_arn` 輸出傳過去就好。
 
 ## 用法
 
@@ -54,11 +54,11 @@ priority 由 module 依固定順序產生，呼叫端不能指定，而且不會
 ## 注意
 
 - **預設動作是 allow**，規則只負責擋。什麼都不開時 web ACL 沒有任何規則。
-- **allowlist 只豁免 rate limit，不是 allow 規則。** WAF 的 allow 動作會結束評估，名單內的 IP 就連 managed 規則與 body size 規則都跳過。所以這裡改成 rate limit 規則加上「不在 IP set 內」的條件：名單內的 IP 不受 rate limit，其他規則照常檢查。只支援 IPv4，CIDR 前綴長度 1–32，不接受 `0.0.0.0/0`。
-- **kill switch** 的 `action = "block"` 擋所有請求，包含 allowlist 內的 IP，因為它排在最前面。給 `response_json` 時回 HTTP 503 與該 JSON（最多 10240 字元，必須是合法 JSON）；只有 `block` 能給。要關掉就把 `kill_switch` 設回 `null`。
-- **`count_overrides`** 只把群組內個別規則改成 count，群組本身永遠維持原本的動作（`override_action = none`），不提供把整個群組改成 count 的選項。
-- **`body_size_exempt_path_prefixes`**：AWS 的 common rule set 用 `SizeRestrictions_BODY` 限制 8 KB body，會擋掉某些需要上傳大 body 的 path。要例外時，必須先在 `AWSManagedRulesCommonRuleSet`（vendor `AWS`）的 `count_overrides` 加上 `SizeRestrictions_BODY`，否則 validation 拒絕。module 會再加一條 `body-size-limit`，對「不在例外 prefix 內」的請求擋超過 8192 bytes 的 body。prefix 要以 `/` 開頭、至少再有一個字元，不能只寫 `/`。
-- **logging**：log group 名稱固定是 `aws-waf-logs-<name>`（WAF 只接受這個前綴）。**`authorization` 與 `cookie` 一律遮蔽**，`redacted_headers` 是在這兩個之外再加，名稱轉小寫、重複的會合併；想遮蔽 origin verify header 就把 `X-Origin-Verify` 加進來。WAF 建立 logging configuration 時會自己在帳號裡補 CloudWatch Logs 的 resource policy，執行 apply 的身分需要 `logs:PutResourcePolicy`；帳號內 resource policy 數量有上限（10 個）。用 `kms_key_arn` 時，key policy 要允許 `logs.<region>.amazonaws.com`。
+- **allowlist 只豁免 rate limit，不是 allow 規則。** WAF 的 allow 動作會結束評估，如果做成 allow 規則，名單內的 IP 連 managed 規則與 body size 規則都會跳過。所以這裡做成 rate limit 規則加上「不在 IP set 內」的條件：名單內的 IP 不受 rate limit，其他規則照常檢查。只支援 IPv4，CIDR 前綴長度 1–32，不接受 `0.0.0.0/0`。
+- kill switch 的 `action = "block"` 擋所有請求，包含 allowlist 內的 IP，因為它排在最前面。給 `response_json` 時回 HTTP 503 和這段 JSON（最多 10240 字元，必須是合法 JSON）；只有 `block` 能給。要關掉就把 `kill_switch` 設回 `null`。
+- `count_overrides` 只把群組內個別規則改成 count，群組本身永遠維持原本的動作（`override_action = none`），不提供把整個群組改成 count 的選項。
+- `body_size_exempt_path_prefixes`：AWS 的 common rule set 用 `SizeRestrictions_BODY` 限制 8 KB body，會擋掉某些需要上傳大 body 的 path。要例外時，必須先在 `AWSManagedRulesCommonRuleSet`（vendor `AWS`）的 `count_overrides` 加上 `SizeRestrictions_BODY`，否則 validation 會拒絕。module 會再加一條 `body-size-limit`，對「不在例外 prefix 內」的請求擋超過 8192 bytes 的 body。prefix 要以 `/` 開頭、至少再有一個字元，不能只寫 `/`。
+- logging：log group 名稱固定是 `aws-waf-logs-<name>`（WAF 只接受這個前綴）。**`authorization` 與 `cookie` 一律遮蔽**，`redacted_headers` 是在這兩個之外再加，名稱轉小寫、重複的會合併；想遮蔽 origin verify header 就把 `X-Origin-Verify` 加進來。WAF 建立 logging configuration 時會自己在帳號裡補 CloudWatch Logs 的 resource policy，所以執行 apply 的身分需要 `logs:PutResourcePolicy`；帳號內 resource policy 數量有上限（10 個）。用 `kms_key_arn` 時，key policy 要允許 `logs.<region>.amazonaws.com`。
 - 一個 REGIONAL web ACL 只能在同一個 region 關聯資源；provider 的 region 就是 web ACL 的 region。
 - web ACL 的 WCU 上限（預設 1500）由呼叫端自己留意，module 不計算。
 

@@ -2,7 +2,7 @@
 
 把一個 stack 要給下游的值寫進 SSM Parameter Store。路徑規則是 `/<project>/<env>/<stack>/<key>`。
 
-這是專案範本裡唯一可以宣告 `aws_ssm_parameter` 的地方（`scripts/validate.sh` 的 S2 規則強制）。
+這是專案範本裡唯一可以宣告 `aws_ssm_parameter` 的地方（由 `scripts/validate.sh` 的 S2 規則強制檢查）。
 
 ## 用法
 
@@ -56,8 +56,8 @@ locals {
 - 只支援 `String` 與 `StringList`，不支援 `SecureString`。secret 走 Secrets Manager。
 - SSM 不收空字串。可有可無的值包成 JSON，例如 `jsonencode({ enabled = false })`。
 - 單一值最長 4096 字元（Standard tier）。
-- list 的元素不能含逗號，讀取端用 `split(",", ...)` 會切錯。
-- `strings` 與 `lists` 的 key 不能重複，兩者會寫到同一個路徑。
+- list 的元素不能含逗號，否則讀取端用 `split(",", ...)` 會切錯。
+- `strings` 與 `lists` 的 key 不能重複，因為兩者會寫到同一個路徑。
 - `ssm_prefix` 的 `<env>` 段只能是小寫字母與數字，不能有連字號。
 
 ## 輸入

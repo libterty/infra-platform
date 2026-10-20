@@ -39,7 +39,7 @@ module "alarms" {
 - `metric` 預設 `Average`、300 秒。AWS 服務的基本指標多數是 1 或 5 分鐘一筆，用 300 最不容易落在 INSUFFICIENT_DATA；需要更細就自己指定。
 - `period` 只接受 10、30 或 60 的倍數；`statistic` 只接受 `Sum`、`Average`、`Maximum`、`Minimum`、`SampleCount`。
 - 預設 `evaluation_periods = 1`、`GreaterThanOrEqualToThreshold`、`treat_missing_data = "notBreaching"`。
-- `sns_topic_arns` 必填，`alarm_actions` 與 `ok_actions` 都接，恢復時也會通知。
+- `sns_topic_arns` 必填，同時接上 `alarm_actions` 與 `ok_actions`，所以恢復時也會通知。
 - `description` 請寫「代表什麼」與「先查什麼」，值班的人收到告警時只看得到這段。
 
 ## 刻意不做

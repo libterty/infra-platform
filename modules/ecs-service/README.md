@@ -28,7 +28,7 @@ module "worker" {
 
 ## 兩種 LB 接法
 
-`load_balancer` 的 `target_group_arn` 與 `listener_arn` 擇一，都不給整個變數就傳 `null`。
+`load_balancer` 的 `target_group_arn` 與 `listener_arn` 擇一，兩個都不給時，整個變數傳 `null`。
 
 | 模式 | 輸入 | module 建什麼 |
 |---|---|---|
@@ -40,7 +40,7 @@ module "worker" {
 
 ## Autoscaling
 
-- `autoscaling = null`：仍然建 scalable target，`min = max = desired_count`。service 忽略 `desired_count` 的變動，改這個值是靠 target 生效。
+- `autoscaling = null`：仍然建 scalable target，`min = max = desired_count`。service 忽略 `desired_count` 的變動，改這個值要靠 scalable target 生效。
 - `policy = "target_tracking"`（預設）：CPU 60%；`requests_per_target` 有值時多一條 ALB 請求數。冷卻 scale-in 300 秒、scale-out 60 秒。
 - `policy = "step"`：CPU 與記憶體各一組 scale-out（門檻 70，三階 +1／+2／+3，每階 10%，冷卻 180 秒、評估 1 分鐘）與 scale-in（CPU 40、記憶體 50，−1，冷卻 300 秒、評估 5 分鐘）。共 4 個 policy 與 4 個 CloudWatch alarm。
 - `autoscaling != null` 時 `desired_count` 必須落在 `min_capacity` 與 `max_capacity` 之間。
@@ -63,7 +63,7 @@ module "worker" {
 - sidecar 固定 `initProcessEnabled = true`、`stopTimeout = 120`；`essential` 預設 `false`。
 - 只有當某個 sidecar 設了 `app_depends_on`，`app` 才會加 `dependsOn`。可用值：`START`、`HEALTHY`、`COMPLETE`、`SUCCESS`；`HEALTHY` 時該 sidecar 必須有 `health_check`。
 - 名稱要符合 `^[a-z][a-z0-9-]{0,62}$`、不可重複、不可是 `app`；映像要帶明確 tag（不可 `latest`）或 digest；`secrets` 的值要是 ARN；`container_port` 不可跟 `app` 或其他 sidecar 重複（awsvpc 共用一張網卡）。
-- sidecar 的 CPU 與記憶體是從 task 的 `cpu`、`memory` 裡分，module 不檢查總和，超過時 Fargate 在 API 端才會拒絕。
+- sidecar 的 CPU 與記憶體從 task 的 `cpu`、`memory` 裡分。module 不檢查總和，超過時要到 Fargate API 才會拒絕。
 - 拉 sidecar 映像與讀它的 `secrets` 都用 execution role，權限要由呼叫端補上。
 
 範例見 `examples/adot-sidecar/`。

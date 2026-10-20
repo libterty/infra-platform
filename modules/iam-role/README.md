@@ -2,7 +2,7 @@
 
 建立一個 IAM role：trust policy 加 inline policy。
 
-整個 repo 只有這個 module 與 [`iam-role-policy`](../iam-role-policy/README.md) 可以宣告 `aws_iam_*` 資源（`scripts/validate.sh` 的 S4 規則強制）。
+整個 repo 只有這個 module 與 [`iam-role-policy`](../iam-role-policy/README.md) 可以宣告 `aws_iam_*` 資源（由 `scripts/validate.sh` 的 S4 規則強制檢查）。
 
 ## 用法
 
@@ -34,20 +34,20 @@ module "ecs_execution" {
 
 ## 行為
 
-- trust policy 只有一段 statement：`sts:AssumeRole`，Principal 為輸入的服務主體。給了 `source_account` 才加 `StringEquals` 的 `aws:SourceAccount` 條件；給了 `source_arn`（0.1.1 起）才加 `ArnLike` 的 `aws:SourceArn` 條件。兩個都給時是同一段 statement 的兩個條件，必須同時成立。
+- trust policy 只有一段 statement：`sts:AssumeRole`，Principal 是傳進來的服務主體。給了 `source_account` 才加 `StringEquals` 的 `aws:SourceAccount` 條件；給了 `source_arn`（0.1.1 起）才加 `ArnLike` 的 `aws:SourceArn` 條件。兩個都給時，兩個條件放在同一段 statement 裡，必須同時成立。
 - policy 一律傳 JSON 字串（用 `jsonencode()`），不收 `aws_iam_policy_document` 的輸出。
-- `arn` 輸出帶 `depends_on = [aws_iam_role_policy.this]`，下游拿到 ARN 時 inline policy 已附加。
+- `arn` 輸出帶 `depends_on = [aws_iam_role_policy.this]`，所以下游拿到 ARN 時，inline policy 已經附加好了。
 - Allow statement 的 Action 不可是 `*` 或以 `:*` 結尾；Deny statement 不受限。
 - Allow statement 不可使用 `NotAction`（等於授權「列出的動作以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotAction` 不受限。
 - Allow statement 不可使用 `NotResource`（等於授權「列出的資源以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotResource` 不受限。
 
 ## 限制
 
-- 不收 AWS managed policy 與 customer managed policy。instance profile 只能透過 `instance_profile_name` 建一個、綁這個 role（0.2.0 起）。
+- 不收 AWS managed policy 與 customer managed policy。instance profile 只能用 `instance_profile_name` 建一個，綁在這個 role 上（0.2.0 起）。
 - trust 只收 AWS 服務主體，不收 AWS 帳號、OIDC 或 `*`。
-- `source_arn` 只檢查 `arn:` 開頭，不檢查 service、region、帳號是否與服務主體相符；萬用字元放多寬由呼叫端決定。
-- 不使用任何獨佔管理 inline policy 的資源（例如 provider 的 role policies exclusive 類型），否則會刪掉 `iam-role-policy` 附加的 policy。
-- 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`；`Resource = "*"` 是否合理由呼叫端的測試負責。
+- `source_arn` 只檢查 `arn:` 開頭，不檢查 service、region、帳號是否與服務主體相符；萬用字元要放多寬由呼叫端決定。
+- 不用任何獨佔管理 inline policy 的資源（例如 provider 的 role policies exclusive 類型），因為用了會刪掉 `iam-role-policy` 附加的 policy。
+- 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`；`Resource = "*"` 合不合理由呼叫端的測試負責。
 - `Statement` 必須是清單（單一物件的寫法會被擋）。
 
 ## 輸入
@@ -61,7 +61,7 @@ module "ecs_execution" {
 | `trust` | `object({ service_principals = set(string), source_account = optional(string), source_arn = optional(string) })` | 無 | 是 | 至少一個 `*.amazonaws.com` 服務主體；`source_account` 為 12 位數字；`source_arn` 以 `arn:` 開頭、可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`），用 `ArnLike` 比對 |
 | `inline_policies` | `map(string)` | `{}` | 否 | policy 名稱對 policy JSON 字串 |
 | `permissions_boundary` | `string` | `null` | 否 | permissions boundary 的 policy ARN |
-| `instance_profile_name` | `string` | `null` | 否 | 有給時建一個綁這個 role 的 instance profile；1–128 字元，限字母、數字與 `_+=,.@-` |
+| `instance_profile_name` | `string` | `null` | 否 | 有給就建一個 instance profile 綁這個 role；1–128 字元，限字母、數字與 `_+=,.@-` |
 | `tags` | `map(string)` | `{}` | 否 | 額外 tag，module 只再加 `Name` |
 
 ## 輸出

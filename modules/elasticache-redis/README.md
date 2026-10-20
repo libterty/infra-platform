@@ -35,7 +35,7 @@ module "redis" {
 
 ## 注意
 
-- **建好之後改 `num_node_groups` 不會生效。** 這個欄位固定 `ignore_changes`，讓 autoscaling 調整 shard 數時 plan 不會想把它改回去。要改 shard 數，請用 `autoscaling`，或自己重建。autoscaling 改變 shard 數之後，下面的 member 告警會跟實際不符（新增的 shard 沒有告警、縮掉的 shard 的告警會變成沒有資料）。
+- **建好之後改 `num_node_groups` 不會生效。** 這個欄位固定 `ignore_changes`，讓 autoscaling 調整 shard 數時 plan 不會想把它改回去。要改 shard 數，請用 `autoscaling` 或自己重建。autoscaling 改變 shard 數之後，下面的 member 告警會跟實際不符（新增的 shard 沒有告警、縮掉的 shard 的告警會變成沒有資料）。
 - **沒有 AUTH token。** 存取控制只靠 TLS 加 security group。這是已知的安全取捨：只要能連到 port 的來源就能下指令，所以 security group 只開給需要的 client。
 - 連線要用支援 cluster mode 的 Redis client，並開啟 TLS，連到 `configuration_endpoint`。
 - parameter group family 由 `engine_version` 主版本推得：`7.x` 為 `redis7`，`6.x` 為 `redis6.x`。只收主版本 6 與 7。換主版本會讓 parameter group 換 family，請先確認可以替換。
@@ -49,7 +49,7 @@ module "redis" {
 - `alarm_config.evictions_threshold` 有給才建 evictions 告警，每個 member 一條，5 分鐘內 `Evictions` 總和大於等於門檻，3 期中 2 期達標。沒給就不建。
 - 告警與 OK 都送到 `sns_topic_arns`。`sns_topic_arns` 必填。
 - member id 依 AWS 的命名規則推導：`<name>-<shard，4 位數>-<node，3 位數>`，例如 `alpha-dev-rate-limit-0001-001`。shard 數量是 `num_node_groups`，每個 shard 的 node 數是 `replicas_per_node_group + 1`。
-- **這個命名規則是推論，沒有在真實 AWS 驗證過**（測試用 mock provider）。所以每條 memory 告警有 precondition：沒設 `autoscaling` 時，推導出的 id 集合必須等於 AWS 回報的 `member_clusters`，不一致就 apply 失敗；有 `autoscaling` 時 shard 數會自己變動，只要求推導的 id 與實際 member 有交集。第一次 apply 如果在這裡失敗，代表命名規則跟推論不同，請回報。
+- **這個命名規則是推論，沒有在真實 AWS 驗證過**（測試用 mock provider）。所以每條 memory 告警有 precondition：沒設 `autoscaling` 時，推導出的 id 集合必須等於 AWS 回報的 `member_clusters`，不一致就 apply 失敗；有 `autoscaling` 時 shard 數會自己變動，只要求推導的 id 與實際 member 有交集。第一次 apply 如果在這裡失敗，表示實際命名規則跟推論不同，請回報。
 - 因為上面的 precondition，沒設 `autoscaling` 時改 `num_node_groups` 會直接 apply 失敗（而不是默默沒有效果）。
 
 ## 刻意不做

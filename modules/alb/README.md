@@ -42,14 +42,14 @@ module "alb" {
 - `target_groups`：key 對應 `port`（必填）、`protocol_version`（`HTTP1`）、`deregistration_delay`（300）、`health_check`（`path` `/health`、`matcher` `200`、`interval` 15、`timeout` 5、`healthy_threshold` 2、`unhealthy_threshold` 3，可只覆寫部分欄位）。名稱是 `<name>-<key>`，一律 `ip` 類型、HTTP；非空時必須給 `vpc_id`。
 - `listener_rules`：key 對應 `priority`、`target_group`（`target_groups` 的 key）、`path_patterns`、`host_headers`、`require_origin_verify`（預設 `false`）。規則掛在 HTTPS listener；沒有 `certificate_arn` 時掛在 HTTP listener。
 - origin verify：`origin_verify_header_name` 與 `origin_verify_header_value`（`sensitive`）要一起給或一起不給。分成兩個變數是因為包成一個物件時，`var.x == null` 的結果會變成 sensitive，不能拿來當 `for_each` 或 `dynamic` 的條件。`require_origin_verify` 預設 `false`（要用才開）：只有設成 `true` 的規則才會多一個 `http_header` 條件；就算 header 有設定，沒開的規則也不會加。值請從 `TF_VAR_origin_verify_header_value` 傳入，不要寫進 tfvars；它仍會以明文存在 state，state 的存取控制要跟 secret 一樣嚴。
-- `require_origin_verify = true` 但沒有設定 `origin_verify_header_name` 與 value 時，validation 會擋下，不會有規則靜默失去保護。
+- `require_origin_verify = true` 但沒有設定 `origin_verify_header_name` 與 value 時，validation 會擋下，所以不會有規則默默少了這層保護。
 - validation：規則的 `target_group` 要存在；`priority` 不可重複；每條規則至少有一個 path pattern 或 host header（只有 header 條件的規則不接受）；ALB 每條規則的條件值上限是 5，`path_patterns`、`host_headers` 與 origin verify header（`require_origin_verify = true` 時算 1 個）合計不可超過；`<name>-<key>` 要是 1–32 字元的字母、數字與連字號，不能以連字號開頭或結尾。
 - 改 `port` 會讓 target group 重建；規則還在用的時候刪除會失敗（`ResourceInUse`）。要換 port 就新增一個 key、把規則改指過去，再移除舊的。
 
 ## 注意
 
 - **沒有憑證時只開 HTTP:80，ALB 的 security group 必須收窄**。SG 由 `network` stack 建，收窄規則也在那裡檢查；這個 module 不建 SG，也看不到 SG 的內容。
-- **access log 的 bucket 只能用 SSE-S3 加密**。ALB 的 log delivery 不支援 customer managed KMS，設了 KMS 之後 log 會無聲遺失。bucket 由 `foundation` stack 建，這裡只收名稱（不是 ARN）。
+- **access log 的 bucket 只能用 SSE-S3 加密**。ALB 的 log delivery 不支援 customer managed KMS，設了 KMS 之後 log 會默默遺失。bucket 由 `foundation` stack 建，這裡只收名稱（不是 ARN）。
 - `additional_certificate_arns` 只掛在 HTTPS listener，所以必須同時給 `certificate_arn`。
 - **WAF 與 ALB 在同一個 configuration 建時，用 `web_acl`，不要用 `web_acl_arn`**。`web_acl_arn` 是 unknown 時，`count` 無法在 plan 決定，會報 `Invalid count argument`；`web_acl` 是物件，是否為 `null` 在 plan 時就知道，`arn` unknown 也沒關係。`web_acl` 與 `web_acl_arn` 同時給會被 validation 擋下。
 - `deletion_protection` 預設 `true`；測試或 PoC 要 destroy 時先設成 `false` 並 apply。
@@ -77,7 +77,7 @@ module "alb" {
 | `idle_timeout` | `number` | `60` | 否 | 1–4000 秒 |
 | `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
 | `access_logs` | `object({ bucket, prefix })` | `null` | 否 | `bucket` 為 SSE-S3 bucket 名稱；`prefix` 可省略 |
-| `web_acl` | `object({ arn })` | `null` | 否 | regional WAFv2 Web ACL；只做關聯。ARN 在 plan 時還不知道（同一個 configuration 建 WAF）一定要用這個變數 |
+| `web_acl` | `object({ arn })` | `null` | 否 | regional WAFv2 Web ACL；只做關聯。ARN 在 plan 時還不知道時（同一個 configuration 建 WAF），一定要用這個變數 |
 | `web_acl_arn` | `string` | `null` | 否 | regional WAFv2 Web ACL ARN；**只適合 plan 時已知的值**，日後移除。與 `web_acl` 不能同時給 |
 | `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |
 | `target_groups` | `map(object)` | `{}` | 否 | 見上方 target group 與 listener rule |

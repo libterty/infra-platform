@@ -1,6 +1,6 @@
 # vpc-peering
 
-建立 VPC peering 的**請求端**：一個 `aws_vpc_peering_connection`，加上在你的 route table 裡指向對端網段的 route。用在你的 VPC 要連到另一個帳號（或另一個 region）的 VPC。
+建立 VPC peering 的**請求端**：一個 `aws_vpc_peering_connection`，加上在你的 route table 裡指向對端網段的 route。你的 VPC 要連到另一個帳號（或另一個 region）的 VPC 時，用這個 module。
 
 ## 用法
 
@@ -30,7 +30,7 @@ module "peering" {
 - **對端必須由對方接受。** 這個 module 只建請求端，`auto_accept` 固定 `false`，不會也不能代對方接受。`apply` 之後連線停在 `pending-acceptance`，把輸出的 `peering_connection_id` 交給對方，由對方帳號接受（console、CLI，或對方自己的 Terraform）。接受之前連線不能轉送流量。
 - 對方也要在自己的 route table 加回程 route 指向你的網段，並放行 security group，否則只有單向通。這些都在對方帳號，不在這個 module 範圍。
 - **`peer_cidrs` 不可為 `0.0.0.0/0`**，也不可跟 `vpc_cidr` 重疊（包含與被包含都算）；重疊的網段 AWS 本來就不能 peer。
-- `route_table_ids` 是 list 不是 set：route 的 `for_each` key 是 `<index>-<CIDR>`，這樣 route table 跟這個 module 在同一個 stack 建立、ID 在 plan 時還不知道也能 plan。代價是調整 list 順序會讓 route 被重建，新增請接在最後面。
+- `route_table_ids` 是 list 不是 set：route 的 `for_each` key 是 `<index>-<CIDR>`，所以即使 route table 跟這個 module 在同一個 stack 建立、plan 時還不知道 ID，也能 plan。代價是調整 list 順序會讓 route 重建，新增的請接在最後面。
 - 同一個 `vpc_id` 與 `peer_vpc_id` 之間同時只能有一條 active 的 peering，重複建立會被 AWS 拒絕。
 - 只處理 IPv4。
 

@@ -29,8 +29,8 @@ module "log_alarms" {
 
 - 名稱是 `<name_prefix>-<key 的 _ 換成 ->`，filter 與 alarm 同名（兩種資源的名稱空間各自獨立）。
 - filter 預設 `value = "1"`、`default_value = 0`，沒有事件時指標是 0，不會落在 INSUFFICIENT_DATA。
-- alarm 預設 `Sum`、60 秒、1 期、`>= 1`、`notBreaching`。要改門檻或週期就在該項目覆寫（例如 300 秒、門檻 60）。
-- `alarms` 非空時 `sns_topic_arns` 必填，`alarm_actions` 與 `ok_actions` 都接，恢復時也會通知；沒給會被 validation 擋下。只給 `metrics` 時不需要 SNS（0.2.0 起）。
+- alarm 預設 `Sum`、60 秒、1 期、`>= 1`、`notBreaching`。要改門檻或週期，就在那個項目裡覆寫（例如 300 秒、門檻 60）。
+- `alarms` 有內容時 `sns_topic_arns` 必填，沒給會被 validation 擋下。這些 topic 同時接上 `alarm_actions` 與 `ok_actions`，所以恢復時也會通知。只給 `metrics` 時不需要 SNS（0.2.0 起）。
 - `metrics`（0.2.0 起）只建 metric filter，不建 alarm，給 dashboard 或在別處管理的告警用。名稱規則跟 `alarms` 相同，key 不能同時出現在 `alarms` 與 `metrics`。
 - 什麼都沒給（`alarms`、`metrics`、`sns_topic_arns` 都空）會被擋下。`alarms = {}` 搭配有給的 `sns_topic_arns` 維持 0.1.0 的行為：什麼都不建，不會報錯，給範本預設不開告警用。
 - `period` 只接受 10、30 或 60 的倍數。

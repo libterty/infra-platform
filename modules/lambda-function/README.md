@@ -35,22 +35,22 @@ module "worker" {
 
 ## 注意
 
-- **image 要有明確的 tag 或 digest，拒絕 `:latest`。** 換版就改 `image_uri` 再 apply，tag 由 Terraform 管。只收 ECR（`<account>.dkr.ecr.<region>.amazonaws.com/...`）。
+- **image 要有明確的 tag 或 digest，`:latest` 會被拒。** 換版就改 `image_uri` 再 apply，tag 由 Terraform 管。只收 ECR（`<account>.dkr.ecr.<region>.amazonaws.com/...`）。
 - `architectures` 必須跟 image 建置的架構一致，預設 `arm64`；不一致時 function 建得起來，但執行會失敗。
-- **`environment` 不放 secret。** 名稱像 secret（`SECRET`、`PASSWORD`、`PASSWD`、`TOKEN`、`API_KEY`、`PRIVATE_KEY`、`CREDENTIAL`）會被拒；環境變數會存在 state 與 control plane。要傳 secret，放 Secrets Manager，只傳 ARN，名稱以 `_ARN` 結尾（例如 `DB_SECRET_ARN`），function 自己在執行時讀。名稱開頭必須是字母。
-- **`permissions` 必填 `source_arn`**，不能只給 principal 就讓整個服務都能呼叫。`principal` 必須是 `*.amazonaws.com`（例如 `s3.amazonaws.com`、`events.amazonaws.com`）。`s3.amazonaws.com` **一定要給 `source_account`**：bucket ARN 沒有帳號，少了它，別的帳號建同名 bucket 也能呼叫（confused deputy）。key 是 statement id。
-- **下游資源請用 `function_arn` 輸出**（不要自己拼 ARN）。它 `depends_on` 所有 permission，`aws_s3_bucket_notification` 這類資源因此會在授權建好之後才建；順序錯了 S3 會回 `Unable to validate the following destination configurations`。
-- log group 由 module 建，名稱 `/aws/lambda/<name>`，預設保留 30 天，不接受 0（永不過期）。用 `log_kms_key_arn` 時，key policy 必須允許 `logs.<region>.amazonaws.com`。execution role 需要對這個 log group 的寫入權限（用 `iam-role` 建）。
-- 給 `vpc` 時，execution role 需要建立 network interface 的權限，subnet 要有路徑到 Lambda 要連的服務（NAT 或 VPC endpoint）。
-- `reserved_concurrent_executions` 預設 `null`（不保留）；`0` 會讓 function 完全不能被呼叫。
-- `log_format = "JSON"` 時，runtime 與 Lambda 自己的訊息會以 JSON 輸出；沒有設定 `application_log_level`、`system_log_level`。
+- **`environment` 不放 secret。** 名稱像 secret（`SECRET`、`PASSWORD`、`PASSWD`、`TOKEN`、`API_KEY`、`PRIVATE_KEY`、`CREDENTIAL`）會被拒，因為環境變數會存在 state 與 control plane 裡。要傳 secret 就放 Secrets Manager，環境變數只傳 ARN，名稱以 `_ARN` 結尾（例如 `DB_SECRET_ARN`），由 function 執行時自己去讀。名稱開頭必須是字母。
+- **`permissions` 必填 `source_arn`**，不能只給 principal 就讓整個服務都能呼叫。`principal` 必須是 `*.amazonaws.com`（例如 `s3.amazonaws.com`、`events.amazonaws.com`）。`s3.amazonaws.com` **一定要給 `source_account`**：bucket ARN 沒有帳號，少了它，別的帳號建同名 bucket 也能呼叫（confused deputy）。map 的 key 是 statement id。
+- **下游資源請用 `function_arn` 輸出**（不要自己拼 ARN）。這個輸出 `depends_on` 所有 permission，所以 `aws_s3_bucket_notification` 這類資源會等授權建好才建。順序錯了，S3 會回 `Unable to validate the following destination configurations`。
+- log group 由 module 建，名稱 `/aws/lambda/<name>`，預設保留 30 天，不接受 0（永不過期）。用 `log_kms_key_arn` 時，key policy 必須允許 `logs.<region>.amazonaws.com`。execution role 要有這個 log group 的寫入權限（role 用 `iam-role` 建）。
+- 給 `vpc` 時，execution role 需要建立 network interface 的權限，subnet 也要連得到 Lambda 要用的服務（透過 NAT 或 VPC endpoint）。
+- `reserved_concurrent_executions` 預設 `null`（不保留）；設成 `0`，function 就完全不能被呼叫。
+- `log_format = "JSON"` 時，runtime 與 Lambda 自己的訊息都以 JSON 輸出；module 沒有設定 `application_log_level`、`system_log_level`。
 
 ## 刻意不做
 
 - zip 套件（`handler`、`runtime`、`filename`、`s3_bucket`）、layer。
 - alias、版本發佈、function URL、dead letter queue、EFS、event source mapping。
 - IAM role；用 `iam-role` 建。
-- S3 notification、EventBridge rule 等觸發來源；由呼叫端建，並使用 `function_arn`。
+- S3 notification、EventBridge rule 等觸發來源；由呼叫端建，建的時候用 `function_arn`。
 
 ## 輸入
 

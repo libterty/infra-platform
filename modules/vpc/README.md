@@ -34,15 +34,15 @@ module "vpc" {
 | `app` | `private` | 預設路由走 NAT（`nat_mode != "none"` 時） |
 | `data` | `isolated` | 只有 local；DB 需要對外連線時改 `private` |
 
-要加 tier 可以，名稱不能跟這三個衝突。tier 名稱限 snake_case，最多一個 `public` tier。
+要加 tier 可以，但名稱不能跟這三個衝突。tier 名稱限 snake_case，最多一個 `public` tier。
 
 ## IP 規劃
 
 - 自動切：`cidr_block = cidrsubnet(cidr, newbits, netnum_base + AZ 在 azs 裡的位置)`。
 - 每個 tier 預留 4 個 AZ 的槽位，`netnum_base` 以 4 為間隔（0、4、8…）。之後從 2 個 AZ 加到 3、4 個，既有 subnet 不用動。
-- 槽位數是 `2^newbits`。`/20` 搭配 `newbits = 4` 得到 16 個 `/24`，三個 tier 各佔 4 個槽位用掉 12 個。
+- 槽位數是 `2^newbits`。`/20` 搭配 `newbits = 4` 得到 16 個 `/24`，三個 tier 各佔 4 個槽位，共用掉 12 個。
 - 不同 tier 想要不同大小，就用不同的 `newbits`；module 會檢查結果不重疊，不用自己算。
-- 位置決定槽位：**只從尾端移除 AZ 時**其餘 subnet 的 CIDR 不變；移除中間的 AZ 時，後面 AZ 的 subnet 會移到新位置的槽位，等於重建。要避免就改用 `cidrs` 明確指定。
+- 槽位由 AZ 的位置決定：**只從尾端移除 AZ 時**，其餘 subnet 的 CIDR 不變；移除中間的 AZ 時，後面 AZ 的 subnet 會換到新位置對應的槽位，也就是重建。要避免這種情況，就改用 `cidrs` 明確指定。
 
 ## 檢查
 
@@ -52,12 +52,12 @@ module "vpc" {
 - 自動切時 `netnum_base + length(azs) <= 2^newbits`，且 subnet 不小於 `/28`。
 - `nat_mode != "none"` 時要有 public tier。
 - 所有 subnet 都在 VPC CIDR 內。
-- 所有 subnet CIDR 兩兩不重疊：每個 CIDR 換成 `[起始整數, 結束整數]` 再比對，不管怎麼切都擋得住。例如用兩種 `newbits` 切同一個 `/16`、兩個 AZ 剛好填滿時，第三個 AZ 會靜默撞進別的 subnet，這裡會被擋下。
+- 所有 subnet CIDR 兩兩不重疊：每個 CIDR 換成 `[起始整數, 結束整數]` 再比對，不管怎麼切都擋得住。例如用兩種 `newbits` 切同一個 `/16`、兩個 AZ 剛好填滿時，第三個 AZ 會悄悄撞進別的 subnet，這個檢查會把它擋下來。
 
 ## 注意
 
-- 不建任何新的 security group。唯一碰到 SG 的是 `aws_default_security_group`：它接管 VPC 本來就有的 default SG 並清空規則，資源不得使用它。服務用的 SG 由 `security-group` module 建，interface endpoint 與它的 SG 由 `vpc-interface-endpoints` 建。
-- SG 規則與路由一律用獨立資源，客戶在 console 加的規則與路由不會在下一次 apply 被刪掉。
+- 不建任何新的 security group。唯一碰到 SG 的是 `aws_default_security_group`：它接管 VPC 原有的 default SG 並清空規則，任何資源都不得使用這個 SG。服務用的 SG 由 `security-group` module 建，interface endpoint 與它的 SG 由 `vpc-interface-endpoints` 建。
+- SG 規則與路由一律用獨立資源，所以客戶在 console 加的規則與路由不會在下一次 apply 被刪掉。
 - `single` 的 NAT 放在 `azs` 的第一個 AZ，其他 AZ 跨 AZ 出去；`per_az` 每個 AZ 走自己的 NAT。
 - gateway endpoint 只關聯 private 與 isolated 的路由表；public 的表不需要。
 - flow log 只支援 S3，不需要 IAM role；bucket 與 bucket policy 由 `foundation` stack 管。

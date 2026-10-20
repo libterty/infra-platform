@@ -22,8 +22,8 @@ module "cluster" {
 ## 注意
 
 - FARGATE 與 FARGATE_SPOT 一律都掛上；`default_capacity_provider_strategy` 只決定沒指定策略的 service 用哪個，預設只有 FARGATE。
-- `container_insights` 不是 `disabled` 時，module 會預建 `/aws/ecs/containerinsights/<name>/performance` log group 並設保留天數。不預建的話 AWS 首次寫入指標時會自動建立，且永不過期。
-- 已經有 cluster 的帳號導入時，performance log group 可能已被 AWS 自動建立，apply 會因名稱重複失敗，要先 import。
+- `container_insights` 不是 `disabled` 時，module 會預建 `/aws/ecs/containerinsights/<name>/performance` log group 並設保留天數。不預建的話，AWS 第一次寫入指標時會自動建立，而且永不過期。
+- 在已經有 cluster 的帳號導入時，AWS 可能已經自動建了 performance log group，apply 會因為名稱重複而失敗，要先 import。
 
 ## 刻意不做
 

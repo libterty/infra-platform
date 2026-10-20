@@ -1,6 +1,6 @@
 # ecs-service-alarms
 
-替一個 ECS 服務建標準 CloudWatch 告警組合，全部通知同一組 SNS topic；可選建 dashboard。一個服務呼叫一次。
+替一個 ECS 服務建一組標準的 CloudWatch 告警，全部通知同一組 SNS topic；可選建 dashboard。一個服務呼叫一次。
 
 ## 用法
 
@@ -45,10 +45,10 @@ module "alarms" {
 
 ## 注意
 
-- **`target_group_arn_suffix` 要帶 `targetgroup/` 前綴**（`alb_arn_suffix` 要帶 `app/`）。這是 CloudWatch 維度的格式，用完整 ARN 會被 validation 擋下。
-- `*_missing` 用「門檻 < 0 加缺資料視為 breaching」偵測服務停止回報，不是真的比較數值。
+- **`target_group_arn_suffix` 要帶 `targetgroup/` 前綴**（`alb_arn_suffix` 要帶 `app/`）。CloudWatch 維度要用這個格式，給完整 ARN 會被 validation 擋下。
+- `*_missing` 用「門檻 < 0 加缺資料視為 breaching」偵測服務停止回報：數值本身不會觸發，只靠缺資料觸發。
 - Container Insights 的告警與 dashboard widget 要 cluster 開啟 Container Insights 才有資料；service 層級的 `CpuUtilized`／`CpuReserved` 維度在 `enhanced` 與 `enabled` 兩種模式是否都有，要等有 AWS 環境時確認。
-- `sns_topic_arns` 必填且不能是空清單：沒人收到的告警不是告警。
+- `sns_topic_arns` 必填且不能是空清單，不然告警響了也沒人收到。
 - 所有告警都帶 `ClusterName`／`ServiceName` 或 `TargetGroup`／`LoadBalancer` 維度，一個服務一組。
 
 ## 刻意不做
