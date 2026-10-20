@@ -399,6 +399,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - 靜態階段新增：每份範本有 `check-ssm-contract.sh` 就跑；`*.sh` 跑 `bash -n`，有裝 `shellcheck` 就加跑。
 - `ci.yml` 的 Registry versions glob 改成涵蓋所有範本，表格多一欄範本名稱。`timeout-minutes` 先維持 30，量測後如果不夠再調。
 - 驗收：改完後 project-infra 的結果要跟改之前相同。
+- B6 新增 S10（規則表在 v1 design §5.6）：範本 stack 的 `.terraform.lock.hcl`，每個 `provider` 區塊至少要有 2 個 `h1:`。來由：B3 在 macOS 用 `init -backend=false` 寫的 lock 只有 darwin 的 `h1:`，CI（linux，從 plugin cache 安裝）因此失敗，本機驗不到，只能靠靜態檢查補上。客戶 repo 的 stack 照 S5 的做法一起檢查。
 
 ## 7. 風險
 

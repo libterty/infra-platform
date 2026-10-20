@@ -4530,6 +4530,7 @@ module "in_services" {
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` | 密碼一律由 RDS 管理 |
 | S8 | 範本 stack 裡的 `resource "<type>"` 只能是 §5.3 例外清單上的型別與 stack（~~目前只有 `foundation` 的 `aws_secretsmanager_secret`~~ 決策 55 起是 `foundation` 與 `agent` 的 `aws_secretsmanager_secret`） | 「stack 只呼叫 module」的程式檢查 |
 | S9 | 增補（決策 46）：`resource "aws_bedrock_guardrail_version"` 不得出現在 `modules/` 與 `templates/` | 發佈過版本的 guardrail，之後的 apply 只改 `DRAFT`，實際生效的是舊版，plan 乾淨（`project-a/docs/guide/guide-data-scientist.md:268`）。本次只寫文件，`validate.sh` 在 Phase 12 實作 |
+| S10 | 增補（v2 B6）：每份範本 stack（含客戶 repo 的 stack）的 `.terraform.lock.hcl`，每個 `provider` 區塊至少要有 2 個 `h1:` hash（darwin 與 linux 各一）；modules 不提交 lock，不適用 | 在 macOS 上 `init -backend=false` 產生的 lock 只有 darwin 的 `h1:`，linux 的 CI 從 plugin cache 安裝時會因此失敗，本機驗不到。來由見 `docs/design/v2/design-docs.md` §6 |
 
 增補後其他規則不變：7 個新 module 不建 IAM 由 S4 涵蓋；~~`agent` stack 只呼叫 module，S8 的例外清單不用加~~（已被決策 55 取代：`agent` 多一個原生 `aws_secretsmanager_secret`，`s8_allowed` 加 `agent:aws_secretsmanager_secret`）；S5 的「8 個 stack」在 Phase 14 變成 9 個（`agent` 的 `common.tf` 也要一字不差）。Phase 14 已照這樣實作：`agent` 沒有原生 AWS resource，只有 `terraform_data` 的 guard，9 份 `common.tf` 一致（決策 55 之後 `agent` 多了 KB 的 secret 容器）。
 
@@ -4774,7 +4775,7 @@ data tier 每個 AZ ≥ DB instance 數 + Proxy 的 ENI + 5
 | lint | `tflint`，第一版只用內建的 terraform ruleset（`recommended` preset） | 未使用的變數、缺型別、命名慣例之類 | 否（內建 ruleset 不用下載 plugin） | 否 |
 | 語法與型別 | `terraform init -backend=false`、`terraform validate` | HCL 語法、型別、引用、validation 的寫法本身 | 下載 provider | 否 |
 | 行為 | `terraform test`，全部 `mock_provider "aws"` | 資源有沒有建、數量、命名、條件建立、validation 會不會擋下錯誤輸入（`expect_failures`） | 下載 provider | 否 |
-| 靜態規則 | `scripts/validate.sh` | §5.6 的 S1–S8（增補 S9，Phase 12）：每個 test 都用 `mock_provider`、SSM 寫入只在 `ssm-publish`、SSM 讀取只在 `ssm-read`、IAM 只在 `iam-role`、`common.tf` 一致、tfbackend key 格式、`rds` 沒有 password 變數、範本 stack 只有例外清單上的原生 resource | 否 | 否 |
+| 靜態規則 | `scripts/validate.sh` | §5.6 的 S1–S8（增補 S9，Phase 12；S10，v2 B6）：每個 test 都用 `mock_provider`、SSM 寫入只在 `ssm-publish`、SSM 讀取只在 `ssm-read`、IAM 只在 `iam-role`、`common.tf` 一致、tfbackend key 格式、`rds` 沒有 password 變數、範本 stack 只有例外清單上的原生 resource | 否 | 否 |
 
 每個 module 的 `tests/` 至少要有：
 
