@@ -68,6 +68,16 @@
 
 照 [`releasing-modules.md`](../../guides/releasing-modules.md) 與 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md)。打 tag、push、建 Release、HCP 登記之前先問使用者。
 
+一次 push 超過 3 個 tag，GitHub 不會發 webhook，HCP 就收不到。一次最多 push 3 個 tag；漏掉的 tag 要在 GitHub 上刪掉，再重新 push 並重新登記（步驟見 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md)）。
+
+### 3.6 踩過的坑
+
+**lock 檔**。新 provider 的 `.terraform.lock.hcl` 段落，不要在 macOS 上用 `init -backend=false` 產生：那樣只會寫進 darwin 的 `h1:`，CI（linux，從 plugin cache 安裝）會因此失敗，本機卻看不出來。要從 repo 裡已經有兩個 `h1:`（darwin 與 linux）的段落複製。`scripts/validate.sh` 的 S10 會擋掉只有一個 `h1:` 的 provider 段落。
+
+**module 的 count**。module 不能用「某個輸入是不是 null」決定 `count`，而那個輸入的值在 plan 時可能還不知道，例如同一份 configuration 裡另一個資源的 ARN，plan 會報 `Invalid count argument`。改成收一個物件（例如 `web_acl = { arn = ... }`）：物件是不是 null 在 plan 時就知道，裡面的值可以之後才有。`alb` 的 `web_acl` 就是這樣改的（0.3.0）。
+
+**stacked PR**。每個 Phase 一個 PR，一層疊一層。下層要修正時，用 `git worktree` 在下層的 branch 上修，上面各層再 rebase；不要在上層的 working tree 切過去改，不然很容易把修正混進錯的 commit。
+
 ## 4. 去機密
 
 ### 4.1 泛化規則
@@ -94,6 +104,6 @@
 8. dev、sit 以外的環境名稱（只掃新範本與新增或擴充的 module）
 9. 非 `example.com` 的 email
 
-另外從來源專案的 tfvars、tfbackend 抽出所有字串常值，在 scratchpad 反向比對整個 repo，用完刪掉；機密值不能寫進任何 pattern 檔。
+另外要做反向比對：subagent 會照抄來源專案的字面值（文案、指標名稱、錯誤訊息、變數名稱），pattern 掃描抓不到。**每個 Phase** 都用來源專案**全部**檔案（`.tf`、`.tfvars`、`.tfbackend`、`.hcl`、`.sh`、`.md`）裡長度 ≥ 10 的字串，在 scratchpad 比對整個 repo。命中次數高的多半是公開識別（AWS 動作名稱、資源型別），低頻的命中要逐筆看。用完刪掉；機密值不能寫進任何 pattern 檔。
 
 什麼時候跑：每個 Phase 的 commit 前、PR 送出前、合併前。commit message、PR 標題與描述、branch 名稱另外人工看。
