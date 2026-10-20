@@ -274,6 +274,25 @@ for f in ${files_tfbackend[@]+"${files_tfbackend[@]}"}; do
   fi
 done
 
+# S10: every provider block of a stack lock file needs at least 2 "h1:" hashes (darwin + linux).
+# A lock written by init on macOS alone has only the darwin hash and fails in linux CI, which this machine cannot see.
+# Customer stacks are judged the same way (their path maps to a template stack through canon()).
+while IFS= read -r f; do
+  c="$(canon "$(dirname "$f")")"
+  case "$c" in "${customer_stack_root}"/*) ;; *) stack_root_of "$c" >/dev/null || continue ;; esac
+  out="$(awk '
+    /^provider[[:space:]]+"/ { name = $2; gsub(/"/, "", name); n = 0; inblk = 1; next }
+    inblk && /^[[:space:]]*"h1:/ { n++ }
+    inblk && /^}/ { if (n < 2) print name " (" n ")"; inblk = 0 }
+  ' "$f")"
+  if [ -n "$out" ]; then
+    while IFS= read -r line; do
+      echo "S10 $(rel "$f"): provider ${line} 的 h1: hash 少於 2 個（需要 darwin 與 linux 各一）；從已有兩個 h1: 的 lock 複製，不要在 macOS 上單獨 init 產生" >&2
+    done <<<"$out"
+    fail_static=1
+  fi
+done < <(for r in ${scan_roots[@]+"${scan_roots[@]}"}; do find "$r" -name '.terraform.lock.hcl' -not -path '*/.terraform/*' | sort; done)
+
 # Per template: the SSM contract check (when the template ships one) and its shell scripts (bash -n, shellcheck if installed).
 have_shellcheck=1
 command -v shellcheck >/dev/null || have_shellcheck=0
