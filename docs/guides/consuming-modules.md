@@ -60,7 +60,7 @@ jq -r '.Modules[] | select(.Version) | "\(.Key) \(.Version)"' .terraform/modules
 
 ## 從範本複製出去
 
-範本 `templates/project-infra/infra/` 的每個 module 呼叫已經是 registry 寫法，`source` 上方有一行註解指回這份文件：
+範本 `templates/project-infra/infra/` 的每個 module 呼叫已經是 registry 寫法，`source` 上方有一行註解指回這份文件（`templates/example2/infra/` 同樣是這個寫法，下面的做法兩份通用）：
 
 ```hcl
 module "gateway" {
