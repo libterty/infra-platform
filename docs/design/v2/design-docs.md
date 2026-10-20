@@ -320,6 +320,14 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - 沒有 NAT 時 app、agent 還缺 ECR、CloudWatch Logs、Secrets Manager 的 interface endpoint（network 只建 Bedrock 的三個），tfvars 預設 `per_az`。
 - `connections_threshold` 是佔位值（dev 300、sit 1400），要依 instance class 的 `max_connections` 調整。
 
+### 5.9 B4（bridge）的實作差異
+
+- 樹 B 發布 25 個 key（21 個 String、4 個 StringList），正好等於後段 5 個 stack 的 `module "shared"` 讀的聯集，B2 的清單沒有多也沒有少，所以沒有任何前段 key 被省略。
+- `published_strings`、`published_lists` 逐 key 寫成 `key = module.in.strings["key"]`，不用 for 運算式：`check-ssm-contract.sh` 靠 grep 解析 key。
+- guard 有三條：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes`（陣列）與 `ecr_repository_urls`（物件）是合法 JSON；錯誤訊息列出有問題的 key。`module "ssm_publish"` 加 `depends_on` 指向這三個 guard，否則 `ssm-publish` 自己的 validation 會先擋下空字串，訊息沒有指出是哪個 key。
+- 外部發布者的 key 合約寫在 `templates/example2/infra/README.md`「樹 B 的 key 合約」。
+- tests 多一份 `tests/bridge.tftest.hcl`；`common` 與 `tfvars` 兩份測試也要 `override_module`，理由同 §5.8。run 層級的 `override_module` 不能引用 `module.in`，所以失敗案例各自寫出完整的 fixture。
+
 ## 6. `validate.sh` 與 CI
 
 - `tf_stack_glob` 改成 `tf_stack_roots`（用 `templates/*/infra/terraform` 找）。目錄掃描、S8 範圍、token 檢查、`-lockfile=readonly` 都改成迭代這個陣列。

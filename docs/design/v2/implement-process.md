@@ -32,7 +32,7 @@
 | B1 | B | `validate.sh` 與 `ci.yml` 支援多份範本 | 已完成：主 agent 重跑全量 80 個目錄、2,046 個 run，跟改之前相同；scratchpad fixture 的 5 個情境，舊版全部漏掉，新版抓到 S5 不一致、合約檢查失敗、`.sh` 語法錯誤。範本的 `*.sh` 有裝 shellcheck 時，警告也算失敗；外部客戶 repo 的 stack 仍對應到 project-infra | 1：`9e86edc` |
 | B2 | B | example2 骨架：11 份 `common.tf`、`providers.tf`、`versions.tf`，envs 佔位檔，`stacks.sh`，`check-ssm-contract.sh` | 已完成：`validate.sh templates/example2/infra/terraform` 11 個目錄、99 個 run 全過（每個 stack 7 個 common 測試加 dev、sit 兩份 tfvars 各 1 個）；project-infra 仍是 9 個目錄全過。合約骨架：讀的 key 寫成真的 `ssm-inputs.tf`，發布的 key 因為還沒有資源可接，只用 `# planned_strings:`／`# planned_lists:` 註解列出，不放假值。差異寫在 design §5.7 | 1：`20be224` |
 | B3 | B | 前段 stack：`containerimage`、`foundation`、`network`、`database`、`iam` | 已完成：主 agent 重跑 `validate.sh templates/example2/infra/terraform` 11 個目錄、184 個 run 全過；去機密掃描零命中。R2 沒有循環（graph test 不 mock `rds` 也通過）。使用者決定：secret key 以內容命名、兩個 import Lambda 各一個 role（同步改後段骨架的 key 名稱）。差異與後段命名規則見 design §5.7、§5.8 | 10：`c06c17a`、`bdc8020`、`d050b3f`、`84d71b6`、`479cf97`、`090c0c6`、`abdae98`、`e276bc4`、`e03751d`、`a10b674` |
-| B4 | B | `bridge` 與樹 B 合約 | 未開始 | |
+| B4 | B | `bridge` 與樹 B 合約 | 已完成：主 agent 重跑 `validate.sh templates/example2/infra/terraform` 11 個目錄、191 個 run 全過；照 playbook 完整清單掃描零命中。轉寫 25 個 key（21 個 string、4 個 list），等於後段讀的聯集；guard 擋空字串、subnet 少於 2 個、不合法的 JSON；README 列出給外部發布者的樹 B 合約。差異見 design §5.9 | 2：`f1b874d`、本 commit |
 | B5 | B | 後段 stack：`loadbalancer`、`agent`、`application`、`operation`、`postdeploy` | 未開始 | |
 | B6 | B | lock 檔、去機密掃描、範本 README、repo README、guides 更新、全量驗收 | 未開始 | |
 
