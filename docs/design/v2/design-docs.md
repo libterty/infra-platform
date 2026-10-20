@@ -261,6 +261,16 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - `bridge`：值是空的被拒、subnet 不足被拒、樹 B 的 key 集合正確。
 - `postdeploy`：各功能開關互相獨立。
 
+### 5.7 B2 骨架跟上面不同的地方
+
+- **發布的 key 先用註解列出**：骨架階段沒有資源可以接 `module "ssm_publish"`，硬寫只能放假值。所以 `ssm-outputs.tf` 只有 `# planned_strings: ...`、`# planned_lists: ...` 註解，`check-ssm-contract.sh` 把它們當成已發布；B3–B5 加上真的 `published_strings`、`published_lists` 時要同一個 PR 把註解換掉。讀的 key 不需要值，直接寫成真的 `ssm-inputs.tf`（`module "in"`、`module "shared"`）。
+- **沒有東西可讀或發布的 stack 不放對應的檔案**：`containerimage`、`foundation` 沒有 `ssm-inputs.tf`，`postdeploy` 沒有 `ssm-outputs.tf`。
+- **key 名稱**：§5.4 的 `bastion_sg` 寫成 `bastion_sg_id`，跟其他 security group 一致；`loadbalancer` 多發布 `api_target_group_arn`，因為 `application` 註冊 ECS 服務需要完整的 ARN，suffix 不夠。各 stack 的 key 是 B2 先定的清單，B3–B5 可以調整，`check-ssm-contract.sh` 會抓出對不上的地方。
+- **`common.tf`**：三個前綴 local（`name_prefix`、`ssm_prefix`、`shared_ssm_prefix`）加 `tflint-ignore: terraform_unused_declarations`，因為 11 份一字不差，但不是每個 stack 都用得到每個前綴。
+- **`check-ssm-contract.sh` 多檢查兩個細節**：讀的型別（strings 或 lists）要跟發布的一致；tfvars 的 `env` 要等於檔名。兩者都屬於 §5.5 的第 1、2 項。
+- **`stacks.sh`**：多一個 `--dry-run`（只印指令）；`validate` 用另一個 data directory `.terraform-<env>-validate` 並加 `-lockfile=readonly`，避免蓋掉 `init` 留下的 backend 設定、也不改 lock 檔。`ORDER=(...)` 必須寫在同一行，因為 `check-ssm-contract.sh` 用 grep 解析它。
+- **tests**：每個 stack 有 `tests/common.tftest.hcl`（帳號、env、`deploy_role_arn` 的 validation 正反各案例）與 `tests/tfvars/tfvars.tftest.hcl`；11 份內容相同。
+
 ## 6. `validate.sh` 與 CI
 
 - `tf_stack_glob` 改成 `tf_stack_roots`（用 `templates/*/infra/terraform` 找）。目錄掃描、S8 範圍、token 檢查、`-lockfile=readonly` 都改成迭代這個陣列。
