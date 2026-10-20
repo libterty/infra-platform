@@ -1,10 +1,44 @@
 # The account and env checks in common.tf and providers.tf. Every stack carries the same file.
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111111111111" }
+  }
+}
 
 variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = {
+      alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
+      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789abcdef\"}"
+      cluster_name              = "example-dev-app"
+      api_service_name          = "example-dev-api"
+      worker_service_name       = "example-dev-worker"
+      api_log_group_name        = "/ecs/example-dev-api"
+      worker_log_group_name     = "/ecs/example-dev-worker"
+      api_max_capacity          = "10"
+      worker_max_capacity       = "6"
+      stream_maxlen             = "100000"
+      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\"}"
+      agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQrSt"
+    }
+  }
+}
+
+override_module {
+  target = module.shared
+  outputs = {
+    strings = {
+      alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+    }
+  }
 }
 
 run "dev_accepts_its_account" {

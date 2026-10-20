@@ -1,2 +1,23 @@
-# Variables of this stack arrive with its resources (phases B3-B5).
-# Never put another stack's ARN or id here; read it through ssm-inputs.tf.
+variable "service_alarms_enabled" {
+  description = "Create the alarms and the dashboard of the api and the worker."
+  type        = bool
+  default     = false
+}
+
+variable "stream_alarms_enabled" {
+  description = "Create the alarms on the stream backlog and on a missing consumer."
+  type        = bool
+  default     = false
+}
+
+variable "log_alarms_enabled" {
+  description = "Create the log metric filters and alarms on persistence events and on rate limit fail-open."
+  type        = bool
+  default     = false
+}
+
+variable "tracing_enabled" {
+  description = "Deliver the traces of the AgentCore Runtimes and Memory to X-Ray."
+  type        = bool
+  default     = false
+}

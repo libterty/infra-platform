@@ -2,17 +2,20 @@ locals {
   ssm_input_strings = {
     alb_arn_suffix            = "loadbalancer/alb_arn_suffix"
     target_group_arn_suffixes = "loadbalancer/target_group_arn_suffixes"
-    waf_web_acl_name          = "loadbalancer/waf_web_acl_name"
     cluster_name              = "application/cluster_name"
     api_service_name          = "application/api_service_name"
     worker_service_name       = "application/worker_service_name"
     api_log_group_name        = "application/api_log_group_name"
+    worker_log_group_name     = "application/worker_log_group_name"
+    api_max_capacity          = "application/api_max_capacity"
+    worker_max_capacity       = "application/worker_max_capacity"
+    stream_maxlen             = "application/stream_maxlen"
     agent_runtime_arns        = "agent/agent_runtime_arns"
+    agent_memory_arn          = "agent/agent_memory_arn"
   }
 
   shared_input_strings = {
     alarm_topic_arn = "infra/alarm_topic_arn"
-    stream_redis_id = "infra/stream_redis_id"
   }
 }
 
