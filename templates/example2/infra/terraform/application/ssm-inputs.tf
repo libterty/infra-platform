@@ -6,19 +6,19 @@ locals {
   }
 
   shared_input_strings = {
-    vpc_id                    = "infra/vpc_id"
-    app_sg_id                 = "infra/app_sg_id"
-    ecs_execution_role_arn    = "infra/ecs_execution_role_arn"
-    api_task_role_arn         = "infra/api_task_role_arn"
-    worker_task_role_arn      = "infra/worker_task_role_arn"
-    app_secret_arn            = "infra/app_secret_arn"
-    signing_secret_arn        = "infra/signing_secret_arn"
-    db_proxy_endpoint         = "infra/db_proxy_endpoint"
-    db_secret_arn             = "infra/db_secret_arn"
-    rate_limit_redis_endpoint = "infra/rate_limit_redis_endpoint"
-    stream_redis_endpoint     = "infra/stream_redis_endpoint"
-    ecr_repository_urls       = "infra/ecr_repository_urls"
-    alarm_topic_arn           = "infra/alarm_topic_arn"
+    vpc_id                         = "infra/vpc_id"
+    app_sg_id                      = "infra/app_sg_id"
+    ecs_execution_role_arn         = "infra/ecs_execution_role_arn"
+    api_task_role_arn              = "infra/api_task_role_arn"
+    worker_task_role_arn           = "infra/worker_task_role_arn"
+    signing_private_key_secret_arn = "infra/signing_private_key_secret_arn"
+    signing_public_key_secret_arn  = "infra/signing_public_key_secret_arn"
+    db_proxy_endpoint              = "infra/db_proxy_endpoint"
+    db_secret_arn                  = "infra/db_secret_arn"
+    rate_limit_redis_endpoint      = "infra/rate_limit_redis_endpoint"
+    stream_redis_endpoint          = "infra/stream_redis_endpoint"
+    ecr_repository_urls            = "infra/ecr_repository_urls"
+    alarm_topic_arn                = "infra/alarm_topic_arn"
   }
 
   shared_input_lists = {
