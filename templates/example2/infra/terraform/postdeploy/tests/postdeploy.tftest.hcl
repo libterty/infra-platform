@@ -15,7 +15,7 @@ override_module {
   outputs = {
     strings = {
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
-      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789abcdef\"}"
+      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
       cluster_name              = "example-dev-app"
       api_service_name          = "example-dev-api"
       worker_service_name       = "example-dev-worker"
@@ -24,8 +24,8 @@ override_module {
       api_max_capacity          = "10"
       worker_max_capacity       = "6"
       stream_maxlen             = "100000"
-      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\"}"
-      agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQrSt"
+      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
+      agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
     }
   }
 }
@@ -176,7 +176,7 @@ run "api_alarms_include_the_target_group_and_the_ceiling" {
     condition = (
       local.service_alarm_services["api"].load_balancer == {
         alb_arn_suffix          = "app/example-dev-alb/0123456789abcdef"
-        target_group_arn_suffix = "targetgroup/example-dev-alb-api/0123456789abcdef"
+        target_group_arn_suffix = "targetgroup/example-dev-alb-api/0123456789ab"
       } && local.service_alarm_services["api"].max_capacity == 10
     )
     error_message = "The api has load balancer alarms and an at-max-capacity alarm sized from the application stack"
@@ -301,7 +301,7 @@ run "a_second_runtime_gets_its_own_trace_source" {
     outputs = {
       strings = {
         alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
-        target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789abcdef\"}"
+        target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
         cluster_name              = "example-dev-app"
         api_service_name          = "example-dev-api"
         worker_service_name       = "example-dev-worker"
@@ -310,8 +310,8 @@ run "a_second_runtime_gets_its_own_trace_source" {
         api_max_capacity          = "10"
         worker_max_capacity       = "6"
         stream_maxlen             = "100000"
-        agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\",\"agent-lite\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent_lite-XyZxYzXyZx\"}"
-        agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQrSt"
+        agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\",\"agent-lite\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent_lite-XyZxYzXy\"}"
+        agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
       }
     }
   }

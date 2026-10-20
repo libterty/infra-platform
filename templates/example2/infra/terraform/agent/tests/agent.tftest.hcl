@@ -306,8 +306,8 @@ run "publishes_the_runtime_memory_and_guardrail_values" {
     target = module.runtime
     # An override applies to every instance of a for_each module; there is one Runtime here.
     outputs = {
-      runtime_arn  = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj"
-      runtime_id   = "example_dev_agent-AbCdEfGhIj"
+      runtime_arn  = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh"
+      runtime_id   = "example_dev_agent-AbCdEfGh"
       runtime_name = "example_dev_agent"
     }
   }
@@ -315,8 +315,8 @@ run "publishes_the_runtime_memory_and_guardrail_values" {
   override_module {
     target = module.memory
     outputs = {
-      memory_id  = "example_dev_memory-KlMnOpQrSt"
-      memory_arn = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQrSt"
+      memory_id  = "example_dev_memory-KlMnOpQr"
+      memory_arn = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
     }
   }
 
@@ -342,7 +342,7 @@ run "publishes_the_runtime_memory_and_guardrail_values" {
   }
 
   assert {
-    condition     = jsondecode(local.published_strings.agent_runtime_arns) == { agent = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj" }
+    condition     = jsondecode(local.published_strings.agent_runtime_arns) == { agent = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh" }
     error_message = "Runtime ARNs are published as a JSON map keyed by Runtime"
   }
 

@@ -17,9 +17,9 @@ override_module {
   target = module.in
   outputs = {
     strings = {
-      api_target_group_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789abcdef"
+      api_target_group_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
       alb_arn_suffix       = "app/example-dev-alb/0123456789abcdef"
-      agent_runtime_arns   = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\"}"
+      agent_runtime_arns   = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       guardrail_ids        = "{\"default\":\"gr0input00001\",\"output\":\"gr0output00003\"}"
     }
   }
@@ -221,7 +221,7 @@ run "api_registers_with_the_target_group_and_keeps_the_port" {
   command = plan
 
   assert {
-    condition     = module.api.target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789abcdef"
+    condition     = module.api.target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
     error_message = "The api service registers with the target group loadbalancer created"
   }
 

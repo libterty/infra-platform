@@ -260,8 +260,8 @@ run "publishes_the_four_keys_under_the_stack_path" {
     target = module.alb
     outputs = {
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
-      target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789abcdef" }
-      target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789abcdef" }
+      target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" }
+      target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789ab" }
       alb_dns_name              = "example-dev-alb-123.ap-northeast-1.elb.amazonaws.com"
     }
   }
@@ -269,7 +269,7 @@ run "publishes_the_four_keys_under_the_stack_path" {
   override_module {
     target = module.waf
     outputs = {
-      web_acl_arn  = "arn:aws:wafv2:ap-northeast-1:111111111111:regional/webacl/example-dev-alb/00000000-0000-0000-0000-000000000000"
+      web_acl_arn  = "arn:aws:wafv2:ap-northeast-1:111111111111:regional/webacl/example-dev-alb/test-web-acl-id"
       web_acl_name = "example-dev-alb"
     }
   }
@@ -285,12 +285,12 @@ run "publishes_the_four_keys_under_the_stack_path" {
   }
 
   assert {
-    condition     = local.published_strings.target_group_arn_suffixes == "{\"api\":\"targetgroup/example-dev-alb-api/0123456789abcdef\"}"
+    condition     = local.published_strings.target_group_arn_suffixes == "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
     error_message = "The suffix map is published as JSON"
   }
 
   assert {
-    condition     = local.published_strings.api_target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789abcdef"
+    condition     = local.published_strings.api_target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
     error_message = "application needs the full target group ARN to register the api service"
   }
 }
