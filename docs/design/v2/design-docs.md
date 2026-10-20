@@ -63,7 +63,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 | J4 | managed policy attachment 改寫成收窄的 inline policy（project-infra 的 RDS monitoring role 就是這樣做）；`iam-role` 只加 instance profile |
 | J5 | 拿掉遷移期的寫法：只在部分 AZ 的額外 subnet、public 路由表上的 inline peering 路由、用來核對 VPC 身分的 `terraform_data`、`name_prefix` 覆寫、guardrail 的過渡版本、postdeploy 的跨帳號 alias provider、SNS 的 https 訂閱 |
 | J6 | 安全收窄優先於照抄：data store 與 ALB 的 SG 不給全開 egress；secret 的 `recovery_window_in_days` 從 0 改成 7；WAF log 預設遮蔽 `authorization`、`cookie` 與 origin verify header；origin verify 的值只能從 `TF_VAR_origin_verify_header_value` 給，tfvars 不准出現；Lambda 的 S3 invoke permission 必須帶 `source_account`；bastion 固定 IMDSv2、沒有 public IP、沒有 key pair |
-| J7 | example2 裡同一個 module 只用一條版本線：擴充過的 6 個一律 `~> 0.2.0`，其餘 `~> 0.1.0` |
+| J7 | example2 裡同一個 module 只用一條版本線：擴充過的 6 個一律 `~> 0.2.0`（`alb` 修 bug 後改 `~> 0.3.0`），其餘 `~> 0.1.0` |
 | J8 | agent 的環境變數改成通用名，避開 `agentcore-runtime` 對 `TOKEN` 這類名稱的 secret 檢查 |
 | J9 | `check-ssm-contract.sh` 只留範本特有的兩項檢查，跟 `validate.sh` 重複的交給 `validate.sh` |
 
@@ -359,7 +359,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 **各 stack 的設計決定**
 
-- loadbalancer：`alb` module 用 `web_acl_arn == null` 當 count，Web ACL 跟 ALB 在同一個 stack 建時，ARN 在 plan 還不知道，會報 `Invalid count argument`。傳 `format("%s", module.waf.web_acl_arn)`：Terraform 知道 `format` 的結果不是 null，count 就能決定。這是 Terraform 核心的行為，mock 與真實 plan 一致。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
+- loadbalancer：`alb` module 用 `web_acl_arn == null` 當 count，Web ACL 跟 ALB 在同一個 stack 建時，ARN 在 plan 還不知道，會報 `Invalid count argument`。B5 先用 `format("%s", ...)` 繞過；使用者決定直接修 module，發 `alb-v0.3.0`（PR #12，新增 `web_acl = object({ arn = string })`，物件是不是 null 在 plan 時就知道），範本改用 `web_acl = { arn = module.waf.web_acl_arn }` 與 `~> 0.3.0`，拿掉繞法。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
 - agent：guardrail 的 profile 是 `default`、`profile_a`；內容（topic、詞彙、拒絕文案）全是示意。輸入 guardrail 只評估輸入，輸出 guardrail 只評估輸出且沒有 prompt attack。Runtime 經 Proxy 連資料庫：環境變數 `AGENT_DB_HOST`、`AGENT_DB_NAME`、`AGENT_DB_SSLMODE` 與 `AGENT_DB_AUTH_ARN`（只放 secret 的 ARN，值由 Runtime role 自己讀；名稱避開 agentcore-runtime 對 SECRET、TOKEN 這類字的檢查）。
 - application：`FORWARDED_ALLOW_IPS` 由變數 `trusted_proxies` 決定，三種值 `any`、`vpc`、`vpc_and_cdn`；VPC CIDR 用 `data "aws_vpc"` 查（tree B 沒有 `vpc_cidr`）。task 拿到的是 secret 的 ARN（環境變數名稱以 `_ARN` 結尾），值由 task role 自己取：execution role 沒有 secret 權限。api 與 worker 都設 TCP keepalive 的 `system_controls`。ECS Exec 用獨立的 `enable_execute_command`，不跟 bastion 綁在一起。
 - operation：`bastion_enabled` 用平的 tfvars key（不是 `bastion.enabled`），這樣 `check-ssm-contract.sh` 的 awk 解析得到；import bucket 沒有開關（Lambda 的觸發與 iam 的授權都依賴它）。import-load 由 `extracted/` 加 `ready.json` 後綴觸發，`ready.json` 由 import-extract 寫，是跟應用程式的約定。ETL 指標共四個：import-load 的 rejected、failed、succeeded，加上 import-extract 的 rejected（各自一個 `log-metric-alarm` 呼叫，因為 filter 掛在各自的 log group）。

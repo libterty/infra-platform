@@ -293,3 +293,12 @@ run "publishes_the_three_keys_under_the_stack_path" {
     error_message = "application needs the full target group ARN to register the api service"
   }
 }
+
+run "alb_is_associated_with_the_web_acl_of_this_stack" {
+  command = plan
+
+  assert {
+    condition     = length(module.alb.web_acl_association_ids) == 1
+    error_message = "the ALB must be associated with the Web ACL created in this stack"
+  }
+}

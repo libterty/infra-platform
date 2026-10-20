@@ -45,7 +45,7 @@ module "alb_logs" {
 module "alb" {
   # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
   source  = "app.terraform.io/libterty/alb/aws"
-  version = "~> 0.2.0"
+  version = "~> 0.3.0"
 
   name                = local.alb_name
   subnet_ids          = module.shared.lists["public_subnet_ids"]
@@ -53,9 +53,8 @@ module "alb" {
   certificate_arn     = var.certificate_arn
   idle_timeout        = var.idle_timeout
   deletion_protection = var.deletion_protection
-  # The alb module uses "web_acl_arn == null" as a count, which fails at plan while the Web ACL is still to be created
-  # (the ARN is unknown). format() returns an unknown value that Terraform knows is not null, so the count resolves.
-  web_acl_arn    = format("%s", module.waf.web_acl_arn)
+  # The object form keeps the association count known at plan time while the Web ACL ARN is not (alb 0.3.0).
+  web_acl        = { arn = module.waf.web_acl_arn }
   sns_topic_arns = [module.shared.strings["alarm_topic_arn"]]
 
   vpc_id = module.shared.strings["vpc_id"]
