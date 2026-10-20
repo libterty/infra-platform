@@ -209,7 +209,7 @@ templates/example2/infra/
 | `agent` | guardrail（每個 profile 一支，另有 output guardrail）、AgentCore Runtime 與 Memory、Runtime 的 log delivery | `bedrock-guardrail`、`agentcore-runtime`、`agentcore-memory`、`log-group`、`log-delivery` |
 | `application` | ECS cluster；`api`、`worker` 兩個服務。autoscaling 從 postdeploy 搬過來：api 用 target tracking、連線數 step policy、scheduled action；worker 用 `custom`，依 backlog 高低兩條 step policy。保留 CloudFront managed prefix list 的 data source | `ecs-cluster`、`ecs-service` |
 | `operation` | bastion（role 帶 `instance_profile_name`，inline policy 等同 SSM core 的最小權限）；兩個 Lambda；import bucket（versioning、`expiration_prefix`、`lambda_notifications`）；eval-batch bucket；import ETL 的計數指標（D6） | `iam-role`、`ec2-bastion`、`lambda-function`、`s3-bucket`、`log-metric-alarm` |
-| `postdeploy` | `api`、`worker` 的服務告警與 dashboard；stream backlog、沒有 consumer 的告警；persistence 事件、rate-limit fail-open 的 log 告警；AgentCore 的 X-Ray trace delivery | `ecs-service-alarms`、`metric-alarm`、`log-metric-alarm`、`log-delivery` |
+| `postdeploy` | `api`、`worker` 的服務告警與 dashboard；stream backlog、沒有 consumer 的告警；資料寫入事件、rate-limit fail-open 的 log 告警；AgentCore 的 X-Ray trace delivery | `ecs-service-alarms`、`metric-alarm`、`log-metric-alarm`、`log-delivery` |
 
 除了 `foundation` 的兩個 secret 容器，stack 裡沒有原生 AWS resource，S8 例外清單不用加項目（D5）。`terraform_data` 只用來放 precondition，不受 S8 管。
 

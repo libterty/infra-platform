@@ -476,7 +476,7 @@ scripts/validate.sh                                                # 既有 35 �
 | `empty_alarms_creates_nothing` | `alarms = {}` → 兩種資源都是 0 個 |
 | `outputs` | `alarm_arns`、`alarm_names`、`metric_filter_names` 的 key 等於 `alarms` 的 key |
 | `sns_topic_required` | `sns_topic_arns = []` 被擋 |
-| `key_and_text_rules` | key `PersistenceFailed` 被擋；`pattern = " "` 被擋；`description = ""` 被擋 |
+| `key_and_text_rules` | key `RecordFailed` 被擋；`pattern = " "` 被擋；`description = ""` 被擋 |
 | `statistic_values` | `statistic = "p99"` 被擋；`Average` 通過 |
 | `period_values` | `period = 45` 被擋；`10`、`30`、`120` 通過 |
 | `datapoints_within_periods` | `datapoints_to_alarm = 3`、`evaluation_periods = 2` 被擋 |

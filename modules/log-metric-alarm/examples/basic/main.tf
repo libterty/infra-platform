@@ -22,9 +22,9 @@ module "log_alarms" {
   sns_topic_arns = ["arn:aws:sns:ap-northeast-1:111111111111:alpha-dev-alarms"]
 
   alarms = {
-    persistence_write_failed = {
-      pattern     = "{ $.event = \"persistence_write_failed\" }"
-      metric_name = "PersistenceWriteFailed"
+    record_write_failed = {
+      pattern     = "{ $.event = \"record_write_failed\" }"
+      metric_name = "RecordWriteFailed"
       description = "Audit rows failed to reach the database. Check RDS Proxy and database health first."
     }
     rate_limit_fail_open = {

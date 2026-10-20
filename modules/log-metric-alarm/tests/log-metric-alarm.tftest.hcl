@@ -7,13 +7,13 @@ variables {
   sns_topic_arns = ["arn:aws:sns:ap-northeast-1:111111111111:alpha-dev-alarms"]
   alarms = {
     write_failed = {
-      pattern     = "{ $.event = \"persistence_write_failed\" }"
-      metric_name = "PersistenceWriteFailed"
+      pattern     = "{ $.event = \"record_write_failed\" }"
+      metric_name = "RecordWriteFailed"
       description = "Audit writes failed. Check the database first."
     }
     queue_full = {
-      pattern     = "{ $.event = \"persistence_queue_full\" }"
-      metric_name = "PersistenceQueueFull"
+      pattern     = "{ $.event = \"record_queue_full\" }"
+      metric_name = "RecordQueueFull"
       description = "Audit queue is full. Check the flusher."
     }
   }
@@ -47,7 +47,7 @@ run "filter_defaults" {
   }
 
   assert {
-    condition     = aws_cloudwatch_log_metric_filter.this["write_failed"].pattern == "{ $.event = \"persistence_write_failed\" }"
+    condition     = aws_cloudwatch_log_metric_filter.this["write_failed"].pattern == "{ $.event = \"record_write_failed\" }"
     error_message = "Filter pattern must be passed through"
   }
 
@@ -67,7 +67,7 @@ run "filter_defaults" {
   }
 
   assert {
-    condition     = aws_cloudwatch_log_metric_filter.this["write_failed"].metric_transformation[0].name == "PersistenceWriteFailed"
+    condition     = aws_cloudwatch_log_metric_filter.this["write_failed"].metric_transformation[0].name == "RecordWriteFailed"
     error_message = "Metric name must follow metric_name"
   }
 }
@@ -111,7 +111,7 @@ run "alarm_defaults" {
   }
 
   assert {
-    condition     = aws_cloudwatch_metric_alarm.this["write_failed"].namespace == "Alpha/dev" && aws_cloudwatch_metric_alarm.this["write_failed"].metric_name == "PersistenceWriteFailed"
+    condition     = aws_cloudwatch_metric_alarm.this["write_failed"].namespace == "Alpha/dev" && aws_cloudwatch_metric_alarm.this["write_failed"].metric_name == "RecordWriteFailed"
     error_message = "Alarm must watch the metric the filter produces"
   }
 
@@ -262,7 +262,7 @@ run "key_not_snake_case_rejected" {
 
   variables {
     alarms = {
-      PersistenceFailed = {
+      RecordFailed = {
         pattern     = "ERROR"
         metric_name = "M"
         description = "d"

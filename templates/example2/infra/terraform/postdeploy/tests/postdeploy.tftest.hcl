@@ -228,12 +228,12 @@ run "log_alarms_match_json_events_in_the_right_log_group" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.api_log_alarms)) == toset(["persistence_enqueue_dropped", "persistence_enqueue_failed", "rate_limiter_unavailable"])
+    condition     = toset(keys(local.api_log_alarms)) == toset(["record_enqueue_dropped", "record_enqueue_failed", "rate_limiter_unavailable"])
     error_message = "The api reports dropped or failed hand-offs and rate limit fail-open"
   }
 
   assert {
-    condition     = toset(keys(local.worker_log_alarms)) == toset(["persistence_write_failed", "persistence_dead_lettered", "persistence_consumer_died"])
+    condition     = toset(keys(local.worker_log_alarms)) == toset(["record_write_failed", "record_dead_lettered", "record_consumer_stopped"])
     error_message = "The worker reports failed writes, dead letters and a dead consumer"
   }
 

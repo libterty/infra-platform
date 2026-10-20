@@ -6,14 +6,14 @@ locals {
 
   # The filters match the JSON field "event" the application writes on its own log lines.
   api_log_alarms = {
-    persistence_enqueue_dropped = {
-      pattern     = "{ $.event = \"persistence_enqueue_dropped\" }"
-      metric_name = "PersistenceEnqueueDropped"
+    record_enqueue_dropped = {
+      pattern     = "{ $.event = \"record_enqueue_dropped\" }"
+      metric_name = "RecordEnqueueDropped"
       description = "The hand-off queue to the stream is full and this turn's records were dropped without retry. Check the stream Redis latency and whether writes to it fail."
     }
-    persistence_enqueue_failed = {
-      pattern     = "{ $.event = \"persistence_enqueue_failed\" }"
-      metric_name = "PersistenceEnqueueFailed"
+    record_enqueue_failed = {
+      pattern     = "{ $.event = \"record_enqueue_failed\" }"
+      metric_name = "RecordEnqueueFailed"
       description = "Writing to the stream failed and the batch was dropped without retry. Memory errors point at the Redis memory; connection errors point at the cluster health or its security group."
     }
     rate_limiter_unavailable = {
@@ -26,19 +26,19 @@ locals {
   }
 
   worker_log_alarms = {
-    persistence_write_failed = {
-      pattern     = "{ $.event = \"persistence_write_failed\" }"
-      metric_name = "PersistenceWriteFailed"
+    record_write_failed = {
+      pattern     = "{ $.event = \"record_write_failed\" }"
+      metric_name = "RecordWriteFailed"
       description = "Writing records to the database failed after retries. They stay pending and are retried, but sustained failure grows the stream until the cap trims it. Check the database proxy and the backlog growth."
     }
-    persistence_dead_lettered = {
-      pattern     = "{ $.event = \"persistence_dead_lettered\" }"
-      metric_name = "PersistenceDeadLettered"
+    record_dead_lettered = {
+      pattern     = "{ $.event = \"record_dead_lettered\" }"
+      metric_name = "RecordDeadLettered"
       description = "Records reached the dead-letter stream after retries or a decode failure. Nothing consumes that stream, so a person has to look at it to avoid losing the data."
     }
-    persistence_consumer_died = {
-      pattern     = "{ $.event = \"persistence_consumer_died\" }"
-      metric_name = "PersistenceConsumerDied"
+    record_consumer_stopped = {
+      pattern     = "{ $.event = \"record_consumer_stopped\" }"
+      metric_name = "RecordConsumerStopped"
       description = "A consumer exited and nothing reads the stream until it is restarted. One event is self-healed; repeats mean the supervisor cannot recover it. Check the worker logs for the cause."
     }
   }

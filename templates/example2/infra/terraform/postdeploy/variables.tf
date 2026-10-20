@@ -11,7 +11,7 @@ variable "stream_alarms_enabled" {
 }
 
 variable "log_alarms_enabled" {
-  description = "Create the log metric filters and alarms on persistence events and on rate limit fail-open."
+  description = "Create the log metric filters and alarms on record write events and on rate limit fail-open."
   type        = bool
   default     = false
 }

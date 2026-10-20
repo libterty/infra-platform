@@ -14,9 +14,9 @@ module "log_alarms" {
   sns_topic_arns = [module.alarm_topic.topic_arn]
 
   alarms = {
-    persistence_write_failed = {
-      pattern     = "{ $.event = \"persistence_write_failed\" }"
-      metric_name = "PersistenceWriteFailed"
+    record_write_failed = {
+      pattern     = "{ $.event = \"record_write_failed\" }"
+      metric_name = "RecordWriteFailed"
       description = "Audit rows failed to reach the database. Check RDS Proxy first."
     }
   }
