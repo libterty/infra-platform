@@ -5,6 +5,8 @@ variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+  # Required variables of this stack, so the account checks can plan.
+  services = ["api"]
 }
 
 run "dev_accepts_its_account" {
