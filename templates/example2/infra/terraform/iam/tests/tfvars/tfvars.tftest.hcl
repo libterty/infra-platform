@@ -6,10 +6,10 @@ override_module {
   target = module.in
   outputs = {
     strings = {
-      app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
-      signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
-      db_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
-      agent_runtimes     = "[\"agent\"]"
+      signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+      signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+      db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      agent_runtimes                 = "[\"agent\"]"
       ecr_repository_arns = jsonencode({
         api    = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api"
         worker = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker"

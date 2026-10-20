@@ -11,10 +11,10 @@ override_module {
   target = module.in
   outputs = {
     strings = {
-      app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
-      signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
-      db_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
-      agent_runtimes     = "[\"agent\"]"
+      signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+      signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+      db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      agent_runtimes                 = "[\"agent\"]"
       ecr_repository_arns = jsonencode({
         api            = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api"
         worker         = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker"
@@ -39,11 +39,11 @@ run "reads_the_secrets_the_repositories_and_the_runtime_list" {
 
   assert {
     condition = local.ssm_input_strings == {
-      app_secret_arn      = "foundation/app_secret_arn"
-      signing_secret_arn  = "foundation/signing_secret_arn"
-      agent_runtimes      = "containerimage/agent_runtimes"
-      ecr_repository_arns = "containerimage/ecr_repository_arns"
-      db_secret_arn       = "database/db_secret_arn"
+      signing_private_key_secret_arn = "foundation/signing_private_key_secret_arn"
+      signing_public_key_secret_arn  = "foundation/signing_public_key_secret_arn"
+      agent_runtimes                 = "containerimage/agent_runtimes"
+      ecr_repository_arns            = "containerimage/ecr_repository_arns"
+      db_secret_arn                  = "database/db_secret_arn"
     }
     error_message = "iam must read the three secrets, the repository ARNs and the Runtime list"
   }
@@ -332,10 +332,10 @@ run "without_runtimes_no_statement_has_an_empty_resource_list" {
     target = module.in
     outputs = {
       strings = {
-        app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
-        signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
-        db_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
-        agent_runtimes     = "[]"
+        signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+        signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+        db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+        agent_runtimes                 = "[]"
         ecr_repository_arns = jsonencode({
           api    = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api"
           worker = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker"
@@ -367,11 +367,11 @@ run "a_missing_repository_is_reported_by_name" {
     target = module.in
     outputs = {
       strings = {
-        app_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
-        signing_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
-        db_secret_arn       = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
-        agent_runtimes      = "[\"agent\"]"
-        ecr_repository_arns = jsonencode({ api = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api" })
+        signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+        signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+        db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+        agent_runtimes                 = "[\"agent\"]"
+        ecr_repository_arns            = jsonencode({ api = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api" })
       }
       lists = {}
     }

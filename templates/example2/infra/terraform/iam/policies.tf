@@ -103,7 +103,7 @@ locals {
             Sid      = "ReadSecrets"
             Effect   = "Allow"
             Action   = ["secretsmanager:GetSecretValue"]
-            Resource = [module.in.strings["db_secret_arn"], module.in.strings["signing_secret_arn"], module.in.strings["app_secret_arn"]]
+            Resource = [module.in.strings["db_secret_arn"], module.in.strings["signing_public_key_secret_arn"], module.in.strings["signing_private_key_secret_arn"]]
           },
           local.decrypt_secrets_statement,
           local.trace_statement,
@@ -117,7 +117,7 @@ locals {
           Sid      = "ReadSecrets"
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue"]
-          Resource = [module.in.strings["db_secret_arn"], module.in.strings["signing_secret_arn"]]
+          Resource = [module.in.strings["db_secret_arn"], module.in.strings["signing_public_key_secret_arn"]]
         },
         local.decrypt_secrets_statement,
         {

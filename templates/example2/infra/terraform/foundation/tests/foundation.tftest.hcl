@@ -98,18 +98,18 @@ run "publishes_the_topic_and_the_two_secrets" {
 
   assert {
     condition = local.published_strings == {
-      alarm_topic_arn    = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
-      app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
-      signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+      alarm_topic_arn                = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+      signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
     }
-    error_message = "alarm_topic_arn comes from the topic, signing_secret_arn from the public key container, app_secret_arn from the private key container"
+    error_message = "alarm_topic_arn comes from the topic, signing_public_key_secret_arn from the public key container, signing_private_key_secret_arn from the private key container"
   }
 
   assert {
     condition = module.ssm_publish.names == {
-      alarm_topic_arn    = "/example/dev/foundation/alarm_topic_arn"
-      app_secret_arn     = "/example/dev/foundation/app_secret_arn"
-      signing_secret_arn = "/example/dev/foundation/signing_secret_arn"
+      alarm_topic_arn                = "/example/dev/foundation/alarm_topic_arn"
+      signing_private_key_secret_arn = "/example/dev/foundation/signing_private_key_secret_arn"
+      signing_public_key_secret_arn  = "/example/dev/foundation/signing_public_key_secret_arn"
     }
     error_message = "ssm-publish must write exactly the three foundation keys under the foundation path"
   }
