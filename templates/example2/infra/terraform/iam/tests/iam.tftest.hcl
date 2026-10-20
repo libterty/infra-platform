@@ -234,7 +234,7 @@ run "secrets_are_decrypted_only_through_secrets_manager_with_the_named_key" {
   assert {
     condition = alltrue([
       for role in ["api_task", "worker_task", "import_load", "agent_runtime"] : anytrue([
-        for s in local.statements[role] : s.Sid == "DecryptSecrets" &&
+        for s in local.statements[role] : s.Sid == "KmsDecryptViaSecretsManager" &&
         s.Resource == ["arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"] &&
         s.Condition.StringEquals["kms:ViaService"] == "secretsmanager.ap-northeast-1.amazonaws.com"
       ])
@@ -305,7 +305,7 @@ run "import_extract_reads_incoming_writes_extracted_and_embeds_but_has_no_databa
   }
 
   assert {
-    condition     = flatten([for s in local.statements.import_extract : s.Action if s.Sid == "InvokeEmbeddingModel"]) == ["bedrock:InvokeModel"] && alltrue([for a in flatten([for s in local.statements.import_extract : s.Resource if s.Sid == "InvokeEmbeddingModel"]) : startswith(a, "arn:aws:bedrock:ap-northeast-1::foundation-model/")])
+    condition     = flatten([for s in local.statements.import_extract : s.Action if s.Sid == "InvokeVectorModels"]) == ["bedrock:InvokeModel"] && alltrue([for a in flatten([for s in local.statements.import_extract : s.Resource if s.Sid == "InvokeVectorModels"]) : startswith(a, "arn:aws:bedrock:ap-northeast-1::foundation-model/")])
     error_message = "import-extract may invoke the two embedding foundation models only"
   }
 

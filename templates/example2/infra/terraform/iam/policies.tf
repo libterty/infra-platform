@@ -36,7 +36,7 @@ locals {
     },
   ]
   decrypt_secrets_statement = {
-    Sid       = "DecryptSecrets"
+    Sid       = "KmsDecryptViaSecretsManager"
     Effect    = "Allow"
     Action    = ["kms:Decrypt"]
     Resource  = [data.aws_kms_alias.secretsmanager.target_key_arn]
@@ -180,7 +180,7 @@ locals {
           Resource = ["${local.import_bucket_arn}/extracted/*"]
         },
         {
-          Sid      = "InvokeEmbeddingModel"
+          Sid      = "InvokeVectorModels"
           Effect   = "Allow"
           Action   = ["bedrock:InvokeModel"]
           Resource = local.embedding_model_arns

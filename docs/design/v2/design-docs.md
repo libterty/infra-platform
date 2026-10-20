@@ -61,7 +61,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 | J2 | ECS 的 scheduled action 與自訂 step scaling 擴充在 `ecs-service`，不另做 module：scalable target 由 `ecs-service` 擁有，另一個 module 再建一次會衝突。ElastiCache 的 shard autoscaling 包在 `elasticache-redis` 裡 |
 | J3 | WAF 與 ALB 的關聯沿用 `alb` 的 `web_acl_arn`；WAF logging 放進 `waf-web-acl`，從 postdeploy 搬到 loadbalancer |
 | J4 | managed policy attachment 改寫成收窄的 inline policy（project-infra 的 RDS monitoring role 就是這樣做）；`iam-role` 只加 instance profile |
-| J5 | 拿掉遷移期的寫法：只在部分 AZ 的額外 subnet、public 路由表上的 inline peering 路由、`terraform_data.vpc_identity`、`name_prefix` 覆寫、guardrail 的過渡版本、postdeploy 的跨帳號 alias provider、SNS 的 https 訂閱 |
+| J5 | 拿掉遷移期的寫法：只在部分 AZ 的額外 subnet、public 路由表上的 inline peering 路由、用來核對 VPC 身分的 `terraform_data`、`name_prefix` 覆寫、guardrail 的過渡版本、postdeploy 的跨帳號 alias provider、SNS 的 https 訂閱 |
 | J6 | 安全收窄優先於照抄：data store 與 ALB 的 SG 不給全開 egress；secret 的 `recovery_window_in_days` 從 0 改成 7；WAF log 預設遮蔽 `authorization`、`cookie` 與 origin verify header；origin verify 的值只能從 `TF_VAR_origin_verify_header_value` 給，tfvars 不准出現；Lambda 的 S3 invoke permission 必須帶 `source_account`；bastion 固定 IMDSv2、沒有 public IP、沒有 key pair |
 | J7 | example2 裡同一個 module 只用一條版本線：擴充過的 6 個一律 `~> 0.2.0`，其餘 `~> 0.1.0` |
 | J8 | agent 的環境變數改成通用名，避開 `agentcore-runtime` 對 `TOKEN` 這類名稱的 secret 檢查 |

@@ -8,7 +8,7 @@ locals {
     db       = { name = "${local.name_prefix}-db", description = "Aurora cluster, reachable only through the RDS Proxy" }
     db_proxy = { name = "${local.name_prefix}-db-proxy", description = "RDS Proxy" }
     cache    = { name = "${local.name_prefix}-cache", description = "ElastiCache clusters" }
-    bastion  = { name = "${local.name_prefix}-bastion", description = "SSM bastion, egress only" }
+    bastion  = { name = "${local.name_prefix}-bastion", description = "Session Manager host; outbound only" }
   }
 
   # Without a NAT, 443 can only reach the interface endpoints in the VPC and S3 through its gateway endpoint.
