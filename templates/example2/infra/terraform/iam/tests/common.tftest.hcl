@@ -30,7 +30,7 @@ override_module {
 
 override_data {
   target = data.aws_kms_alias.secretsmanager
-  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
+  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab" }
 }
 
 run "dev_accepts_its_account" {
