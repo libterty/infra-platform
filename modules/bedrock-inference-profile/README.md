@@ -28,7 +28,7 @@ module "inference_profile" {
 
 完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
 
-## 要修掉的坑
+## 容易出錯的地方
 
 - **`copy_from` 要給完整 ARN，不是 model id。** 只給 `anthropic.claude-...` 或 `apac.anthropic.claude-...` 這種 id 會在 apply 才失敗。module 在 plan 階段只放行 `foundation-model` 與 `inference-profile`（system inference profile）兩種 ARN；`provisioned-model` 與 `application-inference-profile` 都擋。ARN 最後一段只收 `[A-Za-z0-9._:-]`，含 `*` 的 ARN 會被擋。
 - **system inference profile 的 ARN 帶的是呼叫端自己的帳號。** `inference-profile/` 的 ARN 帳號欄必須等於目前的帳號（module 用 `aws_caller_identity` 比對，不符時 profile resource 的 precondition 擋下），帳號欄空白也擋；foundation-model ARN 的帳號欄本來就是空的，不受影響。

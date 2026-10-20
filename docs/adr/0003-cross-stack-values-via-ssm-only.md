@@ -14,7 +14,7 @@ notes: "validate.sh 第一版只靜態檢查兩條（S2：只有 ssm-publish 可
 
 客戶自管模式下，網路、資料庫、IAM 可能是客戶用他們自己的方式建的，不在我們的 state 裡。問題是：**stack 之間用什麼介面傳值，才能讓「上游由我們建」跟「上游由客戶建」對下游看起來一樣？**
 
-project-a 已經走到 SSM，但沒有為這個決定寫 ADR；這份補上。
+參考專案也用 SSM 傳值；這份把決定與理由寫下來。
 
 ## Decision Drivers
 
@@ -53,7 +53,7 @@ Chosen option: 「只經 SSM Parameter Store」，因為 SSM 是我們跟客戶�
 * Good: 下游不需要上游 state 的讀取權限。
 * Bad: 多一層 SSM 參數要維護；`aws_ssm_parameter` 的 `value` 會進 state，所以 secret 值絕不放進去。
 * Bad: SSM 不收空字串，可有可無的值要包 JSON，讀取端要 `jsondecode()`。
-* Bad: 「方向」那條規則第一版沒有自動檢查。project-a 的對應腳本用 awk 解析 HCL，格式一變就誤判，而且沒接進 CI，等於沒在跑。第一版靠兩件事補位：各 stack 的測試鎖住讀取清單；`infra/README.md` 的合約表標明每個 key 誰寫誰讀，PR 審查時對照。
+* Bad: 「方向」那條規則第一版沒有自動檢查。用 awk 這類文字工具解析 HCL，格式一變就誤判；檢查腳本沒接進 CI 也等於沒在跑。第一版靠兩件事補位：各 stack 的測試鎖住讀取清單；`infra/README.md` 的合約表標明每個 key 誰寫誰讀，PR 審查時對照。
 
 ### Confirmation
 
@@ -84,4 +84,4 @@ Chosen option: 「只經 SSM Parameter Store」，因為 SSM 是我們跟客戶�
 ## More Information
 
 * 設計文件：[`docs/design/v1/design-docs.md`](../design/v1/design-docs.md) §5.6，含合約表與 `database` 的 JSON 欄位。
-* project-a 的 `check-ssm-contract.sh` 是第三條檢查的前例；它沒有被 CI、Makefile 或 `scripts/` 呼叫。
+* 第三條檢查之後由 example2 的 `check-ssm-contract.sh` 實作，`scripts/validate.sh` 會呼叫它（見 [`docs/design/v2/design-docs.md`](../design/v2/design-docs.md) §5.5、§6）。

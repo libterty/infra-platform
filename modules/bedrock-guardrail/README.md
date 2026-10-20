@@ -25,7 +25,7 @@ module "guardrail" {
 - [`examples/basic/`](./examples/basic/main.tf)：`STANDARD` 加 profile、六種 content filter、`PROFANITY`。
 - [`examples/zh-tw-standard/`](./examples/zh-tw-standard/main.tf)：中文的 denied topic 與 content filter。
 
-## 要修掉的坑
+## 容易出錯的地方
 
 | 坑 | 這裡怎麼做 |
 |---|---|

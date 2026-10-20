@@ -154,7 +154,7 @@ ECR 的 pull-through cache 規則讓帳號自己的 ECR 在第一次被拉取時
 
 ### 為什麼 `essential = false`
 
-collector 只負責送 trace，不在請求路徑上。`essential = true` 時 collector 一掛掉，ECS 會停掉整個 task 重開，追蹤元件的故障就變成服務中斷。設成 `false`，collector 掛了只是少一段時間的 trace，主 container 照常服務。參考來源 project-c 的寫法是 `true`（`project-c-app/modules/app-service/ecs-standard.tf`），這裡刻意不同。
+collector 只負責送 trace，不在請求路徑上。`essential = true` 時 collector 一掛掉，ECS 會停掉整個 task 重開，追蹤元件的故障就變成服務中斷。設成 `false`，collector 掛了只是少一段時間的 trace，主 container 照常服務。
 
 `app_depends_on = "START"` 讓主 container 等 collector 啟動後才啟動，減少開機時第一批 trace 送不出去的機會；用 `START` 而不是 `HEALTHY`，是不讓 collector 的健康狀態卡住服務啟動。
 
@@ -199,7 +199,7 @@ service:
 - `/healthcheck` 是 ADOT 映像內建的檢查程式，它查的是 `health_check` extension，所以設定檔一定要開這個 extension，否則 health check 一直不健康（因為 `essential = false` 加 `START`，不影響服務，但 console 會顯示 unhealthy）。範本的設定已經開了。**未驗證**。
 - `filter/health` 用的 attribute 名稱取決於 SDK 的 semantic convention 版本：新版是 `url.path`，舊版是 `http.target`，兩個都寫。health check 路徑不是 `/health` 時改這個檔。
 - `memory_limiter` 的上限要小於 `memory_reservation`（256 MiB）。sidecar 的 CPU 與記憶體從 task 的 `cpu`／`memory` 裡分，task 預設 512／1024，掛了 collector 之後主 container 能用的就少了這一塊。
-- 設定用 `environment`（`AOT_CONFIG_CONTENT`）帶，不學 project-c 存成 SSM parameter 再用 `secrets` 讀：設定不是機密，而且範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建。設定太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
+- 設定用 `environment`（`AOT_CONFIG_CONTENT`）帶，不存成 SSM parameter 再用 `secrets` 讀：設定不是機密，而且範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建。設定太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
 - `awsproxy` extension 讓 SDK 能經 collector 向 X-Ray 拉 sampling rule（見〈抽樣〉）。
 
 ## `network`：X-Ray 的 interface endpoint
@@ -240,7 +240,7 @@ xray_groups = {
 2. collector 開了 `awsproxy` extension（範本的設定有）。
 3. task role 有 `xray:GetSamplingRules`、`xray:GetSamplingTargets`（`iam-app` 的 `tracing` policy 有）。
 
-應用程式如果用 SDK 端的固定比例（`OTEL_TRACES_SAMPLER=traceidratio`，project-a 的做法），sampling rule 不會生效，抽樣只看 SDK 設定。
+應用程式如果用 SDK 端的固定比例（`OTEL_TRACES_SAMPLER=traceidratio`），sampling rule 不會生效，抽樣只看 SDK 設定。
 
 ## log 告警：`log-metric-alarm`
 

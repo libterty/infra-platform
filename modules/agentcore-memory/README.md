@@ -23,10 +23,10 @@ module "memory" {
 
 完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
 
-## 要修掉的坑
+## 容易出錯的地方
 
-- **事件保留天數的預設從 365 改成 90。** 參考實作用 365，保留越久、留存的個資範圍越大。這裡預設取中間值，要更長的專案自己明寫。這是判斷，不是實測結果。
-- **保留天數的下限是 7，不是 3。** 參考實作與 API 文件寫 3–365，但 aws provider 6.69.0 在 plan 階段就擋掉 7 以下的值（`value must be between 7 and 365`）。module 照 provider 的範圍擋，錯誤訊息在 module 這一層出現，不用等到 provider 才報。
+- **事件保留天數預設 90，不用上限 365。** 保留越久、留存的個資範圍越大。這裡預設取中間值，要更長的專案自己明寫。這是判斷，不是實測結果。
+- **保留天數的下限是 7，不是 3。** API 文件寫 3–365，但 aws provider 6.69.0 在 plan 階段就擋掉 7 以下的值（`value must be between 7 and 365`）。module 照 provider 的範圍擋，錯誤訊息在 module 這一層出現，不用等到 provider 才報。
 - **`namespaces` 送進 provider 的 `namespace_templates`。** provider 6.69.0 把 strategy 的 `namespaces` 標成 deprecated，改用 `namespace_templates`。module 的輸入仍叫 `namespaces`，呼叫端不用知道這個改名。
 
 ## 注意
@@ -41,7 +41,7 @@ module "memory" {
 
 ## 刻意不做
 
-- `CUSTOM` 與 self-managed strategy（`configuration` 區塊）：要自訂模型、`append_to_prompt` 與 Memory execution role，範本就得多一個 role 與權限；參考專案都沒用過，需要時 MINOR。
+- `CUSTOM` 與 self-managed strategy（`configuration` 區塊）：要自訂模型、`append_to_prompt` 與 Memory execution role，範本就得多一個 role 與權限；需要時 MINOR。
 - Memory execution role、Kinesis stream delivery、`indexed_key`。
 - log 與 trace delivery：用 `log-delivery`。
 - IAM。

@@ -176,7 +176,7 @@ run "step_policy_has_no_target_tracking" {
       aws_cloudwatch_metric_alarm.scaling["memory_scale_out"].comparison_operator == "GreaterThanOrEqualToThreshold" &&
       aws_cloudwatch_metric_alarm.scaling["memory_scale_in"].comparison_operator == "LessThanOrEqualToThreshold"
     )
-    error_message = "Comparison operators must follow the project-c alarm definitions"
+    error_message = "Comparison operators must match the step-scaling alarm definitions"
   }
 
   assert {

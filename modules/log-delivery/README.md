@@ -31,7 +31,7 @@ module "runtime_logs" {
 
 完整範例見 [`examples/runtime-logs-and-traces/`](./examples/runtime-logs-and-traces/main.tf)。
 
-## 要修掉的坑
+## 容易出錯的地方
 
 - **資源重建時 apply 卡在半途**：Runtime 或 Memory 重建後 ARN 換了，delivery source 會被替換；如果 delivery 沒有跟著換，刪 source 時會撞 `ConflictException`。這個 module 讓 delivery 在它的 source `resource_arn` 改變時一起替換。只改 tag 不會連帶替換 delivery。
 - **XRAY 目的地不能帶設定**：`XRAY` 只設 `delivery_destination_type = "XRAY"`，不送 `delivery_destination_configuration`；`CWL`、`S3` 反過來只送 `destination_resource_arn`。validation 會擋 `XRAY` 給 `resource_arn`、`CWL` 沒給或給了 bucket ARN、`S3` 沒給或給了 log group ARN。

@@ -4,7 +4,7 @@
 
 module 只負責接線，並在 plan 時擋掉名稱與欄位對應寫錯的輸入。`vector` extension、表、索引、KB 專用的資料庫帳號由專案的 migration 建，**資料庫裡有沒有那張表，module 驗不到**。要先跑的 SQL 見 design §4.30〈資料庫要先準備好的東西〉，可照抄的完整版本會收在 `docs/guides/llm-agentcore.md`。
 
-沒有任何參考專案用過 Bedrock Knowledge Base，這個 module 的依據只有 aws provider 6.69.0 的 schema 與 AWS 文件。標「未實測」的行為都列在 design §7.3 第 21 項。
+這個 module 的依據只有 aws provider 6.69.0 的 schema 與 AWS 文件。標「未實測」的行為都列在 design §7.3 第 21 項。
 
 ## 用法
 
@@ -50,9 +50,9 @@ module "knowledge_base" {
 | 自訂 metadata | `custom_metadata jsonb` | `aurora.field_mapping.custom_metadata_field`（預設 `null`，有給才送；SQL 的這一欄與它的索引也只有這時才需要） |
 | 資料庫帳號 | `bedrock_kb_user` | `aurora.credentials_secret_arn` 指向的 secret 的 `username` |
 
-## 要修掉的坑
+## 容易出錯的地方
 
-這個 module 沒有參考實作可以對照，下面是相對於 AWS 文件範例刻意改掉的地方：
+下面是相對於 AWS 文件範例刻意改掉的地方：
 
 - **KB 連資料庫用專用帳號，不用 master secret。** AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA`，並讓 KB 帳號自己建表。這裡表由 migration 建，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`。module 拿不到 master secret 的 ARN，擋不了；範本的 `agent` 用 precondition 擋。Bedrock 在 ingestion 與查詢時是否需要更多權限，**未實測**，不夠時只在那張表上補缺的那一項。
 - **`data_deletion_policy` 預設 `RETAIN`。** 刪掉 data source 時不連帶清掉向量，避免一次錯誤的 apply 清空知識庫。要跟著刪的專案明寫 `DELETE`。

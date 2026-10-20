@@ -52,7 +52,7 @@ module "vpc" {
 - 自動切時 `netnum_base + length(azs) <= 2^newbits`，且 subnet 不小於 `/28`。
 - `nat_mode != "none"` 時要有 public tier。
 - 所有 subnet 都在 VPC CIDR 內。
-- 所有 subnet CIDR 兩兩不重疊：每個 CIDR 換成 `[起始整數, 結束整數]` 再比對，不管怎麼切都擋得住。project-a 的 `subnets-app.tf` 用兩種 `newbits` 切同一個 `/16`，兩個 AZ 剛好填滿，第三個 AZ 會靜默撞進別的 subnet，這裡會被擋下。
+- 所有 subnet CIDR 兩兩不重疊：每個 CIDR 換成 `[起始整數, 結束整數]` 再比對，不管怎麼切都擋得住。例如用兩種 `newbits` 切同一個 `/16`、兩個 AZ 剛好填滿時，第三個 AZ 會靜默撞進別的 subnet，這裡會被擋下。
 
 ## 注意
 

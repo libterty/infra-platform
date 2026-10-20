@@ -2,7 +2,7 @@
 
 建一個 AgentCore Gateway（MCP）與它的 target。target 只收兩種：Lambda、MCP server。Gateway 一定要有 inbound 認證，預設 `AWS_IAM`（呼叫端用自己的 role 簽 SigV4），也可以用 `CUSTOM_JWT`；不收 `NONE`。
 
-**這個 module 的行為沒有在任何環境部署過。** 唯一的參考實作裡，Lambda target 標註為沒在使用、OpenAPI target 已停用，所以每一條行為都只有 provider schema 與 AWS 文件當依據。
+**這個 module 的行為沒有在任何環境部署過。** 每一條行為都只有 provider schema 與 AWS 文件當依據。
 
 ## 用法
 
@@ -43,7 +43,7 @@ module "gateway" {
 
 完整範例見 [`examples/lambda-and-mcp-server/`](./examples/lambda-and-mcp-server/main.tf)。
 
-## 要修掉的坑
+## 容易出錯的地方
 
 - **Lambda 的工具定義只能是「一層屬性」或「S3 上的完整定義」。** provider 的 inline 工具定義是多層 block（`input_schema` → `property` → `items` → …，第三層之後才是 JSON 字串），Terraform 沒有遞迴，寫不出任意深度。工具輸入只有一層屬性時用 `tools`；需要巢狀型別（例如陣列裡放物件）時，把完整的工具定義放在 S3，給 `tool_schema_s3_uri`。`tools` 裡 `type = "array"` 或 `"object"` 的屬性不會帶 `items`／`properties`，AWS 是否接受這種寫法**未實測**。
 - **MCP server target 不帶 outbound 認證。** AWS 是否接受不帶 `credential_provider_configuration` 的 MCP server target **未實測**。如果不接受，MCP server target 在 credential provider module 做出來之前無法使用。

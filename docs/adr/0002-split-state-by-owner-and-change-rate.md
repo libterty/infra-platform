@@ -62,7 +62,7 @@ IAM 拆成兩個的理由：
 
 * Good: 換版只 plan `application`，影響範圍小；客戶可以接手任何低頻 stack。
 * Good: 權限審查只看 `iam-base`、`iam-app` 兩處。
-* Bad: stack 多，要手動依序 apply 8 次。不提供 `stacks.sh`：project-a 那支已失效，一支沒人維護的腳本比照順序手動跑更不可靠。順序寫在範本的 `infra/README.md`。
+* Bad: stack 多，要手動依序 apply 8 次。不提供 `stacks.sh`：沒有測試保護的順序腳本，很容易在增減 stack 後跟實際順序脫節，比照順序手動跑更不可靠。順序寫在範本的 `infra/README.md`。
 * Bad: 第一次部署時，Proxy 建立到 `iam-app` apply 之間 Proxy 讀不到 secret；建立當下是否失敗未實測。
 * Neutral: 跨 stack 的值只經 SSM 傳遞，見 [ADR-0003](./0003-cross-stack-values-via-ssm-only.md)。
 
@@ -94,5 +94,5 @@ IAM 拆成兩個的理由：
 
 ## More Information
 
-* project-a 的 `infra-v2` 是這個拆法的來源；範本把它的 `iam` 拆成 `iam-base` 與 `iam-app`，刪除 `bridge` 與 `postdeploy`。
+* 這個拆法參考 project-a 的 stack 拆法；範本另外把 IAM 拆成 `iam-base` 與 `iam-app`。
 * 設計文件：[`docs/design/v1/design-docs.md`](../design/v1/design-docs.md) §5.2、§5.3、§5.4、§5.5。

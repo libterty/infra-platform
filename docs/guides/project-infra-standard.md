@@ -1,6 +1,6 @@
 # 專案 infra 規範：怎麼照範本開 `infra/` 目錄
 
-給 project-a 這類專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，就照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
+給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，就照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
 這份以 `project-infra` 範本為準。repo 另有一份拆法不同的範本 `templates/example2/`（11 個 stack，環境是 `dev`、`sit`），複製與改值的做法一樣，細節看它自己的 `infra/README.md`。
 
@@ -45,7 +45,7 @@ test "$(sha256sum infra/terraform/*/common.tf | cut -d' ' -f1 | sort -u | wc -l)
 
 state key 固定是 `<project>-<env>/<stack>/terraform.tfstate`，例如 `alpha-dev/application/terraform.tfstate`；bucket 開 versioning、SSE、Block Public Access，用 `use_lockfile = true`（S3 原生 lock，不用 DynamoDB）。bucket 本身不在專案 stack 裡建。
 
-project-a 用過的教訓：uat 與 prod 的 state 在同一個 bucket、只靠 key 前綴分開，key 寫錯就讀到別的環境。所以 key 的格式寫死，本 repo 的 `scripts/validate.sh`（S6）會檢查。
+多個環境的 state 放同一個 bucket、只靠 key 前綴分開時，key 寫錯就會讀到別的環境。所以 key 的格式寫死，本 repo 的 `scripts/validate.sh`（S6）會檢查。
 
 ### apply 與 destroy 的順序
 
@@ -59,7 +59,7 @@ destroy 反過來（8 到 1），之前先做三件事，否則會失敗：
 
 ### 新增專案自己的 stack
 
-project-a 的 `agent`、`operation` 這類專案特有的東西，自己加 stack，規則跟範本一樣：
+專案特有的東西（例如維運工具），自己加 stack，規則跟範本一樣：
 
 - 目錄、`common.tf`（複製，一字不差）、`versions.tf`、`providers.tf`（只改 `Stack` tag）、`envs/` 照範本。
 - 只呼叫 module。真的需要原生 resource 時，先跟 platform team 討論要不要做成 module。
@@ -173,7 +173,7 @@ public tier 每個 AZ ≥ ALB 節點用量（subnet 至少 /27、至少 8 個可
 data tier 每個 AZ   ≥ DB instance 數 + Proxy 的 ENI + 5
 ```
 
-例：max 40 個 task、2 個 AZ、5 個 interface endpoint → `ceil(40 × 2 ÷ 2) + 5 = 45`，加 50% 約 68，加 5 約 73，`/25`（123 個可用）就夠。範例 tfvars 給 `/22`，是留給服務數量成長。Proxy 每個 subnet 用掉幾個 IP，AWS 沒有固定數字，**未驗證**。
+例：max 50 個 task、2 個 AZ、5 個 interface endpoint → `ceil(50 × 2 ÷ 2) + 5 = 55`，加 50% 約 83，加 5 約 88，`/25`（123 個可用）就夠。範例 tfvars 給 `/22`，是留給服務數量成長。Proxy 每個 subnet 用掉幾個 IP，AWS 沒有固定數字，**未驗證**。
 
 ## 環境切換：四件事
 
@@ -194,7 +194,7 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 ```
 
 - 換環境一律 `init -reconfigure`，不要用 `-migrate-state`（它會把 state 搬過去）。
-- 環境名稱只有一層：`env` 同時用在檔名、資源名稱、SSM 路徑、state key。不要再做 project-a 那種 `devbox`／`box` 兩層命名，填反時檢查會比對到空集合然後「通過」。
+- 環境名稱只有一層：`env` 同時用在檔名、資源名稱、SSM 路徑、state key。不要拆成檔名一套、資源名稱另一套的兩層命名：兩者填反時，檢查會比對到空集合然後「通過」。
 - `expected_account_id` 沒有預設值，漏帶 tfvars 直接報缺變數；帳號不在 `accounts_by_env` 的那一列，plan 之前就停。
 
 ## 客戶自管資源：模式 A 與模式 B
@@ -216,20 +216,16 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 
 `agent` stack 排在 `data` 與 `iam-app` 之間，預設不建任何東西。開 Runtime、guardrail、Memory、Gateway 或 Knowledge Base 的步驟與坑，見 [`llm-agentcore.md`](./llm-agentcore.md)。
 
-## 跟 project-a infra-v2 的對照
+## 範本刻意的取捨
 
-| project-a stack | 範本 | 差別 |
-|---|---|---|
-| `foundation` | `foundation` | 多兩個 log bucket |
-| `containerimage` | `containerimage` | 多了服務清單 |
-| `network` | `network` | 改用 `vpc` module；SG 規則由服務清單展開 |
-| `database` | `data` | 改用 `rds` module；ElastiCache 不在第一版 |
-| `iam` | `iam-base`、`iam-app` | 拆兩個，理由見上 |
-| `bridge` | 刪除 | 只有一棵 SSM 樹，不需要轉寫 |
-| `loadbalancer` | `loadbalancer` | 改用 `alb` module；target group 改由 `ecs-service` 建 |
-| `agent`、`operation` | 不在範本 | 專案自己加 stack |
-| `application` | `application` | 加上 autoscaling 與告警 |
-| `postdeploy` | 刪除 | autoscaling、告警收進 module 與 `application`，不再把 id 寫死在 tfvars |
+- `foundation` 多建兩個 log bucket；`containerimage` 依服務清單建 ECR repository。
+- `network` 用 `vpc` module，SG 規則由服務清單展開。
+- `data` 用 `rds` module；ElastiCache 不在第一版。
+- IAM 拆成 `iam-base`、`iam-app` 兩個 stack，理由見上。
+- 只有一棵 SSM 樹，不需要轉寫用的 stack。
+- `loadbalancer` 用 `alb` module；target group 由 `ecs-service` 建。
+- autoscaling 與告警收進 module 與 `application`，不另開 stack，也不把 id 寫死在 tfvars。
+- 專案特有的功能不放進範本，由專案自己加 stack。
 
 ## 驗證
 

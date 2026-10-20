@@ -7,7 +7,7 @@
 
 ## 1. 結論
 
-project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（ALB＋WAF、ECS、Aurora＋RDS Proxy、ElastiCache、AgentCore、Lambda、bastion）。它幾乎沒有用 module：唯一的 module 是自己寫的 `ssm-publish`。
+project-b 拆成 11 個 Terraform stack（ALB＋WAF、ECS、Aurora＋RDS Proxy、ElastiCache、AgentCore、Lambda、bastion），幾乎都直接寫原生 resource，很少用 module。
 
 這次分兩個 PR 做：
 
@@ -28,7 +28,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 ## 2. 核對 project-b 時發現、會影響設計的事
 
 1. **兩棵 SSM 樹**。前段 stack 發布到樹 A（`/<project>/<env>/<stack>/<key>`）；後段 stack（loadbalancer、agent、application、operation）只讀樹 B（一個共用前綴底下的扁平 key）。樹 B 可以由外部發布，也可以由 `bridge` stack 把樹 A 轉寫過去。
-2. **本 repo 的靜態規則會擋掉原本的寫法**：S3 規定 `data "aws_ssm_parameter"` 只能出現在 `ssm-read`（原本每個 stack 都直接讀，連 bastion 讀 AMI 公開參數也是）；S4 規定 `aws_iam_*` 只能出現在 IAM module（原本有 `aws_iam_instance_profile`、`aws_iam_role_policy_attachment`）。
+2. **本 repo 的靜態規則會擋掉直接寫原生 resource 的做法**：S3 規定 `data "aws_ssm_parameter"` 只能出現在 `ssm-read`，連讀 AMI 公開參數也一樣；S4 規定 `aws_iam_*` 只能出現在 IAM module，instance profile 與 policy attachment 都要改走 module。
 3. **`validate.sh` 寫死只看 project-infra**：`tf_stack_glob`、S5、S8、token 檢查、`-lockfile=readonly`、`canon()` 都綁在它上面；Step 6a 只跑 `dev prod` 兩個 env；`ci.yml` 的 Registry versions glob 也寫死。
 4. **既有 module 對不上的地方**，列在 §4.1 各 module 底下。
 5. **原本的 tests 直接斷言 resource**，例如 `aws_lambda_function.<name>`。改成呼叫 module 後只能斷言 stack 的 locals 與 module 輸出，所以 tests 要照 project-infra 的寫法重寫，不能直接搬。
@@ -51,7 +51,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 | D5 | 原本跨服務的 CloudWatch dashboard 拿掉，改用 `ecs-service-alarms` 每個服務各自的 dashboard | 不必在 S8 加例外 |
 | D6 | `log-metric-alarm` 擴充成可以只建 metric filter、不建告警（0.2.0），ETL 的三個計數指標完整保留 | |
 | D7 | 環境只有 `dev`、`sit`：`envs/dev.*`、`envs/sit.*`，`accounts_by_env = { dev, sit }`。code、tfvars、tests、註解、commit 都不出現 dev、sit 以外的環境名稱 | 真實環境名稱會透露來源專案的部署方式 |
-| D8 | 保留「樹 B 由外部發布」的完整示意，但不用環境名稱判斷：`stacks.sh` 的 `EXTERNAL_SHARED_ENVS`（預設空的）列出樹 B 由外部發布、不跑 bridge 的環境；bastion 用 `bastion.enabled` 開關（dev 開、sit 關）；import bucket 開關；eval-batch 只在 dev | 這是 project-b 跟 project-infra 最不一樣的地方；改成開關後 code 裡不需要出現其他環境名稱 |
+| D8 | 保留「樹 B 由外部發布」的完整示意，但不用環境名稱判斷：`stacks.sh` 的 `EXTERNAL_SHARED_ENVS`（預設空的）列出樹 B 由外部發布、不跑 bridge 的環境；bastion 用 `bastion.enabled` 開關（dev 開、sit 關）；import bucket 開關；eval-batch 只在 dev | 這是 example2 跟 project-infra 最不一樣的地方；改成開關後 code 裡不需要出現其他環境名稱 |
 
 ### 3.2 planner 判斷、使用者未反對
 
@@ -61,8 +61,8 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 | J2 | ECS 的 scheduled action 與自訂 step scaling 擴充在 `ecs-service`，不另做 module：scalable target 由 `ecs-service` 擁有，另一個 module 再建一次會衝突。ElastiCache 的 shard autoscaling 包在 `elasticache-redis` 裡 |
 | J3 | WAF 與 ALB 的關聯沿用 `alb` 的 `web_acl_arn`；WAF logging 放進 `waf-web-acl`，從 postdeploy 搬到 loadbalancer |
 | J4 | managed policy attachment 改寫成收窄的 inline policy（project-infra 的 RDS monitoring role 就是這樣做）；`iam-role` 只加 instance profile |
-| J5 | 拿掉遷移期的寫法：只在部分 AZ 的額外 subnet、public 路由表上的 inline peering 路由、用來核對 VPC 身分的 `terraform_data`、`name_prefix` 覆寫、guardrail 的過渡版本、postdeploy 的跨帳號 alias provider、SNS 的 https 訂閱 |
-| J6 | 安全收窄優先於照抄：data store 與 ALB 的 SG 不給全開 egress；secret 的 `recovery_window_in_days` 從 0 改成 7；WAF log 預設遮蔽 `authorization`、`cookie` 與 origin verify header；origin verify 的值只能從 `TF_VAR_origin_verify_header_value` 給，tfvars 不准出現；Lambda 的 S3 invoke permission 必須帶 `source_account`；bastion 固定 IMDSv2、沒有 public IP、沒有 key pair |
+| J5 | 範本只放穩定狀態需要的資源，遷移期與過渡用的寫法一律不帶過來 |
+| J6 | 範本一律用收窄的安全預設：data store 與 ALB 的 SG 不給全開 egress；secret 的 `recovery_window_in_days` 是 7；WAF log 預設遮蔽 `authorization`、`cookie` 與 origin verify header；origin verify 的值只能從 `TF_VAR_origin_verify_header_value` 給，tfvars 不准出現；Lambda 的 S3 invoke permission 必須帶 `source_account`；bastion 固定 IMDSv2、沒有 public IP、沒有 key pair |
 | J7 | example2 裡同一個 module 只用一條版本線：擴充過的 6 個一律 `~> 0.2.0`（`alb` 修 bug 後改 `~> 0.3.0`），其餘 `~> 0.1.0` |
 | J8 | agent 的環境變數改成通用名，避開 `agentcore-runtime` 對 `TOKEN` 這類名稱的 secret 檢查 |
 | J9 | `check-ssm-contract.sh` 只留範本特有的兩項檢查，跟 `validate.sh` 重複的交給 `validate.sh` |
@@ -101,7 +101,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 
 **`alb` 0.1.0 → 0.2.0**
 
-原本 `alb` 只建 listener，target group 與規則由 `ecs-service` 建，而且一個服務只能有一條規則。project-b 是一個 target group 配四條規則，條件含 header。
+原本 `alb` 只建 listener，target group 與規則由 `ecs-service` 建，而且一個服務只能有一條規則。example2 需要一個 target group 配多條規則，條件含 header。
 
 - `vpc_id`（預設 null；`target_groups` 非空時必填）。
 - `target_groups = map(object({ port, protocol_version = optional("HTTP1"), deregistration_delay = optional(300), health_check = optional(object({ path = "/health", matcher = "200", interval = 15, timeout = 5, healthy_threshold = 2, unhealthy_threshold = 3 }), {}) }))`。
@@ -160,7 +160,7 @@ mock 驗不到、要真實環境才能確認的推論（A2）：`function_arn` �
 已知限制（寫進各 module 的 README）：
 
 - `elasticache-redis` 固定 `ignore_changes = [num_node_groups]`，讓 autoscaling 調整 shard 數；所以建好之後改 `num_node_groups` 不會生效，autoscaling 改變 shard 數後 member 告警也會跟實際不符。
-- `elasticache-redis` 用 TLS＋security group，不設 AUTH token。這跟 project-b 一致，列為已知的安全取捨。
+- `elasticache-redis` 用 TLS＋security group，不設 AUTH token，列為已知的安全取捨。
 
 ### 4.3 發版與 HCP 登記（D4）
 
@@ -241,7 +241,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 **`stacks.sh`**
 - ORDER 照 §5.3；`all` 遇到 `EXTERNAL_SHARED_ENVS` 裡的環境自動跳過 bridge。
-- env 檔從 `<stack>/envs/<env>.{tfvars,tfbackend}` 讀。原本集中在 `envs/<env>/` 的寫法會讓 S6（從目錄層級推 stack 名稱）失敗。
+- env 檔從 `<stack>/envs/<env>.{tfvars,tfbackend}` 讀。S6 從目錄層級推 stack 名稱，所以 env 檔要放在各 stack 底下，不能集中放在一個共用的 `envs/` 目錄。
 - 保留 `validate` 動作（`init -backend=false`）。`init`、`plan`、`apply`、`destroy` 動作也保留給使用者自己用；本 repo 的開發與 CI 不跑這些。
 
 **`check-ssm-contract.sh`** 只檢查兩件事，ORDER 直接從 `stacks.sh` 讀，不另寫一份：

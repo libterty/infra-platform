@@ -22,12 +22,12 @@
 
 | module | 做什麼 | 刻意不做 | 部署過的參考 |
 |---|---|---|---|
-| `bedrock-guardrail` | 一支 guardrail；`tier` 預設 `STANDARD`，`STANDARD` 必須給 `cross_region_profile_id`；空的 policy 整塊不送 | `aws_bedrock_guardrail_version`（`version` 輸出固定 `DRAFT`）、IAM、多模態 | 有（project-a） |
-| `bedrock-inference-profile` | application inference profile，用途只有成本歸屬（依 tag 拆費用） | 模型使用權（Marketplace、use case 申請）、provisioned throughput | 有（project-c） |
-| `agentcore-runtime` | 一個容器型 Runtime；lifecycle 兩個值一起送；映像 tag 由 Terraform 擁有、不收 `:latest`；預設 `VPC` | endpoint 資源（用 AWS 自帶的 `DEFAULT`）、execution role、ECR、SG、log 與 trace delivery、S3 程式碼型 artifact | 有（project-a） |
+| `bedrock-guardrail` | 一支 guardrail；`tier` 預設 `STANDARD`，`STANDARD` 必須給 `cross_region_profile_id`；空的 policy 整塊不送 | `aws_bedrock_guardrail_version`（`version` 輸出固定 `DRAFT`）、IAM、多模態 | 有 |
+| `bedrock-inference-profile` | application inference profile，用途只有成本歸屬（依 tag 拆費用） | 模型使用權（Marketplace、use case 申請）、provisioned throughput | 有 |
+| `agentcore-runtime` | 一個容器型 Runtime；lifecycle 兩個值一起送；映像 tag 由 Terraform 擁有、不收 `:latest`；預設 `VPC` | endpoint 資源（用 AWS 自帶的 `DEFAULT`）、execution role、ECR、SG、log 與 trace delivery、S3 程式碼型 artifact | 有 |
 | `agentcore-memory` | 一個 Memory，可選內建 strategy（`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE`）；事件保留 7–365 天，預設 90 | `CUSTOM` 與 self-managed strategy、Memory execution role | 只有短期記憶（沒有 strategy） |
 | `agentcore-gateway` | MCP Gateway 與 target；target 只收 `lambda`、`mcp_server`；認證只收 `AWS_IAM`、`CUSTOM_JWT` | credential provider、OpenAPI／Smithy／API Gateway target、VPC Lattice | **沒有** |
-| `log-delivery` | CloudWatch vended log 三件組（source、destination、delivery）；source 的 ARN 換了 delivery 跟著換 | log group 本身（用 `log-group`）、跨帳號 destination | 有（project-a） |
+| `log-delivery` | CloudWatch vended log 三件組（source、destination、delivery）；source 的 ARN 換了 delivery 跟著換 | log group 本身（用 `log-group`）、跨帳號 destination | 有 |
 | `bedrock-knowledge-base` | `VECTOR` 型 KB，向量只存 Aurora PostgreSQL pgvector；S3 data source。Aurora cluster、secret、語料 bucket 都必須在同一個帳號（bucket 另外可以在 `allowed_account_ids` 列的帳號） | extension、表、索引、資料庫帳號（專案的 migration）；secret 與語料 bucket（範本的 `agent` 建）；ingestion job；其他向量儲存 | **沒有** |
 
 另外三個既有 module 為了這次增補發了新版。照 semver 表算 MINOR；這一版依使用者的決定，跟新 module 一起用 `v0.1.1`（design 決策 54）：
@@ -176,7 +176,7 @@ memories = {
 
 ### 映像要求
 
-照 project-a 的經驗與 AWS 文件整理，本 repo **未實測**：
+照 AWS 文件整理，本 repo **未實測**：
 
 | 項目 | 要求 |
 |---|---|
@@ -184,7 +184,7 @@ memories = {
 | tag | 明確的 tag，不得 `latest`；範本只收 tag（`agent` 組成 `<URL>:<tag>`），不收 `@sha256:` digest。ECR repository 是 IMMUTABLE，同一個 tag 不能推兩次 |
 | registry | 映像必須在同一個帳號的 ECR。module 的 precondition 檢查 `container_uri` 的帳號是不是目前的帳號，或在 `allowed_account_ids` 裡（範本不傳，等於只准同帳號） |
 | HTTP 協定的容器契約 | 聽 `0.0.0.0:8080`，提供 `POST /invocations` 與 `GET /ping`（照 AWS 文件；`MCP`、`A2A` 的埠與路徑不同，見 AWS 文件） |
-| 追蹤 | `tracing = true` 時範本注入 `OTEL_*` 環境變數，應用程式用 OpenTelemetry 的自動 instrumentation 啟動（Python 例：裝 `aws-opentelemetry-distro`，以 `opentelemetry-instrument python -m <app>` 啟動）。啟動方式照 project-a 的經驗，未實測 |
+| 追蹤 | `tracing = true` 時範本注入 `OTEL_*` 環境變數，應用程式用 OpenTelemetry 的自動 instrumentation 啟動（Python 例：裝 `aws-opentelemetry-distro`，以 `opentelemetry-instrument python -m <app>` 啟動）。啟動方式未實測 |
 | secret | 環境變數只放 id、ARN、URL；密碼一律放 Secrets Manager，程式用 execution role 自己讀 |
 
 build 與推送：
@@ -216,9 +216,9 @@ aws-vault exec <dev-profile> -- terraform apply -var-file=envs/dev.tfvars
 
 ### lifecycle：兩個值一起送
 
-`session_lifecycle` 的 `idle_session_timeout`（預設 900 秒）與 `max_lifetime`（預設 28800 秒）module 一律一起送。底層 API 是 PUT，只送一個時另一個會靜默回到 AWS 預設，不報錯（project-a 實測過）。範圍 60–1209600，`idle <= max`（後者未實測）。
+`session_lifecycle` 的 `idle_session_timeout`（預設 900 秒）與 `max_lifetime`（預設 28800 秒）module 一律一起送。底層 API 是 PUT，只送一個時另一個會靜默回到 AWS 預設，不報錯。範圍 60–1209600，`idle <= max`（後者未實測）。
 
-拉長 `idle_session_timeout` 不會改善冷啟動：project-a 量到冷配置約 11.5 秒，帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動，靠的是應用程式層的 session 分片，不是調這個值。
+拉長 `idle_session_timeout` 不會改善冷啟動：帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動，靠的是應用程式層的 session 分片，不是調這個值。
 
 ### `VPC` 與 `PUBLIC`
 
@@ -233,7 +233,7 @@ aws-vault exec <dev-profile> -- terraform apply -var-file=envs/dev.tfvars
 
 ### 環境變數
 
-Runtime 的環境變數由 `agent/runtimes.tf` 組，值取自 `agent` 自己建的資源與其他 stack 的 SSM，不收 tfvars 裡的 id（修掉 project-a 把 Runtime ARN 寫死在 tfvars 的坑）。`<KEY>` 是 key 轉大寫、`-` 換 `_`（`order-bot` 是 `ORDER_BOT`）：
+Runtime 的環境變數由 `agent/runtimes.tf` 組，值取自 `agent` 自己建的資源與其他 stack 的 SSM，不收 tfvars 裡的 id，Runtime ARN 不寫死在 tfvars。`<KEY>` 是 key 轉大寫、`-` 換 `_`（`order-bot` 是 `ORDER_BOT`）：
 
 | 環境變數 | 值 | 條件 |
 |---|---|---|
@@ -306,7 +306,7 @@ aws logs describe-log-groups --log-group-name-prefix aws/spans \
 
 沒開時照 AWS 文件〈Enable Transaction Search〉：先給 `xray.amazonaws.com` 寫入 CloudWatch Logs 的 resource policy，再 `aws xray update-trace-segment-destination --destination CloudWatchLogs`。這是帳號加 region 層的設定，範本不管。
 
-`log-delivery` 會在 Runtime 重建、ARN 換了的時候讓 delivery 跟著替換，避免刪 source 時撞 `ConflictException`、apply 卡在半途（project-a 踩過）。source 的資源與 CWL 目的地的 log group 都必須在同一個帳號，或在 `allowed_account_ids` 裡（範本不傳），否則 plan 擋。CWL 目的地需要的 log group resource policy 由 CloudWatch 在建 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
+`log-delivery` 會在 Runtime 重建、ARN 換了的時候讓 delivery 跟著替換，避免刪 source 時撞 `ConflictException`、apply 卡在半途。source 的資源與 CWL 目的地的 log group 都必須在同一個帳號，或在 `allowed_account_ids` 裡（範本不傳），否則 plan 擋。CWL 目的地需要的 log group resource policy 由 CloudWatch 在建 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
 
 ## guardrail
 
@@ -324,7 +324,7 @@ aws logs describe-log-groups --log-group-name-prefix aws/spans \
 
 ### 資源就位不等於生效
 
-guardrail 建好、IAM 給了，應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫帶上 guardrail）就沒有任何效果（project-a 的輸出護欄就發生過）。分兩層確認：
+guardrail 建好、IAM 給了，應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫帶上 guardrail）就沒有任何效果。分兩層確認：
 
 1. guardrail 本身會擋中文（證明 tier 與 profile 對）：
 
@@ -344,7 +344,7 @@ aws bedrock-runtime apply-guardrail \
 
 ### IAM：guardrail profile 的 region 是 `*`
 
-`STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，而 profile 實際用哪個 region 由 AWS 動態決定（project-a 看到過 `ap-south-1`）。Resource 寫死 region 會變成間歇的 AccessDenied。範本 `iam-app` 的寫法是 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`：region 用 `*`，profile id 一律是確切值，不得是 `*`。`CLASSIC` 的 guardrail 沒有這一條。
+`STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，而 profile 實際用哪個 region 由 AWS 動態決定，可能不是目前的 region。Resource 寫死 region 會變成間歇的 AccessDenied。範本 `iam-app` 的寫法是 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`：region 用 `*`，profile id 一律是確切值，不得是 `*`。`CLASSIC` 的 guardrail 沒有這一條。
 
 guardrail 與 Memory 的 `kms_key_arn` 範本傳 `null`（AWS 管的 key）：`foundation` 的專案 key 要給 Bedrock 與 AgentCore 什麼條件**未實測**（§7.3 第 22 項）。直接引用 module 時，guardrail、Memory、Gateway 的 `kms_key_arn` 只收完整的 key ARN（含 `mrk-` 開頭的 multi-region key），不收 alias 與純 key id。
 
@@ -424,10 +424,10 @@ bedrock_invoke = {
 
 ## Memory
 
-- 事件保留 `event_expiry_days` 是 **7–365** 的整數，預設 90。AWS 文件與 project-a 寫的下限是 3，但用 aws provider 6.69.0 送不出去（plan 就擋，`value must be between 7 and 365`）。改天數只影響之後寫入的事件。
-- 預設 90 而不是 project-a 的 365：保留越久、留存的個資越多。要更長自己明寫。
+- 事件保留 `event_expiry_days` 是 **7–365** 的整數，預設 90。AWS 文件寫的下限是 3，但用 aws provider 6.69.0 送不出去（plan 就擋，`value must be between 7 and 365`）。改天數只影響之後寫入的事件。
+- 預設 90 而不是上限 365：保留越久、留存的個資越多。要更長自己明寫。
 - 名稱只能字母、數字、底線（範本把 `<project>-<env>-<key>` 的 `-` 換成 `_`）。
-- strategy 只收內建的三種，每個至少一個以 `/` 開頭的 namespace（例如 `/actors/{actorId}/facts`）。三個參考專案都沒用過 strategy，不給 Memory execution role 能不能產生長期記憶**未實測**（§7.3 第 24 項）。
+- strategy 只收內建的三種，每個至少一個以 `/` 開頭的 namespace（例如 `/actors/{actorId}/facts`）。不給 Memory execution role 能不能產生長期記憶**未實測**（§7.3 第 24 項）。
 - Runtime 的 execution role 拿到 `CreateEvent`、`ListEvents`、`GetEvent`、`RetrieveMemoryRecords`，Resource 是確切的 Memory ARN。
 
 ## Gateway
@@ -479,20 +479,20 @@ Lambda 本身與放工具定義的 bucket 都不在範本裡，Lambda ARN 與 S3
 
 | endpoint | 誰需要 | 依據 |
 |---|---|---|
-| `bedrock-runtime` | 只要有 `VPC` 的 Runtime（`agent` 檢查）；`agent_access` 列了 `models` 或 `guardrails` 的服務（`application` 檢查）。用途是呼叫模型與 `ApplyGuardrail` | project-a；`ApplyGuardrail` 走這個是依 SDK 分類推論，**未實測** |
-| `bedrock-agentcore` | 只要有 `VPC` 的 Runtime（`agent`）；`agent_access` 列了 `runtimes` 的服務（`application`，`InvokeAgentRuntime`）。Runtime 讀寫 Memory 也走這個 | project-a |
+| `bedrock-runtime` | 只要有 `VPC` 的 Runtime（`agent` 檢查）；`agent_access` 列了 `models` 或 `guardrails` 的服務（`application` 檢查）。用途是呼叫模型與 `ApplyGuardrail` | AWS 文件；`ApplyGuardrail` 走這個是依 SDK 分類推論，**未實測** |
+| `bedrock-agentcore` | 只要有 `VPC` 的 Runtime（`agent`）；`agent_access` 列了 `runtimes` 的服務（`application`，`InvokeAgentRuntime`）。Runtime 讀寫 Memory 也走這個 | AWS 文件 |
 | `bedrock-agent-runtime` | 列了 `knowledge_bases` 的 `VPC` Runtime（`agent`）；`agent_access` 列了 `knowledge_bases` 的服務（`application`）。用途是查 KB（`Retrieve`） | AWS 文件，**未實測** |
 | `secretsmanager` | 在 `network/agent_data_access` 的 `db` 名單上的 `VPC` Runtime（`agent`）。Runtime 用 execution role 讀 `DB_SECRET_ARN` | 範本推論，**未實測** |
 | `sts` | 有設 `bedrock_invoke` 且有 `VPC` Runtime（`agent`）；有設 `bedrock_invoke` 且 `agent_access` 列了 `models` 的服務（`application`） | 推論，**未實測** |
 | `xray` | `tracing = true` 的 `VPC` Runtime（`agent`） | 推論，**未實測** |
 | `bedrock` | 控制面（`ListGuardrails` 這類）；範本直接注入 id，不需要 | — |
-| **不得建** `bedrock-agentcore-control` | VPC 內的程式不該能改 AgentCore 的設定；`network` 的 validation 擋 | project-a 的規格 |
+| **不得建** `bedrock-agentcore-control` | VPC 內的程式不該能改 AgentCore 的設定；`network` 的 validation 擋 | 本 repo 的規則 |
 
 `nat.mode = "external"`（客戶自管 VPC）不檢查，由客戶負責。自建 VPC 預設有 S3 gateway endpoint；Runtime 拉映像走服務端還是 VPC 裡的 ENI、只靠這些 endpoint 拉不拉得到，**未實測**（§7.3 第 17 項）。
 
 ## Knowledge Base（Aurora PostgreSQL pgvector）
 
-KB 的向量存在專案自己的 Aurora（跟應用程式同一顆，不多一套向量資料庫）。代價是三件 Terraform 做不到的事要由專案做：建 `vector` extension、建表與索引、建 KB 專用的資料庫帳號。**資料庫裡有沒有那張表，module 驗不到。** 沒有任何參考專案用過 Bedrock KB，這一節的每一步都**未實測**（§7.3 第 21 項）。
+KB 的向量存在專案自己的 Aurora（跟應用程式同一顆，不多一套向量資料庫）。代價是三件 Terraform 做不到的事要由專案做：建 `vector` extension、建表與索引、建 KB 專用的資料庫帳號。**資料庫裡有沒有那張表，module 驗不到。** 這一節的每一步都**未實測**（§7.3 第 21 項）。
 
 ### 整體順序
 
@@ -875,7 +875,7 @@ aws secretsmanager get-random-password --password-length 32 --exclude-punctuatio
 | Runtime 建立時的權限 | execution role 只有 trust、ECR、log 時 `CreateAgentRuntime` 是否成功；`iam-app` apply 後第一次 invoke 就能呼叫模型、Memory、guardrail |
 | VPC 模式 | 拉映像走服務端還是 ENI；沒有 NAT 時只靠 S3 gateway、`bedrock-runtime`、`bedrock-agentcore` 夠不夠；是否限定 AZ ID；每個 Runtime 用多少 ENI 與 IP |
 | 名稱與列舉值 | Runtime、Memory、Gateway、target、KB、log delivery 的名稱規則；`protocol`、strategy `type`、`log_type` 的允許值；`idle <= max`；inference profile 名稱字元；`mcp.search_type`；`environment_variables` 空 map 改送 null 是否必要 |
-| 映像與追蹤 | arm64 要求、HTTP 容器契約、OTEL 的啟動方式（照 project-a 經驗與 AWS 文件） |
+| 映像與追蹤 | arm64 要求、HTTP 容器契約、OTEL 的啟動方式（照 AWS 文件） |
 | log-delivery | CWL 目的地的 resource policy 自動加；`APPLICATION_LOGS`、`TRACES` 真的進 log group 與 X-Ray；Runtime 重建時 delivery 一起替換；Transaction Search 的檢查與開啟指令 |
 | Gateway | Lambda target 用 Gateway role 呼叫；MCP server target 不帶 credential provider 收不收；扁平 `tools`（含空 `properties`、`array`／`object` 不帶子定義）被接受；VPC 裡呼叫 Gateway 要哪個 endpoint |
 | Knowledge Base | Data API 的 Aurora 版本、pgvector 版本；SQL 是否就是 Bedrock 要的；KB 建立時是否檢查表；KB role 的動作清單；KB 專用帳號的四個表權限加 schema `USAGE` 夠不夠 ingestion、重新同步、`Retrieve`；換密碼後 KB 是否快取 secret；ingestion 真的寫進表；`inclusion_prefixes` 數量上限；`rds-v0.1.1` 對既有 cluster plan 零差異；兩段式是否必要（Bedrock 建 KB 時到底有沒有檢查資料庫帳號）；這份 guide 寫入 secret 值（`file:///dev/stdin`）與設密碼的指令 |

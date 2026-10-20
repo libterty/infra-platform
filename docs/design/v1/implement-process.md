@@ -633,7 +633,7 @@ grep -c 'zh:' templates/project-infra/infra/terraform/<stack>/.terraform.lock.hc
 | run | 斷言 |
 |---|---|
 | `env_format` | `Dev`、`d` 被擋；`dev` 通過 |
-| `account_must_match_env` | `dev` 配 prod 的帳號被擋；表外的 env 被擋；對得上時通過（照 `project-a/infra-v2/terraform/bridge/tests/guard.tftest.hcl`） |
+| `account_must_match_env` | `dev` 配 prod 的帳號被擋；表外的 env 被擋；對得上時通過 |
 | `account_is_required` | 不給 `expected_account_id` → 報缺變數 |
 | `reads_only_listed_keys` | `ssm-inputs.tf` 的 local（`ssm_input_strings`、`ssm_input_lists`，`iam-base` 與 `application` 另有 `ssm_service_strings`）等於這個 stack 預期的 key 清單（foundation 除外）。斷言 local 而不是 `ssm-read` 的輸入，因為 `terraform test` 讀不到 module 的輸入值（R16） |
 | `publishes_under_stack_path` | `module.ssm_publish.names` 等於上表每個 key 對應的 `/<project>/<env>/<stack>/<key>`，路徑裡的 stack 等於目錄名（application 除外） |
@@ -953,7 +953,7 @@ grep -ohE '`(modules|templates|scripts|docs)/[^` ]+`' docs/design/v1/*.md | tr -
 grep -nE '[a-z-]+/v[0-9]' docs/design/v1/design-docs.md | grep -v 'v1/'   # 沒有斜線格式的 tag
 ```
 
-「待建或錯誤」的輸出只能是 7 個新 module、`templates/project-infra/infra/terraform/agent`、`docs/guides/llm-agentcore.md` 底下的路徑，以及 `modules/rds/tests/data-api.tftest.hcl`、`modules/rds/tests/deployment-outputs.tftest.hcl`、`modules/s3-bucket/tests/never-expire.tftest.hcl`；另外有 4 個是 v1 原文引用參考專案時省略了專案前綴（docs/reports 的客戶自管網路報告、docs/spec/infra.md、modules/app-platform/iam.tf、scripts/lib/env-guard.sh），不是本 repo 的路徑，維持原樣。其他的都要修；增補段落引用參考專案一律寫成 `project-a/…`、`project-b/…`、`project-c-…/` 開頭的完整相對路徑。保密檢查：文件不得出現參考專案的真實名稱、客戶名稱、本機絕對路徑、真實帳號 id（用 `grep -P` 加 `\b` 對照名單檢查，名單不寫進 repo）。
+「待建或錯誤」的輸出只能是 7 個新 module、`templates/project-infra/infra/terraform/agent`、`docs/guides/llm-agentcore.md` 底下的路徑，以及 `modules/rds/tests/data-api.tftest.hcl`、`modules/rds/tests/deployment-outputs.tftest.hcl`、`modules/s3-bucket/tests/never-expire.tftest.hcl`。其他的都要修。文件不引用參考專案的檔案路徑，需要時只用文字描述。保密檢查：文件不得出現參考專案的真實名稱、客戶名稱、本機絕對路徑、真實帳號 id（用 `grep -P` 加 `\b` 對照名單檢查，名單不寫進 repo）。
 
 #### Phase 12：共用設定、`rds-v0.1.1`、`s3-bucket-v0.1.1`
 
@@ -1042,12 +1042,12 @@ S9 的反向驗證在 scratchpad 的暫存複本做（同 Phase 6）：
 以下是當時的計畫，保留作為對照。
 
 
-每個 module 照〈每個 module／stack 的 TDD 節奏〉做，run 表以 design §7.1 的增補表為準；固定檔案照〈module 的固定檔案〉，**唯一差別是 `versions.tf` 的 aws 是 `>= 6.69, < 7.0`**（design 決策 43）。README 要有「要修掉的坑」一節，內容照 design 各節。
+每個 module 照〈每個 module／stack 的 TDD 節奏〉做，run 表以 design §7.1 的增補表為準；固定檔案照〈module 的固定檔案〉，**唯一差別是 `versions.tf` 的 aws 是 `>= 6.69, < 7.0`**（design 決策 43）。README 要有「容易出錯的地方」一節，內容照 design 各節。
 
 | subagent | module | 為什麼放一起 | 主要 example |
 |---|---|---|---|
 | A | `bedrock-guardrail` | validation 最多，`PROMPT_ATTACK`、tier 與 profile 的交叉條件要一個人寫完 | `examples/basic`（`STANDARD` 加 profile）、`examples/zh-tw-standard`（中文 topic 與 content filter） |
-| B | `agentcore-runtime`、`log-delivery` | project-a 的 Runtime 與它的 log／trace delivery 是同一組資源 | runtime：`examples/vpc`；log-delivery：`examples/runtime-logs-and-traces` |
+| B | `agentcore-runtime`、`log-delivery` Runtime 與它的 log／trace delivery 是同一組資源 | runtime：`examples/vpc`；log-delivery：`examples/runtime-logs-and-traces` |
 | C | `agentcore-memory`、`bedrock-inference-profile` | 兩個都小 | 各一個 `examples/basic` |
 | D | `agentcore-gateway` | 型別對應欄位的交叉 validation 最多，而且沒有部署過的參考 | `examples/lambda-and-mcp-server` |
 | E | `bedrock-knowledge-base` | 沒有任何參考實作，單獨一個 | `examples/aurora-pgvector`（README 附 design §4.30 的 SQL） |

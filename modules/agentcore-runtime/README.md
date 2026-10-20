@@ -23,13 +23,13 @@ module "agent" {
 
 完整範例見 [`examples/vpc/`](./examples/vpc/main.tf)。
 
-## 要修掉的坑
+## 容易出錯的地方
 
 - **lifecycle 少送一個值會靜默回到 AWS 預設。** 底層的 `UpdateAgentRuntime` 是 PUT，整個 lifecycle 設定一起換掉；只送 `idle_runtime_session_timeout` 時，`max_lifetime` 會回到 AWS 預設，反之亦然，而且不會報錯。這個 module 一律把兩個值一起送，只覆寫其中一個時另一個仍是 900／28800。
 - **映像 tag 由 Terraform 擁有。** 換版只改 `container_uri` 再 apply。module 不忽略映像的變更，繞過 Terraform 直接呼叫 API 換映像，下一次 apply 會退版。`:latest`（不分大小寫）與沒有 tag 的 URI 一律擋下。
 - **映像預設只能來自目前帳號的 ECR。** URI 開頭的 registry 帳號不是目前帳號、也不在 `allowed_account_ids` 裡，plan 會被 precondition 擋下。要拉別的帳號的映像，把那個帳號 ID 明寫進 `allowed_account_ids`。
 - **`PUBLIC` 要明寫。** 預設是 `VPC`。`PUBLIC` 不經過 security group 與 VPC endpoint，流量直接走 AWS 的公開網路，只在確定不需要私有連線時使用。
-- **拉長 `idle_session_timeout` 不會改善冷啟動。** 參考專案量到冷配置約 11.5 秒，而帳號的 session 存量有上限：idle 越長，同時佔用的 session 越多，能撐的流量越少。要降冷啟動是應用程式層的事（例如 session 分片），module 不做。
+- **拉長 `idle_session_timeout` 不會改善冷啟動。** 帳號的 session 存量有上限：idle 越長，同時佔用的 session 越多，能撐的流量越少。要降冷啟動是應用程式層的事（例如 session 分片），module 不做。
 - **名稱只能用底線。** AgentCore 的 Runtime 名稱不收連字號，跟專案其他資源的命名慣例不同，要另外組。
 
 ## 注意
