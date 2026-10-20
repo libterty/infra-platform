@@ -58,6 +58,56 @@ variable "log_delivery" {
   }
 }
 
+variable "versioning" {
+  type = object({
+    noncurrent_expiration_days = optional(number, 30)
+  })
+  default     = null
+  description = "null leaves versioning off. An object enables versioning, expires noncurrent versions after noncurrent_expiration_days (1-3650) and removes expired delete markers. Cannot be combined with log_delivery."
+
+  validation {
+    condition     = var.versioning == null ? true : (var.versioning.noncurrent_expiration_days >= 1 && var.versioning.noncurrent_expiration_days <= 3650)
+    error_message = "versioning.noncurrent_expiration_days must be between 1 and 3650."
+  }
+
+  validation {
+    condition     = var.versioning == null ? true : length(var.log_delivery) == 0
+    error_message = "versioning cannot be combined with log_delivery; log buckets must not keep old versions."
+  }
+}
+
+variable "expiration_prefix" {
+  type        = string
+  default     = null
+  description = "Limit the expiration rule to keys under this prefix. null applies it to the whole bucket."
+
+  validation {
+    condition     = var.expiration_prefix == null ? true : (length(var.expiration_prefix) >= 1 && length(var.expiration_prefix) <= 1024)
+    error_message = "expiration_prefix must be 1-1024 chars; use null to cover the whole bucket."
+  }
+}
+
+variable "lambda_notifications" {
+  type = map(object({
+    function_arn  = string
+    events        = optional(list(string), ["s3:ObjectCreated:*"])
+    filter_prefix = optional(string)
+    filter_suffix = optional(string)
+  }))
+  default     = {}
+  description = "Notification id => Lambda function to invoke on bucket events. The caller must grant s3.amazonaws.com permission to invoke each function (with source_account and source_arn) before this is applied. Empty creates no notification resource."
+
+  validation {
+    condition     = alltrue([for n in values(var.lambda_notifications) : can(regex("^arn:aws[a-z-]*:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9_-]+(:[A-Za-z0-9_$-]+)?$", n.function_arn))])
+    error_message = "function_arn must be a Lambda function ARN (arn:<partition>:lambda:<region>:<account>:function:<name>[:<qualifier>])."
+  }
+
+  validation {
+    condition     = alltrue([for n in values(var.lambda_notifications) : length(n.events) > 0])
+    error_message = "Each lambda notification needs at least one event."
+  }
+}
+
 variable "force_destroy" {
   type        = bool
   default     = false
