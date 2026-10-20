@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0（未發布）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新變數 `static_parameter_names`（`set(string)`，預設 `[]`）：跟內建的 `shared_preload_libraries` 取聯集，這些參數在 DB 參數群組與 cluster 參數群組都用 `apply_method = "pending-reboot"`。0.1.x 只認 `shared_preload_libraries`，其他 static 參數（例如 `cron.database_name`）會被送成 `immediate`，apply 時失敗。
+- 新輸出 `log_group_name`：module 預先建立的 PostgreSQL log group 名稱，給 subscription filter 或 metric filter 使用。
+- 沒給 `static_parameter_names` 的既有呼叫端，參數群組內容與 `apply_method` 都跟 0.1.1 相同，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
+- 列進 `static_parameter_names` 的既有參數，`apply_method` 會從 `immediate` 變成 `pending-reboot`，plan 會顯示參數群組原地更新；該參數值要在下次重開機後才生效。
+
 ## 0.1.1（未發布）
 
 新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（design 決策 54）跟 7 個新 module 一起用 `0.1.1`，在增補驗收後手動打 tag（manifest 屆時才改成 `0.1.1`），release-please 不會產生這一段。之後的版本照 semver 表。
