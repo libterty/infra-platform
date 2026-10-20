@@ -2,7 +2,7 @@
 
 結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 10 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
-release-please 這條流程在本機和 GitHub 上都沒有跑過，**未實測**；設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
+release-please 這條流程**還沒實測過**，本機和 GitHub 上都沒跑過。設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。
 
 ## 改一個 module
 
@@ -25,7 +25,7 @@ fix(iam-role): reject allow statements with NotResource
 
 不要手改 `CHANGELOG.md` 的版本段落，那是 release-please 產生的；PR 描述裡寫清楚消費端 plan 會看到什麼，release-please 會把 commit message 帶進 CHANGELOG。
 
-範本從 HCP registry 引用已發佈的版本（ADR-0004），不是 `main` 上的程式碼。module 與範本要一起改時分兩次：先合併 module 的 PR 並等 release-please 發版、HCP 讀到新版，再開範本的 PR（MINOR 以上要改 `version`）。順序反過來，範本的 PR 在 CI 會 init 或 validate 失敗。
+範本從 HCP registry 引用已發佈的版本（ADR-0004），不是 `main` 上的程式碼。module 與範本要一起改時分兩次：先合併 module 的 PR 並等 release-please 發版、HCP 讀到新版，再開範本的 PR（MINOR 以上要改 `version`）。順序反過來的話，範本的 PR 在 CI 跑 init 或 validate 時會失敗。
 
 `modules/` 底下不放 `provider`、`backend`、`.terraform.lock.hcl`；module 之間不互相呼叫；不用 `enable_xxx` 開關，資源要不要建由相依的輸入有沒有給決定。
 
@@ -69,9 +69,9 @@ tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發�
 
 ## 第一次發版：手動打 19 個 `<module>-v0.1.0` tag
 
-v1 發版時，`.release-please-manifest.json` 把 19 個 module 都登記成 `0.1.0`。release-please 會把它當成已經發過，不會自己產生 `<module>-v0.1.0`，所以第一個 tag 由 platform team 手動打，之後的版本才交給 release-please（設計文件 §3.5、決策 27）。
+v1 發版時，`.release-please-manifest.json` 把 19 個 module 都登記成 `0.1.0`。release-please 會當成已經發過，不會自己產生 `<module>-v0.1.0`，所以第一個 tag 由 platform team 手動打，之後的版本才交給 release-please（設計文件 §3.5、決策 27）。
 
-前提：整體驗收（implement-process 的 Phase 10）已通過；每個要發的 module 的 `CHANGELOG.md` 已經把這一版標題的「（未發布）」改成發版日期，而且那個 commit 已經在 GitHub 的 `main` 上。release-please 發版時會自己改 CHANGELOG，手動打 tag 時要自己改；19 個 `v0.1.0` 與 10 個 `v0.1.1` 當初漏了這一步，2026-10-20 才補上。
+前提：整體驗收（implement-process 的 Phase 10）已通過；每個要發的 module 的 `CHANGELOG.md` 已經把這一版標題的「（未發布）」改成發版日期，而且那個 commit 已經在 GitHub 的 `main` 上。release-please 發版時會自己改 CHANGELOG，手動打 tag 就要人來改；19 個 `v0.1.0` 與 10 個 `v0.1.1` 當初漏了這一步，2026-10-20 才補上。
 
 ```bash
 # 1. 回到整體驗收通過的那個 commit（通常就是 main 的最新 commit）
@@ -153,4 +153,4 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 推完到 GitHub 的 tag 頁面確認 10 個都在、舊的 19 個沒變。打錯了而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，發下一個 PATCH 版。
 
-本 repo 已照這個迴圈在 `74149bc` 打好 10 個 `<module>-v0.1.1` annotated tag。第一次是在本機打在 `52f954e`，之後的強化與 `iam-role` 的變更還要進同一版，所以在任何 push 之前就用 `git tag -d` 全部刪掉，改在 `74149bc` 重打；遠端從來沒有指向 `52f954e` 的 `v0.1.1` tag。
+本 repo 已照這個迴圈在 `74149bc` 打好 10 個 `<module>-v0.1.1` annotated tag。第一次是在本機打在 `52f954e`。因為之後的強化與 `iam-role` 的變更也要進同一版，所以在任何 push 之前就用 `git tag -d` 全部刪掉，改在 `74149bc` 重打；遠端從來沒有指向 `52f954e` 的 `v0.1.1` tag。

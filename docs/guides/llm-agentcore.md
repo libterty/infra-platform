@@ -2,9 +2,9 @@
 
 結論：範本的 `agent` stack 已經把 7 個 LLM 與 AgentCore module 接好，**預設關閉**：所有輸入預設是空的，這時 `agent` 什麼都不建、只發布空的 JSON，其他 stack 的 plan 跟沒有這個功能時一樣。要開一個 Runtime，改 `containerimage`、`network`、`agent` 三份 tfvars（ECS 服務要呼叫它時再改 `iam-app`；有 Knowledge Base 或 Gateway 時另改 `iam-base`，有 Knowledge Base 時再改 `data`；`application` 不用改），照 `foundation` → `containerimage` → `network` → `iam-base` → `data` → `agent` → `iam-app` → `loadbalancer` → `application` 的順序 apply。有 Knowledge Base 時分兩段：第一段 `agent` 只建 KB 帳號的 secret（不含值）與語料 bucket；專案寫入 secret 的值、跑 migration、設密碼之後，把 `database_user_ready` 改成 `true` 再 apply 一輪，KB 才建出來。
 
-最容易出事、而且出事時看起來一切正常的三件事：guardrail 用了 `CLASSIC`（中文全部放行）、guardrail 發布了版本（apply 改的是 `DRAFT`，線上跑的是舊版）、繞過 Terraform 換 Runtime 映像（下一次 apply 退版）。範本與 module 都已經擋掉，這份 guide 講為什麼、以及擋不到的部分怎麼自己確認。
+最容易出事、而且出事時看起來一切正常的三件事：guardrail 用了 `CLASSIC`（中文全部放行）、guardrail 發布了版本（apply 改的是 `DRAFT`，線上跑的是舊版）、繞過 Terraform 換 Runtime 映像（下一次 apply 退版）。範本與 module 都已經擋掉，這份 guide 說明為什麼要擋，以及擋不到的部分怎麼自己確認。
 
-這個 repo 不部署到 AWS，下面標「未實測」的地方都沒有在真實帳號驗證過，對應設計文件 §7.3 第 15–25 項，彙整在最後〈未實測清單〉。這份 guide 不會被 CI 驗證，HCL 片段以 module 與範本的程式碼為準。設計理由見 design §4.23–§4.32、§5.3〈增補：`agent` stack〉、§5.4〈增補：AgentCore 與 Bedrock 的權限〉、§8.8、決策 37–53。
+這個 repo 不部署到 AWS。下面標「未實測」的地方都沒有在真實帳號驗證過，對應設計文件 §7.3 第 15–25 項，彙整在最後〈未實測清單〉。這份 guide 不會被 CI 驗證，HCL 片段以 module 與範本的程式碼為準。設計理由見 design §4.23–§4.32、§5.3〈增補：`agent` stack〉、§5.4〈增補：AgentCore 與 Bedrock 的權限〉、§8.8、決策 37–53。
 
 ## 誰該讀這份
 
@@ -103,7 +103,7 @@ destroy 反序。`agent` 夾在 `data` 與 `iam-app` 之間，原因同 RDS Prox
 | 7 | `iam-app` | ECS 服務要呼叫 Runtime 時：`agent_access = { api = { runtimes = ["assistant"] } }`；服務自己要直接呼叫模型、guardrail、KB 時同一個物件再列 `models`、`guardrails`、`knowledge_bases` |
 | 9 | `application` | 不用改（照 `iam-app/agent_access` 注入環境變數） |
 
-`network` 與 `agent` 都會用 precondition 比對自己的 `agent_runtimes` key 跟 `containerimage/agent_runtimes` 是否完全相同，不同 plan 就停。
+`network` 與 `agent` 都會用 precondition 比對自己的 `agent_runtimes` key 跟 `containerimage/agent_runtimes` 是否完全相同，不同的話 plan 就停。
 
 Runtime 名稱的規則由 `containerimage` 的 validation 檢查：kebab-case；不得等於任何服務或 mirror 名稱；`<project>-<env>-agent-<rt>` 不得撞到某個服務的 repository 名稱（例如服務叫 `agent-assistant`）；`<project>_<env>_<rt>` 最多 48 字（AgentCore 的 Runtime 名稱上限）。`network` 另外擋 security group key `agent_<rt>` 撞到服務名稱。
 
@@ -216,9 +216,9 @@ aws-vault exec <dev-profile> -- terraform apply -var-file=envs/dev.tfvars
 
 ### lifecycle：兩個值一起送
 
-`session_lifecycle` 的 `idle_session_timeout`（預設 900 秒）與 `max_lifetime`（預設 28800 秒）module 一律一起送。底層 API 是 PUT，只送一個時另一個會靜默回到 AWS 預設，不報錯。範圍 60–1209600，`idle <= max`（後者未實測）。
+module 一律把 `session_lifecycle` 的 `idle_session_timeout`（預設 900 秒）與 `max_lifetime`（預設 28800 秒）一起送。底層 API 是 PUT，只送一個的話，另一個會靜默回到 AWS 預設，不會報錯。範圍 60–1209600，`idle <= max`（後者未實測）。
 
-拉長 `idle_session_timeout` 不會改善冷啟動：帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動，靠的是應用程式層的 session 分片，不是調這個值。
+拉長 `idle_session_timeout` 不會改善冷啟動：帳號的 session 存量有上限，idle 越長、同時佔住的 session 越多，能撐的流量越少。要降冷啟動，得靠應用程式層的 session 分片。
 
 ### `VPC` 與 `PUBLIC`
 
@@ -233,7 +233,7 @@ aws-vault exec <dev-profile> -- terraform apply -var-file=envs/dev.tfvars
 
 ### 環境變數
 
-Runtime 的環境變數由 `agent/runtimes.tf` 組，值取自 `agent` 自己建的資源與其他 stack 的 SSM，不收 tfvars 裡的 id，Runtime ARN 不寫死在 tfvars。`<KEY>` 是 key 轉大寫、`-` 換 `_`（`order-bot` 是 `ORDER_BOT`）：
+Runtime 的環境變數由 `agent/runtimes.tf` 組，值取自 `agent` 自己建的資源與其他 stack 的 SSM；tfvars 不收 id，也不寫死 Runtime ARN。`<KEY>` 是 key 轉大寫、`-` 換 `_`（`order-bot` 是 `ORDER_BOT`）：
 
 | 環境變數 | 值 | 條件 |
 |---|---|---|
@@ -291,9 +291,9 @@ Runtime 的 log 有兩個 log group，不要搞混。`<runtime 名稱>` 是 Agen
 
 Runtime 的追蹤開關是 `agent` 的 `agent_runtimes[*].tracing`，跟 ECS 服務的 `iam-app/tracing`（ADOT sidecar）是兩套機制，見 [`observability.md`](./observability.md)。`iam-app` 從 `agent/agent_runtime_<rt>` 的 `tracing` 讀這個開關。開追蹤的 Runtime，execution role 多一段 `Resource = "*"` 的 X-Ray statement（X-Ray 不支援 resource-level）：`xray:PutTraceSegments`、`PutTelemetryRecords`、`PutSpans`。跟 ECS 服務的追蹤權限比，多的是 `PutSpans`（OTLP 送 X-Ray 要它），少的是 `GetSamplingRules`、`GetSamplingTargets`（Runtime 不做 remote sampling）。
 
-**trace 不含對話內容**：`TRACELOOP_TRACE_CONTENT=false` 是預設，對話內容不進 X-Ray。要開，在那個 Runtime 的 `environment` 明寫 `"true"`，PR 審查看得到。
+trace 預設不含對話內容：`TRACELOOP_TRACE_CONTENT=false` 是預設值，對話內容不會進 X-Ray。要開的話，在那個 Runtime 的 `environment` 明寫 `"true"`，PR 審查時看得到。
 
-**Transaction Search 是前提**：trace 送進 X-Ray 需要帳號層開啟 Transaction Search（span 存在 `aws/spans` log group）。它沒開或 `aws/spans` 被清掉時，span 全部遺失而且不報錯。部署後確認（本 repo 未實測）：
+trace 要送進 X-Ray，帳號層要先開啟 Transaction Search（span 存在 `aws/spans` log group）。沒開或 `aws/spans` 被清掉時，span 會全部遺失，而且不報錯。部署後確認（本 repo 未實測）：
 
 ```bash
 aws xray get-trace-segment-destination
@@ -324,7 +324,7 @@ aws logs describe-log-groups --log-group-name-prefix aws/spans \
 
 ### 資源就位不等於生效
 
-guardrail 建好、IAM 給了，應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫帶上 guardrail）就沒有任何效果。分兩層確認：
+guardrail 建好、IAM 也給了，只要應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫帶上 guardrail），就沒有任何效果。分兩層確認：
 
 1. guardrail 本身會擋中文（證明 tier 與 profile 對）：
 
@@ -344,7 +344,7 @@ aws bedrock-runtime apply-guardrail \
 
 ### IAM：guardrail profile 的 region 是 `*`
 
-`STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，而 profile 實際用哪個 region 由 AWS 動態決定，可能不是目前的 region。Resource 寫死 region 會變成間歇的 AccessDenied。範本 `iam-app` 的寫法是 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`：region 用 `*`，profile id 一律是確切值，不得是 `*`。`CLASSIC` 的 guardrail 沒有這一條。
+`STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，而 profile 實際用哪個 region 由 AWS 動態決定，可能不是目前的 region。Resource 寫死 region 會間歇出現 AccessDenied。範本 `iam-app` 的寫法是 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`：region 用 `*`，profile id 一律是確切值，不得是 `*`。`CLASSIC` 的 guardrail 沒有這一條。
 
 guardrail 與 Memory 的 `kms_key_arn` 範本傳 `null`（AWS 管的 key）：`foundation` 的專案 key 要給 Bedrock 與 AgentCore 什麼條件**未實測**（§7.3 第 22 項）。直接引用 module 時，guardrail、Memory、Gateway 的 `kms_key_arn` 只收完整的 key ARN（含 `mrk-` 開頭的 multi-region key），不收 alias 與純 key id。
 
@@ -425,7 +425,7 @@ bedrock_invoke = {
 ## Memory
 
 - 事件保留 `event_expiry_days` 是 **7–365** 的整數，預設 90。AWS 文件寫的下限是 3，但用 aws provider 6.69.0 送不出去（plan 就擋，`value must be between 7 and 365`）。改天數只影響之後寫入的事件。
-- 預設 90 而不是上限 365：保留越久、留存的個資越多。要更長自己明寫。
+- 預設用 90、不用上限 365，因為保留越久，留存的個資越多。要更長請自己明寫。
 - 名稱只能字母、數字、底線（範本把 `<project>-<env>-<key>` 的 `-` 換成 `_`）。
 - strategy 只收內建的三種，每個至少一個以 `/` 開頭的 namespace（例如 `/actors/{actorId}/facts`）。不給 Memory execution role 能不能產生長期記憶**未實測**（§7.3 第 24 項）。
 - Runtime 的 execution role 拿到 `CreateEvent`、`ListEvents`、`GetEvent`、`RetrieveMemoryRecords`，Resource 是確切的 Memory ARN。
@@ -444,7 +444,7 @@ bedrock_invoke = {
 | 呼叫 Lambda 的權限 | Gateway 用自己的 role（`gateway_iam_role`）呼叫；`iam-app` 給它 Lambda ARN 與 `<arn>:*` 的 `lambda:InvokeFunction` |
 | Lambda 在哪個帳號 | 必須是同一個帳號，或在 module 的 `allowed_account_ids` 裡（範本不傳，等於只准同帳號）；別的帳號的 Lambda ARN 在 plan 被擋 |
 | `kms_key_arn` | 完整的 key ARN，含 `mrk-` 開頭的 multi-region key；不收 alias |
-| 沒有 NAT | 範本擋下：Runtime 經 VPC 呼叫 Gateway 要哪個 endpoint 沒有查證（§7.3 第 20 項），放行的症狀會是工具呼叫逾時 |
+| 沒有 NAT | 範本直接擋下，因為 Runtime 經 VPC 呼叫 Gateway 要哪個 endpoint 還沒查證（§7.3 第 20 項）；如果放行，症狀會是工具呼叫逾時 |
 
 範本的寫法（`agent` 的 tfvars；前提是 `iam-base` 的 `agent_service_roles` 含 `gateway`，否則 `agent` 的 precondition 擋）：
 
@@ -654,7 +654,7 @@ psql -Atc "SELECT extversion FROM pg_extension WHERE extname = 'vector';"   # �
 
 AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA bedrock_integration`，並讓 KB 帳號自己建表。這裡表由 migration 建、owner 不是 KB 帳號，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`。
 
-要收這麼窄，是因為 `rds-data:ExecuteStatement` 本身不限資料庫帳號，KB role 能跑哪些 SQL，完全看它拿到的是哪個資料庫帳號，所以**資料庫的 GRANT 是唯一的邊界**。
+收這麼窄，是因為 `rds-data:ExecuteStatement` 本身不限資料庫帳號，KB role 能跑哪些 SQL 完全看它拿到哪個資料庫帳號，所以**資料庫的 GRANT 是唯一的邊界**。
 
 跑完 migration 後確認：
 
@@ -675,9 +675,9 @@ SELECT has_schema_privilege('bedrock_kb_user', 'bedrock_integration', 'CREATE') 
 EOF
 ```
 
-**權限不夠時**：Bedrock 在 ingestion、重新同步、查詢時是否需要更多權限（例如 `TRUNCATE`），**未實測**。真的不夠時，記下錯誤訊息，只在那張表上補缺的那一項（例如 `GRANT TRUNCATE ON bedrock_integration.bedrock_kb TO bedrock_kb_user;`），**不要改成 schema 層級的 `ALL`**。migration 改這個帳號的權限要當成安全變更審查。
+Bedrock 在 ingestion、重新同步、查詢時是否需要更多權限（例如 `TRUNCATE`），**未實測**。真的不夠時，記下錯誤訊息，只在那張表上補缺的那一項（例如 `GRANT TRUNCATE ON bedrock_integration.bedrock_kb TO bedrock_kb_user;`），**不要改成 schema 層級的 `ALL`**。migration 改這個帳號的權限要當成安全變更審查。
 
-**PostgreSQL 14 以前**：`PUBLIC` 預設對 `public` schema 有 `CREATE`，所以上面的 `public_create` 會是 `t`。那是整顆資料庫的設定，不是 KB 帳號的權限，影響所有帳號。要不要收回由專案決定；收回前確認應用程式沒有依賴在 `public` 建物件：
+PostgreSQL 14 以前，`PUBLIC` 預設對 `public` schema 有 `CREATE`，所以上面的 `public_create` 會是 `t`。那是整顆資料庫的設定，不是 KB 帳號的權限，影響所有帳號。要不要收回由專案決定；收回前確認應用程式沒有依賴在 `public` 建物件：
 
 ```bash
 psql -c 'REVOKE CREATE ON SCHEMA public FROM PUBLIC;'
@@ -697,7 +697,7 @@ aws secretsmanager get-secret-value --secret-id "$KB_SECRET_ARN" \
   | psql -v ON_ERROR_STOP=1 -q
 ```
 
-`--exclude-punctuation` 產生的密碼只有英數，不會有引號問題。注意：資料庫的 `log_statement` 設成 `ddl` 或 `all` 時，`ALTER ROLE ... PASSWORD` 會連密碼一起寫進資料庫 log。先確認：
+`--exclude-punctuation` 產生的密碼只有英數，不會有引號問題。如果資料庫的 `log_statement` 設成 `ddl` 或 `all`，`ALTER ROLE ... PASSWORD` 會連密碼一起寫進資料庫 log。先確認：
 
 ```bash
 psql -Atc 'SHOW log_statement;'   # none 或 mod 才不會記 ALTER ROLE
@@ -766,9 +766,9 @@ aws ssm get-parameter --name "/$PROJECT/$ENV/agent/knowledge_bases" --query Para
 
 ### 步驟 7：上傳語料與 ingestion
 
-語料 bucket 的名稱、KB id、data source id 都從 `agent` 發布的 `/<project>/<env>/agent/knowledge_bases` 取。這個 JSON 以 KB 的 key 分組，每個 KB 有 `ready`、`id`、`arn`、`embedding_model`、`bucket_name`、`bucket_arn`、`inclusion_prefixes`（data source key → prefix 清單）、`data_source_ids`（data source key → id）、`credentials_secret_arn`。`ready` 是 `false` 時 `id`、`arn` 是 `null`、`data_source_ids` 是空的，下面的指令會拿到 `null`，先完成步驟 6。`terraform output corpus_bucket_names`（在 `agent` 目錄）也查得到 bucket 名稱。
+語料 bucket 的名稱、KB id、data source id 都從 `agent` 發布的 `/<project>/<env>/agent/knowledge_bases` 取。這個 JSON 以 KB 的 key 分組，每個 KB 有 `ready`、`id`、`arn`、`embedding_model`、`bucket_name`、`bucket_arn`、`inclusion_prefixes`（data source key → prefix 清單）、`data_source_ids`（data source key → id）、`credentials_secret_arn`。`ready` 是 `false` 時 `id`、`arn` 是 `null`、`data_source_ids` 是空的，這時下面的指令會拿到 `null`，要先完成步驟 6。`terraform output corpus_bucket_names`（在 `agent` 目錄）也查得到 bucket 名稱。
 
-範本不給任何 principal 寫入語料 bucket 的權限，上傳的人或 CI 用自己的 IAM 權限（`s3:PutObject` 限那個 bucket 與 prefix），由專案自己給。
+範本不給任何 principal 寫入語料 bucket 的權限。上傳的人或 CI 要用自己的 IAM 權限（`s3:PutObject` 限那個 bucket 與 prefix），這個權限由專案自己給。
 
 ```bash
 KB_KEY=docs DS_KEY=manuals
@@ -830,7 +830,7 @@ aws secretsmanager get-random-password --password-length 32 --exclude-punctuatio
 | 症狀 | 原因 | 怎麼修 |
 |---|---|---|
 | 中文的攻擊或不當內容全部放行；guardrail `READY`、plan 乾淨 | tier 是 `CLASSIC`（明寫了，或不是用這個 module 建的 guardrail 省略了 `tier_config`） | 改 `STANDARD` 並給 `cross_region_profile_id`；用〈資源就位不等於生效〉的指令確認 |
-| 改了 guardrail 的 tfvars 也 apply 了，線上行為沒變 | 應用程式用的是發布過的版本號，不是 `DRAFT`；或 guardrail 根本沒被呼叫 | 應用程式改讀 `GUARDRAIL_VERSION`（`DRAFT`）；確認程式有呼叫 `ApplyGuardrail` |
+| 改了 guardrail 的 tfvars 也 apply 了，線上行為沒變 | 應用程式用的是發布過的版本號，不是 `DRAFT`；或程式根本沒呼叫 guardrail | 應用程式改讀 `GUARDRAIL_VERSION`（`DRAFT`）；確認程式有呼叫 `ApplyGuardrail` |
 | 加了 PII 遮罩之後，每一輪對話都被當成被擋 | 輸入那支用 `ANONYMIZE`，也回 `GUARDRAIL_INTERVENED` | 遮罩移到輸出那支，或讓應用程式分辨被擋與被遮罩 |
 | `STANDARD` guardrail 第一次真實請求失敗，apply 時沒有錯 | `cross_region_profile_id` 寫錯（validation 只驗格式） | 改成正確的 profile id，再打一次真實請求 |
 | `ApplyGuardrail` 或模型呼叫間歇性 AccessDenied | IAM 的 guardrail profile 或 foundation-model ARN 寫死了 region | region 用 `*`（範本的寫法）；自己加的 policy 也照這樣改 |

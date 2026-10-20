@@ -15,7 +15,7 @@ HCP 的選單名稱會改版，下面寫的是 2026-10-19 查到的欄位名稱�
 
 ## 2. 一次性設定
 
-1. 在 organization 設定裡確認 **Publish modules to your private registry from a single repository** 是開的（預設開）。沒開的話 HCP 會假設一個 repo 只放一個 module。
+1. 在 organization 設定裡確認 **Publish modules to your private registry from a single repository** 是開的（預設開）。沒開的話，HCP 會把一個 repo 當成只放一個 module。
 2. 在 organization 設定的 VCS providers 連上 GitHub。
 
 ## 3. 逐個登記 module
@@ -85,7 +85,7 @@ for d in modules/*/; do
 done
 ```
 
-再從消費端實際抓一次。下面在暫存目錄產生一個引用全部 module 的設定，用 `terraform get` 只下載 module：不裝 provider、不讀 backend，也不呼叫任何 AWS API。保險起見，再清掉本機的 AWS 憑證：
+再從消費端實際抓一次。下面的指令在暫存目錄產生一個引用全部 module 的設定，再用 `terraform get` 只下載 module：不裝 provider、不讀 backend，也不呼叫任何 AWS API。保險起見，再清掉本機的 AWS 憑證：
 
 ```bash
 terraform login                     # 第一次用，token 會存到 ~/.terraform.d/credentials.tfrc.json

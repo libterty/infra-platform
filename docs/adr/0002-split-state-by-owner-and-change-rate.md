@@ -10,9 +10,9 @@ notes: "上游不讀下游，單向依賴。iam-base 的 RDS Proxy role 只有 t
 
 ## Context and Problem Statement
 
-專案 infra 如果放在同一份 state，每週換版的 ECS service 會跟一年動一次的 VPC 一起 plan：換版時 plan 掃過所有資源，出錯時影響範圍是整個專案。另一方面，客戶自管模式下，網路、資料庫、IAM 可能由客戶接手，它們不能跟我們一定自己管的服務綁在同一份 state。
+專案 infra 如果放在同一份 state，每週換版的 ECS service 會跟一年動一次的 VPC 一起 plan：換版時 plan 掃過所有資源，出錯時影響範圍是整個專案。另外，在客戶自管模式下，網路、資料庫、IAM 可能由客戶接手，這些資源不能跟我們一定自己管的服務綁在同一份 state。
 
-問題是：**範本要拆成幾個 stack、依什麼拆、apply 順序是什麼？** 其中 IAM 有一個依賴上的難題：RDS Proxy 建立時要給 role ARN，所以 role 要在 `data` 之前存在；但 role 讀 DB secret 的 policy，Resource 要指到 master secret 的 ARN，要等 `data` 建好才有。
+問題是：**範本要拆成幾個 stack、依什麼拆、apply 順序是什麼？** 其中 IAM 有一個依賴上的難題：RDS Proxy 建立時要給 role ARN，所以 role 要在 `data` 之前存在；但讓 role 讀 DB secret 的 policy，Resource 要指到 master secret 的 ARN，這個 ARN 要等 `data` 建好才有。
 
 ## Decision Drivers
 
@@ -62,8 +62,8 @@ IAM 拆成兩個的理由：
 
 * Good: 換版只 plan `application`，影響範圍小；客戶可以接手任何低頻 stack。
 * Good: 權限審查只看 `iam-base`、`iam-app` 兩處。
-* Bad: stack 多，要手動依序 apply 8 次。不提供 `stacks.sh`：沒有測試保護的順序腳本，很容易在增減 stack 後跟實際順序脫節，比照順序手動跑更不可靠。順序寫在範本的 `infra/README.md`。
-* Bad: 第一次部署時，Proxy 建立到 `iam-app` apply 之間 Proxy 讀不到 secret；建立當下是否失敗未實測。
+* Bad: stack 多，要手動依序 apply 8 次。不提供 `stacks.sh`：順序腳本沒有測試保護，增減 stack 後很容易跟實際順序脫節，反而比照著順序手動跑更不可靠。順序寫在範本的 `infra/README.md`。
+* Bad: 第一次部署時，從 Proxy 建立到 `iam-app` apply 之前，Proxy 讀不到 secret；Proxy 建立當下會不會失敗，還沒實測。
 * Neutral: 跨 stack 的值只經 SSM 傳遞，見 [ADR-0003](./0003-cross-stack-values-via-ssm-only.md)。
 
 ### Confirmation
@@ -80,7 +80,7 @@ IAM 拆成兩個的理由：
 ### 8 個 stack，IAM 只有一個 stack
 
 * Good: 少一個 stack。
-* Bad: IAM 要放在 `data` 之前，Proxy 的 policy 寫不出單一 secret ARN，只能用名稱規則放寬 Resource，違反最小權限；放在 `data` 之後則 Proxy 建立時沒有 role。
+* Bad: IAM 要放在 `data` 之前，Proxy 的 policy 寫不出單一 secret ARN，只能用名稱規則放寬 Resource，違反最小權限；放在 `data` 之後，Proxy 建立時又還沒有 role。
 
 ### 單一 state，用 module 分層
 

@@ -10,7 +10,7 @@ notes: "Git source 不支援 `version = \"~> 1.2\"`，升版是消費端改 `ref
 
 ## Context and Problem Statement
 
-各專案的 Terraform 目前是各寫一套：同一件事（VPC、ECS、告警、跨 stack 傳值）在不同專案有不同寫法，品質落差大，修一個 bug 要改很多個 repo。需要一個共用 module 的發布機制，讓專案用明確的版本引用，升版是看得見的動作。
+各專案的 Terraform 目前是各寫一套：同一件事（VPC、ECS、告警、跨 stack 傳值）在不同專案有不同寫法，品質落差大，修一個 bug 要改很多個 repo。所以需要一套發布共用 module 的機制，讓專案用明確的版本引用，每次升版都看得見。
 
 問題是：**第一版用什麼機制發布共用 module？** 目前沒有 registry server、沒有 HCP Terraform 帳號，而且只有 8 個 module、少數幾個消費端。
 
@@ -33,7 +33,7 @@ notes: "Git source 不支援 `version = \"~> 1.2\"`，升版是消費端改 `ref
 
 Chosen option: 「Git tag monorepo」，因為它不需要任何額外基礎設施，Terraform 原生支援 Git source，而且目錄與 tag 照 registry 規範，之後升級不用動 module。
 
-tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`，例如 `ecs-service-v1.0.0`。這是 release-please manifest 模式的預設格式，也對得上 HCP Terraform 的 Module Tag Prefix；不用帶斜線的 `ecs-service/v1.0.0`，因為 HCP 是否支援沒有查證，斜線放在 `?ref=` 也容易出錯。
+tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`，例如 `ecs-service-v1.0.0`。這是 release-please manifest 模式的預設格式，也對得上 HCP Terraform 的 Module Tag Prefix；不用帶斜線的 `ecs-service/v1.0.0`，因為沒有查證 HCP 支不支援，斜線放在 `?ref=` 裡也容易出錯。
 
 消費端寫法：
 
@@ -68,7 +68,7 @@ tag 由 release-please 以 `include-component-in-tag` 產生。第一批由人�
 ### HCP Terraform Free 的 private registry
 
 * Good: 有版本範圍（`~> 1.2`），不用自己維運。
-* Bad: 要先有 HCP 帳號與 VCS 連結，第一版還沒有；Free 方案有 500 個 managed resource 上限，只用 registry 時是否計入沒有查證。
+* Bad: 要先有 HCP 帳號與 VCS 連結，第一版還沒有；Free 方案有 500 個 managed resource 上限，沒有查證只用 registry 時算不算在內。
 * Bad: 客戶環境不一定連得到 HCP。
 
 ### 自架 boring-registry
@@ -78,7 +78,7 @@ tag 由 release-please 以 `include-component-in-tag` 產生。第一批由人�
 
 ### 一個 module 一個 repo
 
-* Good: tag 天然就是單純的 `v1.0.0`，權限可以逐 repo 控管。
+* Good: tag 就是單純的 `v1.0.0`，權限可以逐 repo 控管。
 * Bad: 8 個 repo 要各自維護 CI、CODEOWNERS 與 release 設定，跨 module 的修改要開多個 PR；共用的驗證腳本沒有地方放。
 
 ## More Information
