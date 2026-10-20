@@ -322,7 +322,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 ### 5.9 B4（bridge）的實作差異
 
-- 樹 B 發布 25 個 key（21 個 String、4 個 StringList），正好等於後段 5 個 stack 的 `module "shared"` 讀的聯集，B2 的清單沒有多也沒有少，所以沒有任何前段 key 被省略。
+- B4 完成時樹 B 發布 25 個 key（21 個 String、4 個 StringList；B5 之後見 §5.10），正好等於後段 5 個 stack 的 `module "shared"` 讀的聯集，B2 的清單沒有多也沒有少，所以沒有任何前段 key 被省略。
 - `published_strings`、`published_lists` 逐 key 寫成 `key = module.in.strings["key"]`，不用 for 運算式：`check-ssm-contract.sh` 靠 grep 解析 key。
 - guard 有三條：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes`（陣列）與 `ecr_repository_urls`（物件）是合法 JSON；錯誤訊息列出有問題的 key。`module "ssm_publish"` 加 `depends_on` 指向這三個 guard，否則 `ssm-publish` 自己的 validation 會先擋下空字串，訊息沒有指出是哪個 key。
 - 外部發布者的 key 合約寫在 `templates/example2/infra/README.md`「樹 B 的 key 合約」。
@@ -344,24 +344,25 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 | AgentCore Memory `memory/<project>_<env>_memory-*` | `<project>_<env>_memory` | agent | 是 |
 | 自訂 metric namespace `<Project>/<env>`（worker 的 `PutMetricData` 條件） | worker 的 backlog 告警、operation 的 ETL 指標、postdeploy 的 stream 與 log 告警都用 `title(project)/env` | application、operation、postdeploy | 是 |
 | import-extract、import-load 各用自己的 role | `lambda-function` 的 `role_arn` 各自取 `import_extract_role_arn`、`import_load_role_arn` | operation | 是 |
-| `bedrock:ApplyGuardrail` 的資源 `guardrail/*` | guardrail 由 `bedrock-guardrail` 建，名稱 `<project>-<env>-input-<profile>`、`<project>-<env>-output` | agent | 符合；但缺 profile 的授權，見下面「待拍板」 |
+| `bedrock:ApplyGuardrail` 的資源 `guardrail/*` | guardrail 由 `bedrock-guardrail` 建，名稱 `<project>-<env>-input-<profile>`、`<project>-<env>-output` | agent | 是；api task 與 Runtime 的 role 另有 `guardrail-profile/<id>`（region 用 `*`），id 由 iam 與 agent 各一個變數 `guardrail_cross_region_profile_id`，`check-ssm-contract.sh` 比對兩邊的 tfvars |
 | Runtime 的 log group 授權 `/aws/bedrock-agentcore/runtimes/<name>-*` | 不一致：Runtime 的 application log 另建 `/aws/vendedlogs/bedrock-agentcore/<name>`，由 log delivery 寫入，不經過 Runtime 的 role | agent | 不影響（那條授權是給 Runtime 自己預設 log group 用的），但實際行為只能在真實環境確認 |
 
-**合約調整**（都在後段 stack 自己的讀取與發布範圍內，沒有動前段或 bridge）
+**合約調整**（後段 stack 自己的讀取與發布；database、bridge 的改動見下面「樹 B 變成 26 個 key」）
 
 - agent 不讀 `alarm_topic_arn`；多發布 `agent_memory_arn`（postdeploy 的 Memory trace 需要完整 ARN）與 `guardrail_ids`（JSON：每個 profile 加 `output`）。`agent_runtime_arns` 是 JSON 物件，鍵是 Runtime 名稱。
-- application 多讀 `loadbalancer/alb_arn_suffix`（requests_per_target 與連線數的 metric 要用）與 `agent/guardrail_ids`；不讀 `agent_memory_id` 與 `alarm_topic_arn`（用不到）；多發布 `api_max_capacity`、`worker_max_capacity`、`stream_maxlen`，讓 postdeploy 的告警跟著同一組數字。
+- application 多讀 `loadbalancer/alb_arn_suffix`（requests_per_target 與連線數的 metric 要用）與 `agent/guardrail_ids`；不讀 `agent_memory_id` 與 `alarm_topic_arn`（用不到）；多發布 `api_max_capacity`、`worker_max_capacity`、`stream_length_cap`，讓 postdeploy 的告警跟著同一組數字。
 - loadbalancer 發布的 `target_group_arn_suffixes` 是 JSON 物件（鍵是 target group key）。
-- operation 多讀 `ecr_repository_urls`、`db_proxy_endpoint`、`db_secret_arn`；不讀 `vpc_id`、`alarm_topic_arn`（用不到）。
-- postdeploy 多讀 application 的 `worker_log_group_name` 與三個數字、agent 的 `agent_memory_arn`；不讀 `waf_web_acl_name`、`stream_redis_id`（用不到）。結果：`stream_redis_id` 沒有任何 stack 讀，`waf_web_acl_name` 只有 loadbalancer 發布。
-- 沒有任何後段需要、而前段與 bridge 沒提供的 key：VPC CIDR 用 `data "aws_vpc"` 以 `vpc_id` 查；資料庫名稱、stream 的 shard 數用變數（預設值跟 database stack 相同）。
+- operation 多讀 `ecr_repository_urls`、`db_proxy_endpoint`、`db_secret_arn`、`db_name`；不讀 `vpc_id`、`alarm_topic_arn`（用不到）。
+- postdeploy 多讀 application 的 `worker_log_group_name` 與三個數字、agent 的 `agent_memory_arn`；不讀 `waf_web_acl_name`、`stream_redis_id`；這兩個 key 沒有人讀，已經不發布（loadbalancer 與 database→bridge 各拿掉一個）。
+- 沒有任何後段需要、而前段與 bridge 沒提供的 key：VPC CIDR 用 `data "aws_vpc"` 以 `vpc_id` 查。
+- **樹 B 變成 26 個 key**（22 個 String、4 個 StringList）：database 多發布 `db_name` 與 `stream_shard_count`（stream 那組 Redis 的 `num_node_groups`），bridge 原樣轉寫；拿掉 `stream_redis_id`。agent、application、operation 都從樹 B 讀 `db_name`，application 讀 `stream_shard_count`，不再各留一份變數。設了 autoscaling 的 stream Redis，`stream_shard_count` 只是起始值。
 
 **各 stack 的設計決定**
 
 - loadbalancer：`alb` module 用 `web_acl_arn == null` 當 count，Web ACL 跟 ALB 在同一個 stack 建時，ARN 在 plan 還不知道，會報 `Invalid count argument`。傳 `format("%s", module.waf.web_acl_arn)`：Terraform 知道 `format` 的結果不是 null，count 就能決定。這是 Terraform 核心的行為，mock 與真實 plan 一致。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
-- agent：guardrail 的 profile 是 `default`、`profile_a`；內容（topic、詞彙、拒絕文案）全是示意。輸入 guardrail 只評估輸入，輸出 guardrail 只評估輸出且沒有 prompt attack。Runtime 與 Memory 沒有連資料庫：tree B 沒有資料庫名稱，環境變數只有 `AGENT_*` 與 `AWS_REGION`。
-- application：`forwarded_allow_ips` 三種模式；VPC CIDR 用 `data "aws_vpc"` 查（tree B 沒有 `vpc_cidr`）。task 拿到的是 secret 的 ARN（環境變數名稱以 `_ARN` 結尾），值由 task role 自己取：execution role 沒有 secret 權限。api 與 worker 都設 TCP keepalive 的 `system_controls`。ECS Exec 用獨立的 `enable_execute_command`，不跟 bastion 綁在一起。
-- operation：`bastion_enabled` 用平的 tfvars key（不是 `bastion.enabled`），這樣 `check-ssm-contract.sh` 的 awk 解析得到；import bucket 沒有開關（Lambda 的觸發與 iam 的授權都依賴它）。import-load 由 `extracted/` 加 `ready.json` 後綴觸發，`ready.json` 由 import-extract 寫，是跟應用程式的約定。ETL 指標只做 import-load 的 rejected、failed、succeeded 三個。
+- agent：guardrail 的 profile 是 `default`、`profile_a`；內容（topic、詞彙、拒絕文案）全是示意。輸入 guardrail 只評估輸入，輸出 guardrail 只評估輸出且沒有 prompt attack。Runtime 經 Proxy 連資料庫：環境變數 `AGENT_DB_HOST`、`AGENT_DB_NAME`、`AGENT_DB_SSLMODE` 與 `AGENT_DB_AUTH_ARN`（只放 secret 的 ARN，值由 Runtime role 自己讀；名稱避開 agentcore-runtime 對 SECRET、TOKEN 這類字的檢查）。
+- application：`FORWARDED_ALLOW_IPS` 由變數 `trusted_proxies` 決定，三種值 `any`、`vpc`、`vpc_and_cdn`；VPC CIDR 用 `data "aws_vpc"` 查（tree B 沒有 `vpc_cidr`）。task 拿到的是 secret 的 ARN（環境變數名稱以 `_ARN` 結尾），值由 task role 自己取：execution role 沒有 secret 權限。api 與 worker 都設 TCP keepalive 的 `system_controls`。ECS Exec 用獨立的 `enable_execute_command`，不跟 bastion 綁在一起。
+- operation：`bastion_enabled` 用平的 tfvars key（不是 `bastion.enabled`），這樣 `check-ssm-contract.sh` 的 awk 解析得到；import bucket 沒有開關（Lambda 的觸發與 iam 的授權都依賴它）。import-load 由 `extracted/` 加 `ready.json` 後綴觸發，`ready.json` 由 import-extract 寫，是跟應用程式的約定。ETL 指標共四個：import-load 的 rejected、failed、succeeded，加上 import-extract 的 rejected（各自一個 `log-metric-alarm` 呼叫，因為 filter 掛在各自的 log group）。
 - postdeploy：四個功能（service 告警與 dashboard、stream 告警、log 告警、trace delivery）各有開關，預設全關，tfvars 全開。dashboard 沒有獨立開關：`ecs-service-alarms` 一定會建告警。
 
 **mock 驗不到、要真實環境才能確認的推論**
@@ -376,18 +377,17 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - 連線數的 step policy 用 metric math，`ecs-service` 的 `queries` 欄位是否被 provider 接受。
 - guardrail 的 `STANDARD` tier 加 cross-region profile 在 apply 的實際行為。
 
-**待使用者拍板**
+**使用者已決定的事項（2026-10-20）**
 
-1. iam 的 `bedrock:ApplyGuardrail` 只授權 `guardrail/*`；`bedrock-guardrail` 的 README 說 `STANDARD` tier 另外需要 `arn:aws:bedrock:*:<account>:guardrail-profile/<profile_id>`。iam 在 B3 完成，B5 沒改。要不要補（建議補，否則第一次真實呼叫可能被拒）？
-2. Runtime 要不要連資料庫：iam 給了 Runtime 讀 DB secret 的權限，但 tree B 沒有 `db_name`，agent 目前不傳任何 DB 設定。
-3. 資料庫名稱與 stream shard 數（application、operation 的變數，預設同 database stack）要不要改成 database 發布、bridge 轉寫，避免漂移。
-4. `stream_redis_id`（bridge 發布、沒人讀）與 `waf_web_acl_name`（loadbalancer 發布、沒人讀）要不要拿掉，或補上用得到它們的告警。
-5. ETL 指標只留 import-load 三個；原專案 extract 端還有一個 rejected 計數，要不要加回來。
+1. iam 補上 `guardrail-profile/<id>` 的授權（api task、Runtime 兩個 role），id 放變數、兩邊 tfvars 由 `check-ssm-contract.sh` 比對。
+2. Runtime 連資料庫：由 database 發布 `db_name`、`stream_shard_count`，bridge 轉寫，agent、application、operation 從樹 B 讀。
+3. 沒人讀的 `stream_redis_id`、`waf_web_acl_name` 不再發布。
+4. 補回 import-extract 的 rejected 指標。
 
 **技術債**
 
-- 資料庫名稱、stream shard 數、`app_port` 在不同 stack 各有一份變數，靠預設值一致；只有 `bastion_enabled` 有靜態檢查。
-- `check-ssm-contract.sh` 的 `bastion_enabled` 檢查沒有自動化 fixture（腳本不在 `validate.sh` 的測試範圍）；B5 用暫存複本改 tfvars 手動驗過會失敗。
+- `app_port` 在 network、loadbalancer、application 各有一份變數，靠預設值一致；`SHARED_CONFIG_KEYS` 只比對 `bastion_enabled` 與 `guardrail_cross_region_profile_id`。
+- `check-ssm-contract.sh` 的 `bastion_enabled`、`guardrail_cross_region_profile_id` 檢查沒有自動化 fixture（腳本不在 `validate.sh` 的測試範圍）；B5 用暫存複本改 tfvars 手動驗過會失敗。
 - 把 `ecs-service-alarms` 的 dashboard 與告警綁在同一個 module 呼叫，無法只開 dashboard。
 
 ## 6. `validate.sh` 與 CI

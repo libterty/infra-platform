@@ -158,7 +158,7 @@ bash infra/terraform/check-ssm-contract.sh
 只檢查兩件事，其他規則（`common.tf` 一致、`data "aws_ssm_parameter"` 的位置、tfbackend 的 key）由 `scripts/validate.sh` 負責，`validate.sh` 也會呼叫這支腳本：
 
 1. 每個讀的 `<stack>/<key>`：發布它的 stack 在 `ORDER` 裡排在讀它的 stack 前面、真的有發布這個 key、型別（strings 或 lists）相同。樹 B 的 `infra/<key>` 對應到 `bridge`。
-2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`、`bastion_enabled`）上的值一致；沒設某個 key 的 stack 不參與比對，所以 `bastion_enabled` 只比對 network 與 operation，而且 `env` 等於檔名。
+2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`、`bastion_enabled`、`guardrail_cross_region_profile_id`）上的值一致；沒設某個 key 的 stack 不參與比對，所以 `bastion_enabled` 只比對 network 與 operation，`guardrail_cross_region_profile_id` 只比對 iam 與 agent，而且 `env` 等於檔名。
 
 錯誤訊息會指出哪個 stack 的哪一個 key。
 
