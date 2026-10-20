@@ -75,10 +75,26 @@ variable "access_logs" {
   description = "null disables access logs. The bucket must use SSE-S3: ALB log delivery does not support customer managed KMS."
 }
 
+variable "web_acl" {
+  type = object({
+    arn = string
+  })
+  default     = null
+  description = "Regional WAFv2 Web ACL to associate; the module never creates one. Use this, not web_acl_arn, when the ARN is not known at plan time (the Web ACL is created in the same configuration): whether the object is null is always known, even when arn is not."
+  validation {
+    condition     = var.web_acl == null ? true : can(regex("^arn:aws[a-z-]*:wafv2:[a-z0-9-]+:[0-9]{12}:regional/webacl/", var.web_acl.arn))
+    error_message = "web_acl.arn must be a regional WAFv2 Web ACL ARN."
+  }
+  validation {
+    condition     = var.web_acl == null || var.web_acl_arn == null
+    error_message = "Set either web_acl or web_acl_arn, not both."
+  }
+}
+
 variable "web_acl_arn" {
   type        = string
   default     = null
-  description = "Regional WAFv2 Web ACL to associate; the module never creates one."
+  description = "Regional WAFv2 Web ACL to associate. Only for ARNs known at plan time; it fails with \"Invalid count argument\" when the Web ACL is created in the same configuration. Use web_acl instead. Kept for existing callers and planned for removal."
   validation {
     condition     = var.web_acl_arn == null ? true : can(regex("^arn:aws[a-z-]*:wafv2:[a-z0-9-]+:[0-9]{12}:regional/webacl/", var.web_acl_arn))
     error_message = "web_acl_arn must be a regional WAFv2 Web ACL ARN."

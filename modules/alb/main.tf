@@ -87,10 +87,11 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_wafv2_web_acl_association" "this" {
-  count = var.web_acl_arn == null ? 0 : 1
+  # web_acl is an object so that "is it set" stays known at plan time even when its arn is not.
+  count = var.web_acl != null || var.web_acl_arn != null ? 1 : 0
 
   resource_arn = aws_lb.this.arn
-  web_acl_arn  = var.web_acl_arn
+  web_acl_arn  = var.web_acl != null ? var.web_acl.arn : var.web_acl_arn
 }
 
 resource "aws_lb_target_group" "this" {
