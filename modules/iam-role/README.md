@@ -43,7 +43,7 @@ module "ecs_execution" {
 
 ## 限制
 
-- 不收 AWS managed policy 與 customer managed policy，也沒有 instance profile。
+- 不收 AWS managed policy 與 customer managed policy。instance profile 只能透過 `instance_profile_name` 建一個、綁這個 role（0.2.0 起）。
 - trust 只收 AWS 服務主體，不收 AWS 帳號、OIDC 或 `*`。
 - `source_arn` 只檢查 `arn:` 開頭，不檢查 service、region、帳號是否與服務主體相符；萬用字元放多寬由呼叫端決定。
 - 不使用任何獨佔管理 inline policy 的資源（例如 provider 的 role policies exclusive 類型），否則會刪掉 `iam-role-policy` 附加的 policy。
@@ -61,6 +61,7 @@ module "ecs_execution" {
 | `trust` | `object({ service_principals = set(string), source_account = optional(string), source_arn = optional(string) })` | 無 | 是 | 至少一個 `*.amazonaws.com` 服務主體；`source_account` 為 12 位數字；`source_arn` 以 `arn:` 開頭、可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`），用 `ArnLike` 比對 |
 | `inline_policies` | `map(string)` | `{}` | 否 | policy 名稱對 policy JSON 字串 |
 | `permissions_boundary` | `string` | `null` | 否 | permissions boundary 的 policy ARN |
+| `instance_profile_name` | `string` | `null` | 否 | 有給時建一個綁這個 role 的 instance profile；1–128 字元，限字母、數字與 `_+=,.@-` |
 | `tags` | `map(string)` | `{}` | 否 | 額外 tag，module 只再加 `Name` |
 
 ## 輸出
@@ -72,6 +73,8 @@ module "ecs_execution" {
 | `arn` | `string` | role ARN；所有 inline policy 附加之後才有值 |
 | `name` | `string` | role 名稱 |
 | `id` | `string` | role ID |
+| `instance_profile_name` | `string` | instance profile 名稱；沒給 `instance_profile_name` 時為 `null` |
+| `instance_profile_arn` | `string` | instance profile ARN；沒給 `instance_profile_name` 時為 `null` |
 
 ## 測試
 
