@@ -1,8 +1,34 @@
-# Keys this stack publishes under local.ssm_prefix with stack = "network".
-# The module "ssm_publish" block and the published_strings / published_lists locals arrive together with the
-# resources (phases B3-B5), because there is nothing to publish yet. Until then the planned keys are listed here
-# in the format scripts check-ssm-contract.sh reads. Replace these lines with the real locals; do not keep both.
-#
-# planned_strings: vpc_id vpc_cidr alb_sg_id app_sg_id agent_sg_id db_sg_id cache_sg_id
-# planned_strings: bastion_sg_id peering_connections
-# planned_lists: public_subnet_ids app_subnet_ids agent_subnet_ids db_subnet_ids
+locals {
+  published_strings = {
+    vpc_id         = module.vpc.vpc_id
+    vpc_cidr       = module.vpc.vpc_cidr
+    alb_sg_id      = module.sg.security_group_ids["alb"]
+    app_sg_id      = module.sg.security_group_ids["app"]
+    agent_sg_id    = module.sg.security_group_ids["agent"]
+    db_sg_id       = module.sg.security_group_ids["db"]
+    db_proxy_sg_id = module.sg.security_group_ids["db_proxy"]
+    cache_sg_id    = module.sg.security_group_ids["cache"]
+    # The group exists even when bastion_enabled is false (it then has no rules), so downstream stacks can always read it.
+    bastion_sg_id = module.sg.security_group_ids["bastion"]
+    # SSM rejects an empty map, so this is JSON in a String: peering name => connection ID, "{}" without a peering.
+    peering_connections = jsonencode(var.peering == null ? {} : { peer = module.peering[0].peering_connection_id })
+  }
+
+  published_lists = {
+    public_subnet_ids = module.vpc.subnet_ids["public"]
+    app_subnet_ids    = module.vpc.subnet_ids["app"]
+    agent_subnet_ids  = module.vpc.subnet_ids["agent"]
+    db_subnet_ids     = module.vpc.subnet_ids["db"]
+  }
+}
+
+module "ssm_publish" {
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/ssm-publish/aws"
+  version = "~> 0.1.0"
+
+  ssm_prefix = local.ssm_prefix
+  stack      = "network"
+  strings    = local.published_strings
+  lists      = local.published_lists
+}

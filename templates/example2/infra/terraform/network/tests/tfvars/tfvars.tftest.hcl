@@ -1,6 +1,15 @@
 # Run by scripts/validate.sh with -var-file=envs/<env>.tfvars; it checks the tfvars files themselves.
 mock_provider "aws" {}
 
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = { alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms" }
+    lists   = {}
+  }
+}
+
 run "tfvars_pair_env_with_a_registered_account" {
   command = plan
 
