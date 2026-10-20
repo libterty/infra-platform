@@ -15,8 +15,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # tfvars keys that must hold the same value in every stack of an env. A stack that does not set a key is skipped, so
-# bastion_enabled is compared between network (which opens the paths) and operation (which creates the instance).
-SHARED_CONFIG_KEYS=(project env aws_region expected_account_id deploy_role_arn bastion_enabled)
+# bastion_enabled is compared between network (which opens the paths) and operation (which creates the instance), and
+# guardrail_cross_region_profile_id between iam (which grants it) and agent (which uses it).
+SHARED_CONFIG_KEYS=(project env aws_region expected_account_id deploy_role_arn bastion_enabled guardrail_cross_region_profile_id)
 # The stack that publishes tree B, and the stack segment tree B keys carry.
 BRIDGE_STACK="bridge"
 SHARED_SEGMENT="infra"
