@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0（未發布）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新變數 `system_controls`（`map(string)`，預設 `{}`）：給 `app` container 設核心參數（例如 `net.ipv4.tcp_keepalive_time`）。空的時候 container definition 不出現 `systemControls`，task definition 跟 0.1.0 一致。**設了之後會產生新的 task definition revision，觸發一次部署。**
+- `autoscaling.policy` 新增 `"custom"`：不建內建的 CPU、請求數與 step policy，scalable target 仍由 module 擁有。
+- 新增 `autoscaling.scheduled_actions`（預設 `{}`）：每項建一個 `aws_appautoscaling_scheduled_action`；`min_capacity` 不可大於 `max_capacity`，`max_capacity` 不可超過 `autoscaling.max_capacity`。
+- 新增 `autoscaling.step_policies`（預設 `{}`）：每項建一個 `aws_appautoscaling_policy`（StepScaling）與觸發它的 `aws_cloudwatch_metric_alarm`，alarm 的 `alarm_actions` 指向該 policy；`metric` 與 `queries`（metric math）二選一，不符合會被 validation 擋下。資源名稱帶 `step-` 前綴，避免跟內建 policy 重名。
+- 三個新欄位都沒給的既有呼叫端，resource 與 task definition 都沒有變化，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。** `queries` 內部的組合（`expression` 與 `metric` 擇一、`return_data`）交給 CloudWatch API 檢查，mock 測試驗不到。
+- 原本寫在「刻意不做」的排程擴縮與自訂指標 step scaling，從這一版起支援。
+
 ## 0.1.0（未發布）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
