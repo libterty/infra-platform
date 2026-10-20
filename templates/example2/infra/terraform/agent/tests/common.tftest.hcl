@@ -22,6 +22,9 @@ override_module {
       agent_sg_id            = "sg-0123456789abcdef0"
       agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
       agent_runtimes         = "[\"agent\"]"
+      db_proxy_endpoint      = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_secret_arn          = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      db_name                = "app"
       ecr_repository_urls    = jsonencode({ agent = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-agent" })
     }
     lists = {

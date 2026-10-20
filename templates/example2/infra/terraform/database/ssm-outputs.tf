@@ -7,6 +7,10 @@ locals {
     # Redis endpoints are host:port; clients need a cluster-aware client and TLS.
     rate_limit_redis_endpoint = "${module.redis["rate-limit"].configuration_endpoint}:${module.redis["rate-limit"].port}"
     stream_redis_endpoint     = "${module.redis["stream"].configuration_endpoint}:${module.redis["stream"].port}"
+    # Clients, not this stack, hash entries over the shards, so they need the same numbers. With autoscaling configured
+    # this is the starting shard count, so clients that hash by count must not be combined with it.
+    db_name            = var.db_name
+    stream_shard_count = tostring(var.redis["stream"].num_node_groups)
   }
 }
 

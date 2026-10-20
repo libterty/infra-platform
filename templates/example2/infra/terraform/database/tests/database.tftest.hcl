@@ -346,6 +346,8 @@ run "publishes_endpoints_and_the_secret" {
       db_secret_arn             = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint = "clustercfg.example-dev-rate-limit.abc.apne1.cache.amazonaws.com:6379"
       stream_redis_endpoint     = "clustercfg.example-dev-stream.abc.apne1.cache.amazonaws.com:6379"
+      db_name                   = "app"
+      stream_shard_count        = "2"
     }
     error_message = "Each published value must come from the matching module output; Redis endpoints are host:port"
   }
@@ -358,7 +360,25 @@ run "publishes_endpoints_and_the_secret" {
       db_secret_arn             = "/example/dev/database/db_secret_arn"
       rate_limit_redis_endpoint = "/example/dev/database/rate_limit_redis_endpoint"
       stream_redis_endpoint     = "/example/dev/database/stream_redis_endpoint"
+      db_name                   = "/example/dev/database/db_name"
+      stream_shard_count        = "/example/dev/database/stream_shard_count"
     }
-    error_message = "ssm-publish must write the six database keys under the database path"
+    error_message = "ssm-publish must write the eight database keys under the database path"
+  }
+}
+
+run "publishes_the_stream_shard_count_of_the_stream_cluster" {
+  command = plan
+
+  variables {
+    redis = {
+      "rate-limit" = { node_type = "cache.t4g.small" }
+      "stream"     = { node_type = "cache.t4g.small", num_node_groups = 3 }
+    }
+  }
+
+  assert {
+    condition     = local.published_strings.stream_shard_count == "3" && local.published_strings.db_name == var.db_name
+    error_message = "Clients that hash a stream over shards need the same count as the cluster, so it is published, not configured twice"
   }
 }

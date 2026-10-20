@@ -17,6 +17,11 @@ locals {
       AGENT_BACKEND_MODE        = var.backend_mode
       AGENT_MAX_OUTPUT_LENGTH   = tostring(var.max_output_length)
       AGENT_OUTPUT_GUARDRAIL_ID = module.output_guardrail.guardrail_id
+      AGENT_DB_HOST             = module.shared.strings["db_proxy_endpoint"]
+      AGENT_DB_NAME             = module.shared.strings["db_name"]
+      AGENT_DB_SSLMODE          = "require"
+      # The ARN only: the Runtime role reads the secret value itself (iam grants it).
+      AGENT_DB_AUTH_ARN = module.shared.strings["db_secret_arn"]
     },
     # Absent is the only way to say "use the image default", so an empty URL is omitted rather than sent.
     var.backend_url == "" ? {} : { AGENT_BACKEND_URL = var.backend_url },
