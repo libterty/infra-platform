@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0（2026-10-20）
+
+修 bug 並新增變數，升 MINOR。tag 在驗收後由人手動打。
+
+- Bug：同一個 configuration 建 WAF、把 `module.waf.web_acl_arn` 傳給 `web_acl_arn` 時，值在 plan 時是 unknown，`count = var.web_acl_arn == null ? 0 : 1` 無法決定，報 `Invalid count argument`。
+- 新變數 `web_acl`（`object({ arn = string })`，預設 `null`）：物件是否為 `null` 在 plan 時就知道，即使 `arn` 是 unknown 也能決定 association 數量。`arn` 的格式 validation 與 `web_acl_arn` 相同；`arn` 是 unknown 時 validation 會延後到 apply，這是 Terraform 的正常行為。
+- `web_acl_arn` 保留，行為不變，只適合 plan 時已知的值，日後移除。**同一個 configuration 建 WAF 時要改用 `web_acl`**。`web_acl` 與 `web_acl_arn` 同時給會被 validation 擋下。
+- 新輸出 `web_acl_association_ids`（沒關聯時是空 list），主要給測試確認 association 數量。
+- 既有消費端（沒給 `web_acl`）的 resource 與輸出沒有變化，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
