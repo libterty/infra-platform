@@ -91,6 +91,7 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 - `versioning = object({ noncurrent_expiration_days = optional(number, 30) })`，預設 null。開啟時建 `aws_s3_bucket_versioning`，lifecycle 加 `noncurrent_version_expiration` 與清 delete marker 的規則。不能跟 `log_delivery` 一起用。
 - `expiration_prefix`（預設 null）：null 時 filter 維持空的；有值時過期規則只套用在這個 prefix。
 - `lambda_notifications = map(object({ function_arn, events = optional(list(string), ["s3:ObjectCreated:*"]), filter_prefix = optional(string), filter_suffix = optional(string) }))`，預設 `{}`；非空才建 `aws_s3_bucket_notification`。`function_arn` 必須是 Lambda ARN。
+- 清舊版本與 delete marker 是獨立的一條規則，涵蓋整個 bucket、不受 `expiration_prefix` 限制：`expired_object_delete_marker` 不能跟 `days` 放在同一個 expiration 區塊。
 - tests：預設時 versioning 與 notification 都是 0 個、lifecycle filter 是空的；versioning、prefix、notification 各自開啟；validation 組合。
 
 **`rds` 0.1.1 → 0.2.0**
@@ -104,9 +105,9 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 
 - `vpc_id`（預設 null；`target_groups` 非空時必填）。
 - `target_groups = map(object({ port, protocol_version = optional("HTTP1"), deregistration_delay = optional(300), health_check = optional(object({ path = "/health", matcher = "200", interval = 15, timeout = 5, healthy_threshold = 2, unhealthy_threshold = 3 }), {}) }))`。
-- `listener_rules = map(object({ priority, target_group, path_patterns = optional([]), host_headers = optional([]), require_origin_verify = optional(true) }))`，掛在 HTTPS listener；沒有憑證時掛 HTTP listener。
+- `listener_rules = map(object({ priority, target_group, path_patterns = optional([]), host_headers = optional([]), require_origin_verify = optional(false) }))`，掛在 HTTPS listener；沒有憑證時掛 HTTP listener。`require_origin_verify` 要明確打開（2026-10-20 使用者決定）：原本預設 `true`，沒設 header 時規則會默默沒有 header 條件。
 - `origin_verify_header_name`（預設 null）與 `origin_verify_header_value`（`sensitive = true`）分成兩個變數：包成一個物件的話，`var.x == null` 會變成 sensitive，不能拿來當 `for_each`。
-- validation：規則指到的 target group 要存在；priority 不重複；每條規則至少一個條件，條件值合計不超過 5（ALB 上限）；`"${name}-${key}"` 不超過 32 字元；header 的 name 與 value 要一起給或一起不給。
+- validation：規則指到的 target group 要存在；priority 不重複；每條規則至少一個 path pattern 或 host header；條件值合計不超過 5（ALB 上限，`require_origin_verify = true` 的 header 算 1 個）；`require_origin_verify = true` 但沒給 `origin_verify_header_name` 時拒絕；`"${name}-${key}"` 不超過 32 字元；header 的 name 與 value 要一起給或一起不給。
 - 輸出：`target_group_arns`、`target_group_arn_suffixes`（map）。
 - tests：既有 3 個測試檔不改就要全過；新增 target group 與規則數量、header 條件有無、各條 validation。
 
@@ -115,15 +116,16 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 - `autoscaling.policy` 新增 `"custom"`：不建內建的 CPU／step policy，只建下面兩種。
 - `autoscaling.scheduled_actions = map(object({ schedule, timezone = optional("UTC"), min_capacity, max_capacity }))` → `aws_appautoscaling_scheduled_action`。
 - `autoscaling.step_policies`：每條有比較運算、門檻、評估期間，用 `metric`（單一 metric）或 `queries`（metric math）二選一，加上 `adjustments = list(object({ lower, upper, change }))`。建 `aws_appautoscaling_policy` 與觸發它的 `aws_cloudwatch_metric_alarm`（`alarm_actions` 指向 policy ARN）。
-- validation：`metric` 與 `queries` 二選一；scheduled 的容量不超過 `autoscaling.max_capacity`。
+- validation：`metric` 與 `queries` 二選一；scheduled 的 `min <= max`，而且不超過 `autoscaling.max_capacity`；key 必須是 snake_case。
+- `scheduled_actions`、`step_policies` 三種 policy 都能搭配，不限 `custom`；step policy 的資源名稱帶 `step-` 前綴，避免跟內建 policy 重名。
 - tests：預設 task definition 不變、`custom` 不建 CPU policy、metric math 型的 step policy、scheduled action。
 - CHANGELOG 註明：設了 `system_controls` 會產生新的 task definition revision，觸發一次部署。
 
 **`log-metric-alarm` 0.1.0 → 0.2.0**（D6）
 - 新增 `metrics = map(object({ pattern, metric_name, metric_value = optional("1"), default_value = optional(0) }))`，預設 `{}`：只建 metric filter，不建告警。
-- `sns_topic_arns` 改成只有 `alarms` 非空時必填。
-- 同一個 key 不能同時出現在 `alarms` 與 `metrics`；兩邊都空時拒絕。
-- 輸出新增 `metric_names`（map）。
+- `sns_topic_arns` 改成只有 `alarms` 非空時必填；`alarms`、`sns_topic_arns` 都有預設值（`{}`、`[]`）。
+- 同一個 key 不能同時出現在 `alarms` 與 `metrics`；`alarms`、`metrics`、`sns_topic_arns` 三個都空時拒絕。原本設計是「`alarms`、`metrics` 都空就拒絕」，但 0.1.0 有「`alarms = {}` 加上 SNS 時什麼都不建」的既有行為與測試，所以縮小成三個都空才拒絕。
+- 輸出新增 `metric_names`（map，涵蓋 `alarms` 與 `metrics` 兩邊的 key）。
 - tests：只給 `metrics` 時不建告警、不需要 SNS；`alarms` 的既有行為不變；key 重複被拒。
 
 ### 4.2 新 module（各發 0.1.0）
