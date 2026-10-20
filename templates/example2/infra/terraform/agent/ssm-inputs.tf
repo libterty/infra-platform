@@ -4,7 +4,6 @@ locals {
     agent_runtime_role_arn = "infra/agent_runtime_role_arn"
     agent_runtimes         = "infra/agent_runtimes"
     ecr_repository_urls    = "infra/ecr_repository_urls"
-    alarm_topic_arn        = "infra/alarm_topic_arn"
   }
 
   shared_input_lists = {
