@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://img.shields.io/badge/registry-app.terraform.io%2Flibterty-7B42BC?logo=terraform&logoColor=white)](https://app.terraform.io/app/libterty/registry/private/modules)
 
-Terraform private registry 的範例 repo。共用 module 放在同一個 monorepo，用 Git tag 標版本，透過 HCP Terraform private registry 發布。各專案用版本範圍引用，不用每個專案各寫一套。
+這是 Terraform private registry 的範例 repo。共用 module 都放在這個 monorepo，用 Git tag 標版本，透過 HCP Terraform private registry 發布。各專案用版本範圍引用同一份 module，不用每個專案各寫一套。
 
 ## module
 
@@ -52,23 +52,27 @@ module "api" {
 }
 ```
 
-`<org>` 是 HCP Terraform 的 organization。本 repo 發布在 `app.terraform.io/libterty` 這個 private registry，只有該 organization 的成員抓得到；其他人或沒有 HCP token 時，改走 `git::...?ref=<tag>` 備案。「最新版」欄是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本。認證、升版、從範本複製出去的改法，以及 git 備案的寫法，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+`<org>` 換成 HCP Terraform 的 organization。本 repo 的 module 發布在 `app.terraform.io/libterty`，這是 private registry，只有該 organization 的成員抓得到。不是成員或沒有 HCP token，就改用 `git::...?ref=<tag>` 的備案寫法。
+
+表格的「最新版」是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本號。
+
+HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)；module 怎麼登記到 HCP，見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 範本
 
-兩份專案 infra 範本，都是完整的 Terraform stack 目錄，複製到專案 repo 就能用；stack 只呼叫 module，跨 stack 只透過 SSM 傳值。
+這裡有兩份專案 infra 範本，都是完整的 Terraform stack 目錄，複製到專案 repo 就能用。兩份的規則相同：stack 只呼叫 module，跨 stack 只透過 SSM 傳值。
 
 | 範本 | 差異 |
 | --- | --- |
-| [`templates/project-infra/`](./templates/project-infra/infra/README.md) | 9 個 stack，環境是 `dev`、`prod`。資料庫與 IAM 各拆成兩個 stack（`iam-base`、`iam-app`、`data`），`agent`（AgentCore 與 Bedrock）預設關閉，支援客戶自管資源模式 |
-| [`templates/example2/`](./templates/example2/infra/README.md) | 11 個 stack，環境是 `dev`、`sit`。資料庫、IAM、ALB、AgentCore、ECS、bastion 與告警各自獨立，另有 `bridge` stack 把前段的值轉寫成後段讀的共用前綴，這個前綴也可以改由外部發布；附 `stacks.sh` 與 SSM 合約檢查腳本 |
+| [`templates/project-infra/`](./templates/project-infra/infra/README.md) | 9 個 stack，環境是 `dev`、`prod`。IAM 拆成 `iam-base`、`iam-app` 兩個 stack，資料庫獨立成 `data`。`agent`（AgentCore 與 Bedrock）預設關閉。支援客戶自管資源模式 |
+| [`templates/example2/`](./templates/example2/infra/README.md) | 11 個 stack，環境是 `dev`、`sit`。資料庫、IAM、ALB、AgentCore、ECS、bastion 與告警各自一個 stack。另有 `bridge` stack，把前段 stack 的值轉寫到後段讀取的共用前綴底下，這個前綴也可以改由外部發布。附 `stacks.sh` 與 SSM 合約檢查腳本 |
 
 ## 不同團隊怎麼用
 
 | 團隊          | 在這個 repo 做什麼                                                                       |
 | ------------- | ---------------------------------------------------------------------------------------- |
 | platform team | 擁有 `modules/`、`.github/`、`scripts/`、`docs/adr/`；維護 module 介面、CI、發版 |
-| core app team | 暫無；AP 層共用元件之後比照本 repo 的發版模式另開 repo                                   |
+| core app team | 目前沒有。AP 層的共用元件之後比照本 repo 的發版模式另開 repo                                   |
 | 專案 app team | 複製 `templates/project-infra/` 或 `templates/example2/` 到自己的 repo，釘版本引用 module |
 | 專案 FDE team | 用 `scripts/vendor-modules.sh` 把指定 tag 的 module 交付給客戶                         |
 
@@ -76,7 +80,7 @@ module "api" {
 
 ## 開發
 
-只需要 terraform（1.15.8）、tflint（0.64.0）、bash 與 jq，不需要任何 AWS 憑證。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要先 `terraform login`（要是該 organization 的成員）：
+只需要 terraform（1.15.8）、tflint（0.64.0）、bash 與 jq，不需要任何 AWS 憑證。範本的 stack 從 `app.terraform.io/libterty` 抓 module，所以要先用該 organization 成員的帳號 `terraform login`：
 
 ```bash
 scripts/validate.sh                      # 全部
@@ -87,7 +91,7 @@ scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 
 這個 repo 禁止跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
 
-commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 是 module 名稱或 `repo`。一個 commit 只動一個 module 目錄，release-please 才能依路徑歸屬各 module 的 CHANGELOG。
+commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 寫 module 名稱或 `repo`。一個 commit 只動一個 module 目錄，因為 release-please 靠路徑判斷變更要記進哪個 module 的 CHANGELOG。
 
 ## 文件地圖
 
