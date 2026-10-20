@@ -8,7 +8,7 @@ locals {
     # postdeploy sizes its at-max-capacity and backlog alarms from these, so the two stacks cannot drift apart.
     api_max_capacity    = tostring(var.api_max_capacity)
     worker_max_capacity = tostring(var.worker_max_capacity)
-    stream_maxlen       = tostring(var.redis_stream_maxlen)
+    stream_length_cap   = tostring(var.stream_length_cap)
   }
 }
 

@@ -8,31 +8,31 @@ locals {
     step_policies = {
       backlog_high = {
         comparison_operator = "GreaterThanOrEqualToThreshold"
-        threshold           = var.redis_stream_maxlen / 4
+        threshold           = var.stream_length_cap / 4
         evaluation_periods  = 3
         datapoints_to_alarm = 3
         cooldown            = 300
         metric = {
           namespace   = local.metric_namespace
-          metric_name = "StreamXLenMax"
+          metric_name = "StreamBacklogMax"
           dimensions  = { Env = var.env }
           statistic   = "Maximum"
         }
         adjustments = [
-          { lower = 0, upper = var.redis_stream_maxlen / 4, change = 1 },
-          { lower = var.redis_stream_maxlen / 4, change = 2 },
+          { lower = 0, upper = var.stream_length_cap / 4, change = 1 },
+          { lower = var.stream_length_cap / 4, change = 2 },
         ]
       }
       # Step policies do not take part in scale-in negotiation, so without this one the worker would only grow.
       backlog_drained = {
         comparison_operator = "LessThanThreshold"
-        threshold           = var.redis_stream_maxlen / 20
+        threshold           = var.stream_length_cap / 20
         evaluation_periods  = 15
         datapoints_to_alarm = 15
         cooldown            = 600
         metric = {
           namespace   = local.metric_namespace
-          metric_name = "StreamXLenMax"
+          metric_name = "StreamBacklogMax"
           dimensions  = { Env = var.env }
           statistic   = "Maximum"
         }

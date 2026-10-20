@@ -52,7 +52,7 @@ variable "memory_event_expiry_days" {
   default     = 90
 }
 
-variable "guardrail_profile_id" {
+variable "guardrail_cross_region_profile_id" {
   description = "Bedrock cross-region guardrail profile id. No API can check it; only a real ApplyGuardrail call does."
   type        = string
   default     = "apac.guardrail.v1:0"

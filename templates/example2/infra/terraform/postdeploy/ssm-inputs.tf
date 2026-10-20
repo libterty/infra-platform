@@ -9,7 +9,7 @@ locals {
     worker_log_group_name     = "application/worker_log_group_name"
     api_max_capacity          = "application/api_max_capacity"
     worker_max_capacity       = "application/worker_max_capacity"
-    stream_maxlen             = "application/stream_maxlen"
+    stream_length_cap         = "application/stream_length_cap"
     agent_runtime_arns        = "agent/agent_runtime_arns"
     agent_memory_arn          = "agent/agent_memory_arn"
   }

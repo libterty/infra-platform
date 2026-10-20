@@ -20,20 +20,20 @@ variable "db_name" {
   default     = "app"
 }
 
-variable "redis_stream_shards" {
+variable "stream_shard_count" {
   description = "Shards of the stream Redis. It must equal that cluster's num_node_groups in the database stack."
   type        = number
   default     = 1
 }
 
-variable "redis_stream_maxlen" {
+variable "stream_length_cap" {
   description = "Per-shard stream length cap; the worker's backlog thresholds are fractions of it."
   type        = number
   default     = 100000
 
   validation {
-    condition     = var.redis_stream_maxlen >= 20
-    error_message = "redis_stream_maxlen must be at least 20."
+    condition     = var.stream_length_cap >= 20
+    error_message = "stream_length_cap is the per-shard length cap and must be 20 or more."
   }
 }
 
@@ -42,14 +42,14 @@ variable "cors_allow_origins" {
   type        = list(string)
 }
 
-variable "forwarded_allow_ips_trust" {
-  description = "Which proxies the api trusts to set X-Forwarded-For. any trusts every hop, so a client can spoof its address; vpc trusts the VPC only; vpc_and_cloudfront also trusts the CloudFront origin-facing ranges."
+variable "trusted_proxies" {
+  description = "Which proxies the api trusts to set X-Forwarded-For. any trusts every hop, so a client can spoof its address; vpc trusts the VPC only; vpc_and_cdn also trusts the CloudFront origin-facing ranges."
   type        = string
   default     = "vpc"
 
   validation {
-    condition     = contains(["any", "vpc", "vpc_and_cloudfront"], var.forwarded_allow_ips_trust)
-    error_message = "forwarded_allow_ips_trust must be any, vpc or vpc_and_cloudfront."
+    condition     = contains(["any", "vpc", "vpc_and_cdn"], var.trusted_proxies)
+    error_message = "trusted_proxies accepts only the values any, vpc and vpc_and_cdn."
   }
 }
 
@@ -101,8 +101,8 @@ variable "api_cpu_target_percent" {
   default     = 60
 }
 
-variable "api_connections_per_task_high" {
-  description = "Approximate open connections per api task above which the step policy adds tasks."
+variable "api_streams_per_task_high" {
+  description = "Approximate active streams per api task above which the step policy adds tasks."
   type        = number
   default     = 100
 }

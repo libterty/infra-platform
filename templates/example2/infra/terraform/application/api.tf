@@ -9,22 +9,22 @@ locals {
     }
     scheduled_actions = var.api_scheduled_scaling
 
-    # Step scaling on top of target tracking: streaming connections are long-lived and barely move the request count.
+    # Step scaling on top of target tracking: streaming responses are long-lived and barely move the request count.
     step_policies = {
-      connections_high = {
+      streams_high = {
         comparison_operator = "GreaterThanThreshold"
-        threshold           = var.api_connections_per_task_high
+        threshold           = var.api_streams_per_task_high
         evaluation_periods  = 3
         cooldown            = 60
         queries = [
           {
             id          = "per_task"
-            expression  = "connections / tasks"
-            label       = "ApproxConnectionsPerTask"
+            expression  = "streams / tasks"
+            label       = "ActiveStreamsPerTask"
             return_data = true
           },
           {
-            id = "connections"
+            id = "streams"
             metric = {
               namespace   = "AWS/ApplicationELB"
               metric_name = "ActiveConnectionCount"
@@ -42,8 +42,8 @@ locals {
         ]
         # The bands are relative to the threshold: up to one more threshold above it adds a task, beyond that two.
         adjustments = [
-          { lower = 0, upper = var.api_connections_per_task_high, change = 1 },
-          { lower = var.api_connections_per_task_high, change = 2 },
+          { lower = 0, upper = var.api_streams_per_task_high, change = 1 },
+          { lower = var.api_streams_per_task_high, change = 2 },
         ]
       }
     }

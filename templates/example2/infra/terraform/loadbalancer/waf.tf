@@ -1,8 +1,8 @@
 locals {
   waf_kill_switch = {
-    action = var.kill_switch_action
+    action = var.waf_kill_switch_mode
     # Only a blocking kill switch may carry a body.
-    response_json = var.kill_switch_action == "block" ? jsonencode({ status = "error", code = "SERVICE_UNAVAILABLE" }) : null
+    response_json = var.waf_kill_switch_mode == "block" ? jsonencode({ status = "error", code = "SERVICE_PAUSED" }) : null
   }
 
   waf_rate_limit = {

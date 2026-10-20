@@ -16,9 +16,9 @@ locals {
       metric_name = "PersistenceEnqueueFailed"
       description = "Writing to the stream failed and the batch was dropped without retry. Memory errors point at the Redis memory; connection errors point at the cluster health or its security group."
     }
-    rate_limit_fail_open = {
-      pattern     = "{ $.event = \"rate_limit_fail_open\" }"
-      metric_name = "RateLimitFailOpenSeconds"
+    rate_limiter_unavailable = {
+      pattern     = "{ $.event = \"rate_limiter_unavailable\" }"
+      metric_name = "RateLimiterUnavailableSeconds"
       description = "The rate limit store is unreachable and requests pass unmetered. Users notice nothing, but only the WAF rate rule is left to cap spend. The unit is task-seconds."
       period      = 300
       threshold   = 60

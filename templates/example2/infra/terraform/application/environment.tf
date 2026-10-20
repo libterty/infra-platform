@@ -2,9 +2,9 @@ data "aws_vpc" "this" {
   id = module.shared.strings["vpc_id"]
 }
 
-# Read only in vpc_and_cloudfront mode.
-data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
-  count = var.forwarded_allow_ips_trust == "vpc_and_cloudfront" ? 1 : 0
+# Read only in vpc_and_cdn mode.
+data "aws_ec2_managed_prefix_list" "cdn_origin_facing" {
+  count = var.trusted_proxies == "vpc_and_cdn" ? 1 : 0
 
   name = "com.amazonaws.global.cloudfront.origin-facing"
 }
@@ -15,10 +15,10 @@ locals {
   # "*" makes uvicorn take the leftmost X-Forwarded-For entry, which the caller writes itself; CIDRs make it look for
   # the first hop from the right that is not trusted. The CloudFront ranges are sorted because the entries are a set and
   # a different order would register a new task definition on every plan.
-  forwarded_allow_ips = var.forwarded_allow_ips_trust == "any" ? "*" : join(",", concat(
+  forwarded_allow_ips = var.trusted_proxies == "any" ? "*" : join(",", concat(
     [data.aws_vpc.this.cidr_block],
-    var.forwarded_allow_ips_trust == "vpc_and_cloudfront"
-    ? sort([for e in data.aws_ec2_managed_prefix_list.cloudfront_origin_facing[0].entries : e.cidr])
+    var.trusted_proxies == "vpc_and_cdn"
+    ? sort([for e in data.aws_ec2_managed_prefix_list.cdn_origin_facing[0].entries : e.cidr])
     : [],
   ))
 
@@ -37,8 +37,8 @@ locals {
     STREAM_REDIS_HOST             = local.stream_redis[0]
     STREAM_REDIS_PORT             = local.stream_redis[1]
     STREAM_REDIS_TLS              = "true"
-    STREAM_SHARDS                 = tostring(var.redis_stream_shards)
-    STREAM_MAXLEN                 = tostring(var.redis_stream_maxlen)
+    STREAM_SHARDS                 = tostring(var.stream_shard_count)
+    STREAM_LENGTH_CAP             = tostring(var.stream_length_cap)
   }
 
   api_environment = merge(local.common_environment, {

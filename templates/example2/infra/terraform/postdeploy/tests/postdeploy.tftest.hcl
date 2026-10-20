@@ -23,7 +23,7 @@ override_module {
       worker_log_group_name     = "/ecs/example-dev-worker"
       api_max_capacity          = "10"
       worker_max_capacity       = "6"
-      stream_maxlen             = "100000"
+      stream_length_cap         = "100000"
       agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
     }
@@ -55,7 +55,7 @@ run "reads_the_late_stack_keys_from_tree_a_and_only_the_topic_from_tree_b" {
       worker_log_group_name     = "application/worker_log_group_name"
       api_max_capacity          = "application/api_max_capacity"
       worker_max_capacity       = "application/worker_max_capacity"
-      stream_maxlen             = "application/stream_maxlen"
+      stream_length_cap         = "application/stream_length_cap"
       agent_runtime_arns        = "agent/agent_runtime_arns"
       agent_memory_arn          = "agent/agent_memory_arn"
     }
@@ -228,7 +228,7 @@ run "log_alarms_match_json_events_in_the_right_log_group" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.api_log_alarms)) == toset(["persistence_enqueue_dropped", "persistence_enqueue_failed", "rate_limit_fail_open"])
+    condition     = toset(keys(local.api_log_alarms)) == toset(["persistence_enqueue_dropped", "persistence_enqueue_failed", "rate_limiter_unavailable"])
     error_message = "The api reports dropped or failed hand-offs and rate limit fail-open"
   }
 
@@ -245,11 +245,11 @@ run "log_alarms_match_json_events_in_the_right_log_group" {
   }
 }
 
-run "rate_limit_fail_open_alarms_on_a_minute_of_task_seconds_in_five_minutes" {
+run "rate_limiter_unavailable_alarms_on_a_minute_of_task_seconds_in_five_minutes" {
   command = plan
 
   assert {
-    condition     = local.api_log_alarms["rate_limit_fail_open"].period == 300 && local.api_log_alarms["rate_limit_fail_open"].threshold == 60
+    condition     = local.api_log_alarms["rate_limiter_unavailable"].period == 300 && local.api_log_alarms["rate_limiter_unavailable"].threshold == 60
     error_message = "A short blip is tolerated; a minute of task time unmetered in five minutes is not"
   }
 }
@@ -309,7 +309,7 @@ run "a_second_runtime_gets_its_own_trace_source" {
         worker_log_group_name     = "/ecs/example-dev-worker"
         api_max_capacity          = "10"
         worker_max_capacity       = "6"
-        stream_maxlen             = "100000"
+        stream_length_cap         = "100000"
         agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\",\"agent-lite\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent_lite-XyZxYzXy\"}"
         agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
       }

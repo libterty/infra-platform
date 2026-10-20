@@ -25,7 +25,7 @@ override_module {
       worker_log_group_name     = "/ecs/example-dev-worker"
       api_max_capacity          = "10"
       worker_max_capacity       = "6"
-      stream_maxlen             = "100000"
+      stream_length_cap         = "100000"
       agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
     }

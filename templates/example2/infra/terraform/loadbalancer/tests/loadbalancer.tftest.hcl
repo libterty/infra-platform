@@ -207,7 +207,7 @@ run "kill_switch_block_carries_a_json_body" {
   command = plan
 
   variables {
-    kill_switch_action = "block"
+    waf_kill_switch_mode = "block"
   }
 
   assert {
@@ -216,14 +216,14 @@ run "kill_switch_block_carries_a_json_body" {
   }
 }
 
-run "rejects_an_unknown_kill_switch_action" {
+run "rejects_an_unknown_waf_kill_switch_mode" {
   command = plan
 
   variables {
-    kill_switch_action = "allow"
+    waf_kill_switch_mode = "allow"
   }
 
-  expect_failures = [var.kill_switch_action]
+  expect_failures = [var.waf_kill_switch_mode]
 }
 
 run "rate_limit_and_allowlist_reach_the_module" {

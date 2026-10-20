@@ -1,20 +1,20 @@
 locals {
   # <Project>/<env>: the namespace the worker publishes its stream metrics into.
-  metric_namespace = "${title(var.project)}/${var.env}"
-  stream_maxlen    = tonumber(module.in.strings["stream_maxlen"])
-  stream_dims      = { Env = var.env }
+  metric_namespace  = "${title(var.project)}/${var.env}"
+  stream_length_cap = tonumber(module.in.strings["stream_length_cap"])
+  stream_dims       = { Env = var.env }
 
   stream_alarms = {
     backlog_high = {
       description         = "The stream backlog stayed above half of its length cap for five minutes. At the cap the oldest entries are trimmed, including ones not yet persisted, so this is the point to act. Check the consumer count first, then add worker tasks."
       comparison_operator = "GreaterThanOrEqualToThreshold"
-      threshold           = local.stream_maxlen / 2
+      threshold           = local.stream_length_cap / 2
       evaluation_periods  = 5
       datapoints_to_alarm = 5
       treat_missing_data  = "notBreaching"
       metric = {
         namespace   = local.metric_namespace
-        metric_name = "StreamXLenMax"
+        metric_name = "StreamBacklogMax"
         dimensions  = local.stream_dims
         statistic   = "Maximum"
         period      = 60
@@ -29,7 +29,7 @@ locals {
       treat_missing_data  = "breaching"
       metric = {
         namespace   = local.metric_namespace
-        metric_name = "StreamConsumerCount"
+        metric_name = "StreamConsumers"
         dimensions  = local.stream_dims
         statistic   = "Maximum"
         period      = 60

@@ -73,14 +73,14 @@ variable "rate_limit_allowlist_cidrs" {
   default     = []
 }
 
-variable "kill_switch_action" {
+variable "waf_kill_switch_mode" {
   description = "WAF kill switch: count while healthy, block to stop all ingress with a 503."
   type        = string
   default     = "count"
 
   validation {
-    condition     = contains(["count", "block"], var.kill_switch_action)
-    error_message = "kill_switch_action must be count or block."
+    condition     = contains(["count", "block"], var.waf_kill_switch_mode)
+    error_message = "waf_kill_switch_mode accepts only count (observe) or block (reject all traffic)."
   }
 }
 

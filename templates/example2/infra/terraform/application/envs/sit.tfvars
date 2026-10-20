@@ -9,8 +9,8 @@ worker_image_tag = "0.1.0"
 
 cors_allow_origins = ["https://app.example.com"]
 
-# vpc trusts the VPC only. Use vpc_and_cloudfront when a CloudFront distribution is the only way in; never any.
-forwarded_allow_ips_trust = "vpc"
+# vpc trusts the VPC only. Use vpc_and_cdn when a CloudFront distribution is the only way in; never any.
+trusted_proxies = "vpc"
 
 # Example of a capacity window: more api tasks on weekdays during the day.
 api_scheduled_scaling = {

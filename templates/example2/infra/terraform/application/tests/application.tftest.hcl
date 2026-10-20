@@ -122,8 +122,8 @@ run "vpc_trust_lists_only_the_vpc_cidr" {
   }
 
   assert {
-    condition     = length(data.aws_ec2_managed_prefix_list.cloudfront_origin_facing) == 0
-    error_message = "The CloudFront list is only read in vpc_and_cloudfront mode"
+    condition     = length(data.aws_ec2_managed_prefix_list.cdn_origin_facing) == 0
+    error_message = "The CloudFront list is only read in vpc_and_cdn mode"
   }
 }
 
@@ -131,7 +131,7 @@ run "any_trust_is_a_wildcard" {
   command = plan
 
   variables {
-    forwarded_allow_ips_trust = "any"
+    trusted_proxies = "any"
   }
 
   assert {
@@ -140,20 +140,20 @@ run "any_trust_is_a_wildcard" {
   }
 
   assert {
-    condition     = length(data.aws_ec2_managed_prefix_list.cloudfront_origin_facing) == 0
+    condition     = length(data.aws_ec2_managed_prefix_list.cdn_origin_facing) == 0
     error_message = "Nothing to look up in any mode"
   }
 }
 
-run "vpc_and_cloudfront_trust_adds_the_sorted_cloudfront_ranges" {
+run "vpc_and_cdn_trust_adds_the_sorted_cloudfront_ranges" {
   command = plan
 
   variables {
-    forwarded_allow_ips_trust = "vpc_and_cloudfront"
+    trusted_proxies = "vpc_and_cdn"
   }
 
   override_data {
-    target = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing[0]
+    target = data.aws_ec2_managed_prefix_list.cdn_origin_facing[0]
     values = {
       entries = [
         { cidr = "203.0.113.0/24", description = "range b" },
@@ -172,10 +172,10 @@ run "rejects_an_unknown_trust_mode" {
   command = plan
 
   variables {
-    forwarded_allow_ips_trust = "everyone"
+    trusted_proxies = "everyone"
   }
 
-  expect_failures = [var.forwarded_allow_ips_trust]
+  expect_failures = [var.trusted_proxies]
 }
 
 # ---- services and secrets ----
@@ -271,12 +271,12 @@ run "api_scales_by_requests_cpu_connections_and_schedule" {
   }
 
   assert {
-    condition     = keys(local.api_autoscaling.step_policies) == ["connections_high"]
-    error_message = "One step policy on the approximate connections per task"
+    condition     = keys(local.api_autoscaling.step_policies) == ["streams_high"]
+    error_message = "One step policy on the approximate active streams per task"
   }
 
   assert {
-    condition     = length(local.api_autoscaling.step_policies["connections_high"].queries) == 3
+    condition     = length(local.api_autoscaling.step_policies["streams_high"].queries) == 3
     error_message = "Connections per task is metric math over two metrics"
   }
 
@@ -290,8 +290,8 @@ run "connection_step_adjustments_grow_with_the_breach" {
   command = plan
 
   assert {
-    condition = [for a in local.api_autoscaling.step_policies["connections_high"].adjustments : a.change] == [1, 2] && (
-      local.api_autoscaling.step_policies["connections_high"].adjustments[0].upper == local.api_autoscaling.step_policies["connections_high"].adjustments[1].lower
+    condition = [for a in local.api_autoscaling.step_policies["streams_high"].adjustments : a.change] == [1, 2] && (
+      local.api_autoscaling.step_policies["streams_high"].adjustments[0].upper == local.api_autoscaling.step_policies["streams_high"].adjustments[1].lower
     )
     error_message = "One more task for a moderate breach, two for a large one, and the bands must join up"
   }
@@ -394,13 +394,13 @@ run "publishes_the_cluster_services_and_log_groups" {
       worker_log_group_name = "/example/dev/application/worker_log_group_name"
       api_max_capacity      = "/example/dev/application/api_max_capacity"
       worker_max_capacity   = "/example/dev/application/worker_max_capacity"
-      stream_maxlen         = "/example/dev/application/stream_maxlen"
+      stream_length_cap     = "/example/dev/application/stream_length_cap"
     }
     error_message = "application publishes eight keys under its own path"
   }
 
   assert {
-    condition     = local.published_strings.api_max_capacity == "10" && local.published_strings.worker_max_capacity == "6" && local.published_strings.stream_maxlen == "100000"
+    condition     = local.published_strings.api_max_capacity == "10" && local.published_strings.worker_max_capacity == "6" && local.published_strings.stream_length_cap == "100000"
     error_message = "The scaling ceilings and the stream cap are published so postdeploy sizes its alarms from the same numbers"
   }
 }

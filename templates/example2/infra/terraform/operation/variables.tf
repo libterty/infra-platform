@@ -4,7 +4,7 @@ variable "bastion_enabled" {
   default     = false
 }
 
-variable "bastion_instance_type" {
+variable "bastion_instance_size" {
   description = "Instance type of the bastion; it must match the arm64 AMI the ec2-bastion module picks."
   type        = string
   default     = "t4g.nano"

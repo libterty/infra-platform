@@ -58,5 +58,5 @@ module "bastion" {
   subnet_id             = module.shared.lists["app_subnet_ids"][0]
   security_group_ids    = [module.shared.strings["bastion_sg_id"]]
   instance_profile_name = module.bastion_role[0].instance_profile_name
-  instance_type         = var.bastion_instance_type
+  instance_type         = var.bastion_instance_size
 }

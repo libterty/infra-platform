@@ -130,14 +130,14 @@ run "guardrail_names_fit_the_bedrock_limit" {
 
   assert {
     condition = alltrue([
-      for n in concat([for t in values(local.guardrail_input_targets) : t.name], [local.guardrail_output_name]) :
+      for n in concat([for t in values(local.guardrail_input_targets) : t.name], [local.output_guardrail_name]) :
       length(n) <= 50 && can(regex("^[0-9A-Za-z_-]+$", n))
     ])
     error_message = "Guardrail names are 1-50 characters of letters, digits, hyphens and underscores"
   }
 
   assert {
-    condition     = local.guardrail_input_targets["profile_a"].name == "example-dev-input-profile_a" && local.guardrail_output_name == "example-dev-output"
+    condition     = local.guardrail_input_targets["profile_a"].name == "example-dev-input-profile_a" && local.output_guardrail_name == "example-dev-output"
     error_message = "Guardrails are <project>-<env>-input-<profile> and <project>-<env>-output"
   }
 }
