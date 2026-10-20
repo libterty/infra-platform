@@ -2,7 +2,7 @@
 
 建一個 AgentCore Gateway（MCP）與它的 target。target 只收兩種：Lambda、MCP server。Gateway 一定要有 inbound 認證，預設 `AWS_IAM`（呼叫端用自己的 role 簽 SigV4），也可以用 `CUSTOM_JWT`；不收 `NONE`。
 
-**這個 module 的行為沒有在任何環境部署過。** 每一條行為都只有 provider schema 與 AWS 文件當依據。
+**這個 module 的行為沒有在任何環境部署過。** 下面寫的行為都只根據 provider schema 與 AWS 文件。
 
 ## 用法
 
@@ -47,17 +47,17 @@ module "gateway" {
 
 - **Lambda 的工具定義只能是「一層屬性」或「S3 上的完整定義」。** provider 的 inline 工具定義是多層 block（`input_schema` → `property` → `items` → …，第三層之後才是 JSON 字串），Terraform 沒有遞迴，寫不出任意深度。工具輸入只有一層屬性時用 `tools`；需要巢狀型別（例如陣列裡放物件）時，把完整的工具定義放在 S3，給 `tool_schema_s3_uri`。`tools` 裡 `type = "array"` 或 `"object"` 的屬性不會帶 `items`／`properties`，AWS 是否接受這種寫法**未實測**。
 - **MCP server target 不帶 outbound 認證。** AWS 是否接受不帶 `credential_provider_configuration` 的 MCP server target **未實測**。如果不接受，MCP server target 在 credential provider module 做出來之前無法使用。
-- **Lambda target 一律用 Gateway 自己的 role 呼叫 Lambda**（`gateway_iam_role`）。`role_arn` 那支 role 要有對應 Lambda 的 `lambda:InvokeFunction`，這個 module 不建 IAM，由呼叫端附加。少了權限的症狀是工具呼叫失敗，看起來像 Lambda 本身出錯。
+- **Lambda target 一律用 Gateway 自己的 role 呼叫 Lambda**（`gateway_iam_role`）。`role_arn` 那支 role 要有對應 Lambda 的 `lambda:InvokeFunction`，這個 module 不建 IAM，由呼叫端附加。少了這個權限，工具呼叫會失敗，看起來像 Lambda 本身出錯。
 - **`tool_schema_s3_uri` 的 S3 物件由 Gateway 的 role 讀取**，role 也要有那個物件的 `s3:GetObject`。
 - **名稱規則與 `discovery_url` 的格式檢查是照 API 文件寫的，未實測。** 名稱只收英數與單一 `-`，最多 100 字；target 名稱就是 `targets` 的 key。
 - **`CUSTOM_JWT` 要有 IdP。** `discovery_url` 必須是 `https://` 且以 `/.well-known/openid-configuration` 結尾，`allowed_audience` 與 `allowed_clients` 至少一個非空。
 - **`AWS_IAM` 時呼叫端要有 `bedrock-agentcore:InvokeGateway`**，resource 是 `gateway_arn`。
-- **Lambda target 預設只能在目前的帳號。** `lambda_arn` 的帳號不是目前帳號、也不在 `allowed_account_ids` 裡，plan 會被 precondition 擋下（帳號來自 `aws_caller_identity`，variable validation 讀不到 data source）。要接別的帳號的 Lambda，把那個帳號 ID 明寫進 `allowed_account_ids`。
-- **`tool_schema_s3_uri` 沒有帳號檢查。** S3 URI 不帶帳號，module 判斷不了 bucket 屬於誰；bucket 的歸屬由 Gateway role 的 `s3:GetObject` 範圍控制。
+- **Lambda target 預設只能在目前的帳號。** `lambda_arn` 的帳號如果不是目前帳號、也不在 `allowed_account_ids` 裡，precondition 會在 plan 時擋下（帳號來自 `aws_caller_identity`，variable validation 讀不到 data source）。要接別的帳號的 Lambda，把那個帳號 ID 明寫進 `allowed_account_ids`。
+- **`tool_schema_s3_uri` 沒有帳號檢查。** S3 URI 不帶帳號，module 判斷不了 bucket 屬於誰；要限制能讀哪些 bucket，靠的是 Gateway role 的 `s3:GetObject` 範圍。
 
 ## 刻意不做
 
-- credential provider（API key、OAuth）：要把 secret 交給 AgentCore。之後若做，另開 module，值不進 state。
+- credential provider（API key、OAuth）：需要把 secret 交給 AgentCore。之後要做的話另開 module，值不進 state。
 - OpenAPI、Smithy、API Gateway、connector 型 target。
 - MCP server target 的 inline 工具定義：MCP server 的工具清單由 server 自己回報。
 - `private_endpoint`（VPC Lattice）、interceptor、policy engine、`exception_level`。

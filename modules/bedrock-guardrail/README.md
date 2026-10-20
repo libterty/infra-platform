@@ -38,14 +38,14 @@ module "guardrail" {
 
 - **`version` 輸出固定是 `DRAFT`，對 guardrail 的任何修改都會立刻生效。** 呼叫端用的就是 `DRAFT`，沒有「先發佈版本、再切換」的緩衝：`terraform apply`、Console 或 API 對這支 guardrail 的修改，下一個請求就套用。建議用 SCP 或 permission boundary 把 `bedrock:UpdateGuardrail`（以及 `bedrock:DeleteGuardrail`）限制成只有部署用的 role 能呼叫，避免有人在 Console 改掉政策而 Terraform 下次 apply 前都沒人發現。這個 module 不建 IAM，也不建這條限制。
 - `CLASSIC` 只有在 `tier` 明寫時才會用到，預設一律 `STANDARD`。
-- **資源就位不等於生效**：guardrail 建好、IAM 給了，應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫帶上 guardrail）就沒有效果。
+- **建好資源還不會生效。** guardrail 建好、IAM 也給了，應用程式沒有呼叫 `ApplyGuardrail`（或沒有在模型呼叫時帶上 guardrail），guardrail 就沒有作用。
 - `STANDARD` 的 `ApplyGuardrail` 另外對 guardrail profile 授權，AWS 會動態選 region，IAM 的 Resource 要寫 `arn:<partition>:bedrock:*:<account>:guardrail-profile/<profile_id>`（region 用 `*`，profile id 用確切值）。這個 module 不建 IAM，`cross_region_profile_id` 輸出給 IAM 那邊用。
 - `PROMPT_ATTACK` 只評估輸入，`output_strength` 必須是 `NONE`，其他值 API 會拒絕。
 - denied topic 沒有 `input_enabled`／`output_enabled`；要只作用在某一側，就放在只有那一側會呼叫的那支 guardrail。排除條件只能寫在 `definition`，`examples` 只放正面例子。
 - 每種 policy 的輸入為空時整塊不送（Bedrock 拒收空清單）；但至少要有一種 policy。
 - `kms_key_arn` 只收 `arn:aws:kms:<region>:<account>:key/<uuid>` 或 multi-region key 的 `key/mrk-<32 碼>`，alias 與 `*` 都擋。給自管 key 時，key policy 要允許 Bedrock 使用；需要哪些 principal 與條件**未實測**。
 - `pii_entities` 的 key 只收 aws provider 6.69.0 驗證的 31 種 PII 類型（全大寫，例如 `EMAIL`、`PHONE`、`CREDIT_DEBIT_CARD_NUMBER`、`US_SOCIAL_SECURITY_NUMBER`），清單取自 provider 在 plan 時回報的允許值，跟 AWS 文件的 `GuardrailPiiEntityConfig` 一致。module 先擋是為了讓錯誤指到 `pii_entities`；AWS 新增類型時要跟著 provider 版本更新這份清單。
-- 下列 validation 照 AWS 文件或單一實例推出來，**未實測**：profile id 的格式、PII 與 regex 的 action、grounding 門檻 0–0.99、「至少一種 policy」。
+- 下列 validation 是照 AWS 文件或單一實例推出來的，**未實測**：profile id 的格式、PII 與 regex 的 action、grounding 門檻 0–0.99、「至少一種 policy」。
 
 ## 刻意不做
 

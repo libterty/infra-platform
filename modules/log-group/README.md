@@ -1,6 +1,6 @@
 # log-group
 
-建一個 CloudWatch log group，可選 KMS 加密與一個 subscription filter。給 Lambda、應用程式自訂 log、範本 stack 需要的 log 用。`ecs-service`、`rds` 自己的 log group 仍由它們自己建，不改成呼叫這個 module。
+建一個 CloudWatch log group，可以選擇加上 KMS 加密和一個 subscription filter。用在 Lambda、應用程式自訂 log，以及範本 stack 需要的 log。`ecs-service`、`rds` 的 log group 還是由它們自己建，不改成呼叫這個 module。
 
 ## 用法
 
@@ -25,9 +25,9 @@ module "worker_logs" {
 - **保留天數不接受 0（永不過期）**，也不接受 CloudWatch Logs 不支援的值（例如 2）。
 - 用 `kms_key_arn` 時，key policy 必須允許 `logs.<region>.amazonaws.com`，否則 log group 建不起來。
 - `subscription.destination_arn` 可以是 Lambda、Kinesis、Firehose 或 logs destination。Kinesis 與 Firehose 一定要給 `role_arn`；這個 module 不建 IAM，role 請用 `iam-role` 建好再傳進來。
-- Lambda 目的地需要 `aws_lambda_permission` 允許 `logs.amazonaws.com` 呼叫，這個 module 不建，由擁有那支 Lambda 的 stack 建。
+- 目的地是 Lambda 時，需要 `aws_lambda_permission` 允許 `logs.amazonaws.com` 呼叫。這個 permission 不在這個 module 建，由擁有那支 Lambda 的 stack 建。
 - `filter_pattern` 為空字串時轉送所有事件。
-- subscription filter 的名稱等於 log group 名稱。
+- subscription filter 的名稱跟 log group 名稱相同。
 
 ## 刻意不做
 

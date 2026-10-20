@@ -1,6 +1,6 @@
 # kms-key
 
-建一把對稱式 customer managed key（CMK）、它的 key policy 與 alias。專案共用的那把由 `foundation` stack 呼叫一次。
+建一把對稱式 customer managed key（CMK），連同它的 key policy 與 alias。專案共用的那把 key 由 `foundation` stack 呼叫這個 module 一次建立。
 
 ## 用法
 
@@ -34,16 +34,16 @@ module "key" {
 
 policy 由三種 statement 依序串成，一律用 `jsonencode` 產生：
 
-1. **帳號 root**：`arn:aws:iam::<account>:root` 取得 `kms:*`。永遠是第一段，不能移除；少了它，IAM policy 就無法再授權這把 key，key 可能變成沒人管得了。
-2. **管理者**：`administrator_arns` 有給才有。只給管理動作（建立、停用、輪替、排程刪除等），不含 `Encrypt`、`Decrypt`、`GenerateDataKey*`。
-3. **服務**：每個 `service_principals` 一段，`Resource = "*"`（key policy 裡的 `*` 指這把 key 本身）。預設動作是 `kms:Decrypt`、`kms:GenerateDataKey*`、`kms:DescribeKey`。
+1. 帳號 root：`arn:aws:iam::<account>:root` 取得 `kms:*`。永遠是第一段，不能移除；少了它，IAM policy 就沒辦法再授權這把 key，這把 key 可能變成沒人管得了。
+2. 管理者：`administrator_arns` 有給才有。只給管理動作（建立、停用、輪替、排程刪除等），不含 `Encrypt`、`Decrypt`、`GenerateDataKey*`。
+3. 服務：每個 `service_principals` 一段，`Resource = "*"`（key policy 裡的 `*` 指這把 key 本身）。預設動作是 `kms:Decrypt`、`kms:GenerateDataKey*`、`kms:DescribeKey`。
 
 ## 注意
 
 - key policy 是 resource policy，不是 IAM 資源，所以這個 module 不建任何 `aws_iam_*`。
-- 服務 principal 必須以 `.amazonaws.com` 結尾，動作不可給 `*` 或 `kms:*`，管理者必須是 IAM role 或 user ARN 且不可含萬用字元。
-- 每個 AWS 服務接受哪些條件 key 各不相同，這個 module 只把你給的條件原樣寫進 policy，**沒有在實環境驗證**。`rds`、`secretsmanager` 這類服務通常靠 `kms:ViaService` 走 IAM 授權即可，是否要放進 key policy 依實測決定。
-- `deletion_window_in_days` 預設 30，範圍 7–30。刪除 key 前，所有用它加密的資料都會變成無法解密。
+- 服務 principal 必須以 `.amazonaws.com` 結尾；動作不可給 `*` 或 `kms:*`；管理者必須是 IAM role 或 user ARN，且不可含萬用字元。
+- 每個 AWS 服務接受的條件 key 都不一樣。這個 module 只把你給的條件原樣寫進 policy，**沒有在實際環境驗證過**。`rds`、`secretsmanager` 這類服務通常靠 `kms:ViaService` 走 IAM 授權就夠了，要不要放進 key policy，看實測結果決定。
+- `deletion_window_in_days` 預設 30，範圍 7–30。key 刪除後，所有用它加密的資料都無法再解密。
 
 ## 刻意不做
 

@@ -1,6 +1,6 @@
 # 專案 infra 範本
 
-這份範本把一個專案的 AWS 基礎建設拆成 9 個 Terraform stack，依序 apply 就能得到 ALB 在 public subnet、ECS 服務與資料庫在 private subnet 的三層架構。第 9 個 stack `agent`（AgentCore 與 Bedrock）預設關閉，沒有設定時什麼都不建，其他 stack 的 plan 也跟沒有它時一樣。stack 本身只呼叫 `modules/` 底下的共用 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器；stack 之間只透過 SSM Parameter Store 傳值。
+這份範本把一個專案的 AWS 基礎建設拆成 9 個 Terraform stack，依序 apply 完就是一個三層架構：ALB 在 public subnet，ECS 服務與資料庫在 private subnet。第 9 個 stack `agent`（AgentCore 與 Bedrock）預設關閉，沒有設定時什麼都不建，其他 stack 的 plan 也跟沒有它時一樣。stack 本身只呼叫 `modules/` 底下的共用 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器；stack 之間只透過 SSM Parameter Store 傳值。
 
 設計理由與每個 module 的介面見 [`docs/design/v1/design-docs.md`](../../../docs/design/v1/design-docs.md) 第 5 章。這份文件只講怎麼用。
 
@@ -33,7 +33,7 @@ infra/
 | `tests/` | `terraform test`，全部用 mock provider，不需要任何 AWS 憑證 |
 | `.terraform.lock.hcl` | 進版控 |
 
-`network`、`data`、`agent`、`loadbalancer`、`application` 另有 `envs/examples/{poc,standard,high}.tfvars`：依流量調整規格的範例，本身不 apply，複製成 `envs/<env>.tfvars` 再改。`scripts/validate.sh` 會拿每個範例各跑一次測試，確保範例沒有壞掉。
+`network`、`data`、`agent`、`loadbalancer`、`application` 另有 `envs/examples/{poc,standard,high}.tfvars`：依流量調整規格的範例，本身不 apply，複製成 `envs/<env>.tfvars` 再改。`scripts/validate.sh` 會拿每個範例各跑一次測試，確認範例沒有壞掉。
 
 ## apply 順序
 
@@ -57,7 +57,7 @@ infra/
 
 destroy 前要先處理三件事，否則會失敗：把 ALB 與資料庫的 `deletion_protection` 改成 `false` 並 apply；清空 ECR repository（`force_delete = false`）；清空兩個 log bucket（`force_destroy = false`）。
 
-已經部署過、還沒有這些 LLM 相關 key 的環境升級到這一版時，也照上表從 `containerimage` 開始逐一 apply，不能跳過 `agent`：`iam-base`、`iam-app`、`application` 一律讀 `containerimage/agent_runtimes`、`network/agent_data_access`、`agent/*` 這些 key，上游還沒發布時 plan 會因為讀不到 SSM 參數而失敗。什麼都沒開時，這一輪只會多出這些 SSM 參數，不建其他資源。
+環境如果已經部署過、但還沒有這些 LLM 相關 key，升級到這一版時也照上表從 `containerimage` 開始逐一 apply，不能跳過 `agent`。因為 `iam-base`、`iam-app`、`application` 一律讀 `containerimage/agent_runtimes`、`network/agent_data_access`、`agent/*` 這些 key，上游還沒發布時 plan 會因為讀不到 SSM 參數而失敗。什麼都沒開時，這一輪只會多出這些 SSM 參數，不建其他資源。
 
 這份範本不提供 `stacks.sh` 之類一鍵跑全部的腳本。順序就是上表，靠人照著跑。
 
@@ -96,7 +96,7 @@ terraform plan -var-file=envs/dev.tfvars
 
 ## 單一決定點
 
-兩個以上的 stack 都要知道的開關，只由上游一個 stack 決定並發布，下游讀取並用 precondition 檢查自己的設定跟它一致。不一致時 plan 就失敗，不會 apply 出「security group 以為有 HTTPS、ALB 實際只開 HTTP」這類組合。
+如果一個開關有兩個以上的 stack 要知道，就只由上游一個 stack 決定並發布；下游讀進來之後，用 precondition 檢查自己的設定跟它一致。不一致時 plan 就失敗，不會 apply 出「security group 以為有 HTTPS、ALB 實際只開 HTTP」這類組合。
 
 | 決定點 | 決定者 | 誰讀 | 下游怎麼檢查或使用 |
 |---|---|---|---|
@@ -180,7 +180,7 @@ terraform plan -var-file=envs/dev.tfvars
 }
 ```
 
-沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個，有沒有開 Proxy 與資料庫型態由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。`cluster_arn`（`rds` 型態是 `null`）與 `data_api` 給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
+沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個。有沒有開 Proxy、資料庫是哪種型態，都由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。`cluster_arn`（`rds` 型態是 `null`）與 `data_api` 給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
 
 ## 開啟 LLM 與 AgentCore
 
@@ -200,7 +200,7 @@ terraform plan -var-file=envs/dev.tfvars
 注意事項：
 
 - 客戶自管 VPC（模式 A，`nat.mode` 是 `external`）：NAT 由客戶負責，範本不檢查。客戶 VPC 沒有 NAT 時，要自己準備 mirror 映像、三個 interface endpoint，並且 **VPC 要有 S3 gateway endpoint**（ECR 映像的 layer 存在 S3，範本不管客戶 VPC 的 gateway endpoint）。自建 VPC 的 `modules/vpc` 預設就有 S3 gateway endpoint，不用另外處理。
-- 服務的 security group 本來就開 443 對外，endpoint 的 security group 對 VPC CIDR 開 443，追蹤不需要新的 security group 規則。
+- 服務的 security group 本來就開 443 對外，endpoint 的 security group 也對 VPC CIDR 開 443，所以追蹤不需要新增 security group 規則。
 - 抽樣規則（`application` 的 `xray_sampling_rules`、`xray_groups`）跟追蹤開關無關，維持原樣；規則的 `service_name` 要寫 `<project>-<env>-<service>`，跟 `OTEL_SERVICE_NAME` 一致。sampling rule 只對向 X-Ray 拉規則的 SDK 或 collector 生效，條件見 observability 指南。
 - `application/envs/examples/high.tfvars` 有 `adot_collector` 與抽樣規則的示範。
 - 整套接線都沒有在真實帳號驗證過，見下面〈驗證〉的清單。
@@ -245,7 +245,7 @@ terraform plan -var-file=envs/dev.tfvars
 - 路由、internet gateway、NAT、gateway endpoint、default security group 一律不碰，`nat` 發布 `{"mode":"external","ids":[]}`。
 - `azs` 取自 `app` tier subnet 的 AZ；三個 tier 的 subnet 要用同一個 AZ 順序，這一點程式不檢查。
 
-模式 B 與其他 stack 交給客戶時，沒有檔案就無法 `init`，也就不會誤跑。建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter`。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
+`network` 用模式 B，或其他 stack 交給客戶時，該環境沒有 `envs/<env>.*` 檔案，就無法 `init`，也就不會誤跑。建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter`。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
 
 ## RDS Proxy 第一次部署：兩段式步驟（未驗證）
 
@@ -262,7 +262,7 @@ RDS Proxy 建立時，它的 role 還沒有讀 secret 的權限（權限由 `iam
 
 ## Knowledge Base 第一次部署：兩段式步驟
 
-`agent` 替每個 KB 建一個 Secrets Manager secret `<project>-<env>-kb-<key>-db`，用 `foundation` 的專案 KMS key 加密，跟 `foundation` 的 `app` secret 一樣只建容器、不含值：帳密不進 tfvars、SSM 與 state。值由專案寫入。Bedrock 建立 KB 時會不會檢查資料庫帳號，**沒有實測過**，所以照「會檢查」排成兩段：`knowledge_bases[*].database_user_ready` 預設 `false`，只建 secret 與語料 bucket，不建 KB。
+`agent` 替每個 KB 建一個 Secrets Manager secret `<project>-<env>-kb-<key>-db`，用 `foundation` 的專案 KMS key 加密。這個 secret 跟 `foundation` 的 `app` secret 一樣只建容器、不含值，帳密不進 tfvars、SSM 與 state，值由專案寫入。Bedrock 建立 KB 時會不會檢查資料庫帳號，**沒有實測過**，所以照「會檢查」排成兩段：`knowledge_bases[*].database_user_ready` 預設 `false`，只建 secret 與語料 bucket，不建 KB。
 
 | 步驟 | 誰 | 做什麼 |
 |---|---|---|
@@ -290,6 +290,6 @@ mock 驗不到的事（IAM 實際權限、AWS API 的參數檢查、資源配額
 
 ## 已知風險
 
-- 應用程式直接用資料庫的 master secret，這是第一版的已知風險：master 帳號權限最大，應用程式被打穿時影響整個資料庫。緩解是只有 `data_access` 名單上的服務能讀，且 secret 由 task role 自己讀，不經共用的 execution role。之後要補應用程式專用帳號，或改用 Proxy 的 IAM 認證。
+- 應用程式直接用資料庫的 master secret，這是第一版的已知風險：master 帳號權限最大，應用程式被打穿時影響整個資料庫。緩解方式：只有 `data_access` 名單上的服務能讀，而且 secret 由 task role 自己讀，不經過共用的 execution role。之後要補應用程式專用帳號，或改用 Proxy 的 IAM 認證。
 - 範本沒有建 WAF Web ACL，只提供 `web_acl_arn` 讓 ALB 關聯既有的 Web ACL。
 - 範本沒有 Redis、部署 workflow、state bucket 本身。

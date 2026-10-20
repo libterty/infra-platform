@@ -1,6 +1,6 @@
 # 專案 infra 規範：怎麼照範本開 `infra/` 目錄
 
-給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，就照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
+給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
 這份以 `project-infra` 範本為準。repo 另有一份拆法不同的範本 `templates/example2/`（11 個 stack，環境是 `dev`、`sit`），複製與改值的做法一樣，細節看它自己的 `infra/README.md`。
 
@@ -76,7 +76,7 @@ destroy 反過來（8 到 1），之前先做三件事，否則會失敗：
 
 可以留在 stack 的：`data "aws_caller_identity"`、`data "aws_region"`、模式 A 的 `data "aws_vpc"`／`data "aws_subnet"`、`terraform_data`（範本用它放 precondition）。不可以的：`data "aws_ssm_parameter"`（只能經 `ssm-read`）、任何 `aws_iam_*`（只能經 `iam-role`、`iam-role-policy`）、任何 SG 資源（只能經 `security-group`）。
 
-IAM 只在 `iam-base`、`iam-app` 兩個 stack 呼叫 IAM module，權限審查只要看這兩個地方；客戶的部署 role 不能改 IAM 時，也只要把這兩個 stack 交給客戶。
+只有 `iam-base`、`iam-app` 兩個 stack 會呼叫 IAM module，所以權限審查只要看這兩個地方；客戶的部署 role 不能改 IAM 時，也只要把這兩個 stack 交給客戶。
 
 ## 為什麼 IAM 拆成兩個 stack
 
@@ -108,7 +108,7 @@ Proxy role 還沒有讀 secret 的權限時，AWS 是讓 Proxy 建立失敗，�
 
 ### 讀取寫法
 
-`ssm-inputs.tf` 先把 key 清單放進 local，再傳給 `ssm-read`。放 local 是因為 `terraform test` 讀不到 module 的輸入值，測試要斷言「這個 stack 只讀這些 key」時，只能斷言 local：
+`ssm-inputs.tf` 先把 key 清單放進 local，再傳給 `ssm-read`。放 local 是因為 `terraform test` 讀不到 module 的輸入值；測試要斷言「這個 stack 只讀這些 key」，只能對 local 斷言：
 
 ```hcl
 locals {
@@ -130,7 +130,7 @@ module "in" {
 }
 ```
 
-有些 key 每個服務一組（例如 `containerimage/ecr_<service>_arn`），名稱要看服務清單，而服務清單本身也是從 SSM 讀來的。讀這類 key 的 stack 要用第二個 `ssm-read`，範本的 `iam-base` 與 `application` 都是這樣寫：
+有些 key 每個服務一組（例如 `containerimage/ecr_<service>_arn`），名稱要看服務清單，而服務清單本身也從 SSM 讀。讀這類 key 的 stack 要用第二個 `ssm-read`，範本的 `iam-base` 與 `application` 都是這樣寫：
 
 ```hcl
 locals {

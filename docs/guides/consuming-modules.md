@@ -49,7 +49,7 @@ terraform init -backend=false
 `.terraform.lock.hcl` 只鎖 provider，不鎖 module。module 的版本在 `init` 時解析：
 
 - 已經 init 過的目錄，`init` 會沿用 `.terraform/modules/` 裡符合約束的版本；`init -upgrade` 才會換成範圍內最新的版本。
-- CI 每次都是乾淨的目錄，會直接拿到範圍內最新的版本。所以新的 patch 版發佈之後，CI 的 plan 就會用到它。PATCH 依規則不改 plan，有差異就是 module 的 bug，回報給 platform team。
+- CI 每次都從乾淨的目錄開始，會直接拿到範圍內最新的版本，所以新的 patch 版一發佈，CI 的 plan 就會用到。照規則 PATCH 不會改變 plan，有差異就是 module 的 bug，回報給 platform team。
 - 要完全固定版本（例如正式環境的變更凍結期），把 `version` 寫成精確版本 `"0.1.1"`。
 
 實際解析到哪個版本記在 `<TF_DATA_DIR>/modules/modules.json`（預設 `.terraform/modules/modules.json`）：
@@ -101,7 +101,7 @@ jq -r '.Modules[] | select(.Version) | "\(.Source) \(.Version)"' infra/terraform
 rm -rf infra/terraform/*/.terraform-check
 ```
 
-要把 module 再換成客戶 repo 內的 vendored 目錄，是 FDE 用 `scripts/vendor-modules.sh` 做的另一件事，見 [`delivering-to-customer.md`](./delivering-to-customer.md)。
+把 module 再換成客戶 repo 內的 vendored 目錄是另一件事，由 FDE 用 `scripts/vendor-modules.sh` 做，見 [`delivering-to-customer.md`](./delivering-to-customer.md)。
 
 ## 升版
 

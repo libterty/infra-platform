@@ -1,6 +1,6 @@
 # xray
 
-建 X-Ray 的 sampling rule 與 group。sampling rule 控制「抓多少」，是追蹤成本的主要開關；group 用 filter expression 把錯誤或慢的 trace 獨立出來看，可選開 X-Ray Insights。兩個 map 都可以不給，這時什麼都不建。
+建 X-Ray 的 sampling rule 與 group。sampling rule 控制「抓多少」，是追蹤成本的主要開關；group 用 filter expression 把錯誤或慢的 trace 獨立出來看，也可以選擇開 X-Ray Insights。兩個 map 都可以不給，不給就什麼都不建。
 
 ## 用法
 
@@ -34,7 +34,7 @@ module "xray" {
 - 要用 remote sampling，task role 要有 `xray:GetSamplingRules`、`xray:GetSamplingTargets`（只支援 `Resource = "*"`），這個 module 不建 IAM。
 - rule 與 group 的名稱是 `<name_prefix>-<key>`，X-Ray 限制 32 字元，超過會在 plan 階段被擋。
 - `priority` 越小越先套用，帳號內建的 `Default` rule 是 10000。同一次呼叫裡 `priority` 不可重複。
-- sampling rule 是帳號層級的資源，名稱帶 `name_prefix` 才不會跟同帳號其他專案撞。
+- sampling rule 是帳號層級的資源，名稱帶 `name_prefix` 才不會跟同帳號其他專案撞名。
 - `notifications_enabled = true` 時，`insights_enabled` 也必須是 `true`（X-Ray 的限制）。Insights 另外計費；group 本身不省錢，成本由 sampling rule 控制。
 
 ## 刻意不做

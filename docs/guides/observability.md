@@ -2,9 +2,9 @@
 
 結論：範本已經把 X-Ray 追蹤接好，預設關閉。要開，照三步：`iam-app` 的 `tracing` 列出要追蹤的服務（task role 拿到 X-Ray 的四個動作）、`application` 的 `adot_collector` 指定 collector 映像（被追蹤的服務才掛 ADOT collector sidecar 並設 OTLP 環境變數）、沒有 NAT 時改用 mirror 映像並在 `network` 加 endpoint。抽樣用 `application` 的 `xray_sampling_rules` 控制成本，log 裡的事件用 `log_alarms` 接告警。
 
-「要不要追蹤」只有一個決定點：`iam-app/tracing`。`application` 沒有自己的追蹤開關，所以不會出現「掛了 collector 但 task role 沒有權限」或反過來。範本預設不開，沒有服務被追蹤時，task definition 跟沒有這個功能時完全一樣。設計理由見 design 決策 36（推翻決策 32 的後半句）與 §4.20、§5.3〈追蹤〉。
+「要不要追蹤」只有一個決定點：`iam-app/tracing`。`application` 沒有自己的追蹤開關，所以不會出現「掛了 collector 但 task role 沒有權限」或反過來的情況。範本預設不開；沒有服務被追蹤時，task definition 跟沒有這個功能時完全一樣。設計理由見 design 決策 36（推翻決策 32 的後半句）與 §4.20、§5.3〈追蹤〉。
 
-以下都沒有在真實帳號驗證過，對應設計文件 §7.3 第 13 項。這份 guide 不會被 CI 驗證，HCL 片段以範本的檔案為準：`iam-app/task-roles.tf`、`application/tracing.tf`、`application/adot-collector.yaml`。
+以下都沒有在真實帳號驗證過，對應設計文件 §7.3 第 13 項。CI 不驗證這份 guide，HCL 片段以範本的檔案為準：`iam-app/task-roles.tf`、`application/tracing.tf`、`application/adot-collector.yaml`。
 
 ## 整體分工
 
@@ -133,7 +133,7 @@ repository URL 不用寫：`application` 從 `containerimage/ecr_mirror_adot_col
 
 ### 替代方案：ECR pull-through cache
 
-ECR 的 pull-through cache 規則讓帳號自己的 ECR 在第一次被拉取時，自動從 ECR Public 抓一份進來，不需要人或 CI 複製映像，也不用管 tag。但目前這個 repo 沒有管 `aws_ecr_pull_through_cache_rule` 的 module，要用就得新增一個（還要處理 execution role 多出的 `ecr:CreateRepository`、`ecr:BatchImportUpstreamImage` 權限，以及第一次拉取時要連得到上游），第一版不做。需要時先用上面的 mirror 做法。
+設了 ECR 的 pull-through cache 規則，帳號自己的 ECR 在第一次有人拉取時，會自動從 ECR Public 抓一份進來，不需要人或 CI 複製映像，也不用管 tag。不過這個 repo 目前沒有管 `aws_ecr_pull_through_cache_rule` 的 module，要用就得新增一個（還要處理 execution role 多出的 `ecr:CreateRepository`、`ecr:BatchImportUpstreamImage` 權限，以及第一次拉取時要連得到上游），第一版不做。需要時先用上面的 mirror 做法。
 
 ## 範本接的 sidecar 與 example 逐行對照
 
@@ -156,7 +156,7 @@ ECR 的 pull-through cache 規則讓帳號自己的 ECR 在第一次被拉取時
 
 collector 只負責送 trace，不在請求路徑上。`essential = true` 時 collector 一掛掉，ECS 會停掉整個 task 重開，追蹤元件的故障就變成服務中斷。設成 `false`，collector 掛了只是少一段時間的 trace，主 container 照常服務。
 
-`app_depends_on = "START"` 讓主 container 等 collector 啟動後才啟動，減少開機時第一批 trace 送不出去的機會；用 `START` 而不是 `HEALTHY`，是不讓 collector 的健康狀態卡住服務啟動。
+`app_depends_on = "START"` 讓主 container 等 collector 啟動後才啟動，減少開機時第一批 trace 送不出去的機會；用 `START` 而不是 `HEALTHY`，是為了不讓 collector 的健康狀態卡住服務啟動。
 
 ## collector 設定：`application/adot-collector.yaml`
 
@@ -194,9 +194,9 @@ service:
       exporters: [awsxray]
 ```
 
-幾個注意：
+幾個要注意的地方：
 
-- `/healthcheck` 是 ADOT 映像內建的檢查程式，它查的是 `health_check` extension，所以設定檔一定要開這個 extension，否則 health check 一直不健康（因為 `essential = false` 加 `START`，不影響服務，但 console 會顯示 unhealthy）。範本的設定已經開了。**未驗證**。
+- `/healthcheck` 是 ADOT 映像內建的檢查程式，它查的是 `health_check` extension，所以設定檔一定要開這個 extension，否則 health check 會一直不健康（因為 `essential = false` 加 `START`，這不影響服務，但 console 會顯示 unhealthy）。範本的設定已經開了。**未驗證**。
 - `filter/health` 用的 attribute 名稱取決於 SDK 的 semantic convention 版本：新版是 `url.path`，舊版是 `http.target`，兩個都寫。health check 路徑不是 `/health` 時改這個檔。
 - `memory_limiter` 的上限要小於 `memory_reservation`（256 MiB）。sidecar 的 CPU 與記憶體從 task 的 `cpu`／`memory` 裡分，task 預設 512／1024，掛了 collector 之後主 container 能用的就少了這一塊。
 - 設定用 `environment`（`AOT_CONFIG_CONTENT`）帶，不存成 SSM parameter 再用 `secrets` 讀：設定不是機密，而且範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建。設定太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
@@ -216,7 +216,7 @@ interface_endpoints = {
 
 ## 抽樣：`xray` module
 
-抽樣規則決定送多少 trace，是控制 X-Ray 成本的主要旋鈕，跟追蹤開關無關。`application` 的三個變數預設都是 `{}`，什麼都不建；範例在 `application/envs/examples/`（`high.tfvars` 同時示範了 `adot_collector`）：
+抽樣規則決定送多少 trace，是控制 X-Ray 成本的主要手段，跟追蹤開關無關。`application` 的三個變數預設都是 `{}`，什麼都不建；範例在 `application/envs/examples/`（`high.tfvars` 同時示範了 `adot_collector`）：
 
 ```hcl
 xray_sampling_rules = {
@@ -234,7 +234,7 @@ xray_groups = {
 - 沒給的欄位是 `*`。`service_name` 要跟 `OTEL_SERVICE_NAME` 一致（`<project>-<env>-<service>`），規則才對得上。
 - 建議起點：PoC 100%、一般正式每秒 1 筆加 5%、大流量每秒 1 筆加 1～5%。這些比例都**沒有實測依據**，上線後用實際流量與帳單調。
 
-**remote sampling 的前提**：sampling rule 只對「向 X-Ray 拉規則」的 SDK 或 collector 生效。三件事都要成立：
+remote sampling 有前提：sampling rule 只對「向 X-Ray 拉規則」的 SDK 或 collector 生效，下面三件事都要成立：
 
 1. 應用程式的 SDK 設成 X-Ray remote sampler（例如 ADOT Java agent 的 `OTEL_TRACES_SAMPLER=xray`），並指到 collector 的 `awsproxy`（預設 `localhost:2000`）。
 2. collector 開了 `awsproxy` extension（範本的設定有）。

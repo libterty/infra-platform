@@ -52,9 +52,9 @@ rm -rf "$CUSTOMER_REPO"/infra/terraform/*/"$TF_DATA_DIR"
 unset TF_DATA_DIR
 ```
 
-腳本改寫的是「`source` 等於 `<registry>/<module>/aws`，而且 `modules.json` 解析到的版本等於指定 tag」的 module 區塊：`source` 換成相對路徑，同一個區塊的 `version` 那一行刪掉（本地路徑不能有 `version`）。比對 host 與 namespace 不分大小寫。module 區塊是靠大括號的層數找的，字串、註解與 heredoc 裡的內容不算；有檔案的大括號對不起來時，腳本以碼 1 拒絕。`modules.json` 比同目錄的 `.tf` 舊（init 之後又改過 `.tf`）時不採用，那個目錄的區塊會列為 `not resolved`。
+腳本改寫的是「`source` 等於 `<registry>/<module>/aws`，而且 `modules.json` 解析到的版本等於指定 tag」的 module 區塊：`source` 換成相對路徑，同一個區塊的 `version` 那一行刪掉（本地路徑不能有 `version`）。比對 host 與 namespace 不分大小寫。腳本靠大括號的層數找 module 區塊，字串、註解與 heredoc 裡的內容不算；只要有檔案的大括號對不起來，腳本就以碼 1 拒絕。如果 `modules.json` 比同目錄的 `.tf` 舊（init 之後又改過 `.tf`），腳本不採用它，那個目錄的區塊會列為 `not resolved`。
 
-所有改動都先在暫存目錄準備好，全部 module 都處理完才寫進客戶 repo，所以結束碼 1 一定代表客戶 repo 沒有被改。只有改寫過的 `.tf` 會被寫回，其他檔案一個位元組都不動。
+腳本先在暫存目錄準備好所有改動，全部 module 都處理完才寫進客戶 repo，所以結束碼是 1 時，客戶 repo 一定沒動過。寫回的只有改寫過的 `.tf`，其他檔案一個位元組都不動。
 
 ### git 寫法的專案
 
@@ -74,7 +74,7 @@ echo "$pairs"
 scripts/vendor-modules.sh --url "$PLATFORM_URL" "$CUSTOMER_REPO" $pairs
 ```
 
-兩種寫法混用的專案，`--url` 與 `--registry` 可以一起給，`pairs` 合併兩邊撈出來的結果。
+專案兩種寫法混用時，`--url` 與 `--registry` 可以一起給，`pairs` 用兩邊撈出來的結果合併。
 
 ### 腳本做的事
 
@@ -95,7 +95,7 @@ scripts/vendor-modules.sh --url "$PLATFORM_URL" "$CUSTOMER_REPO" $pairs
 | 1 | 輸入錯誤或目標不符合條件，**什麼都沒改** | 照訊息修正後重跑 |
 | 3 | 完成，但有些 `source` 沒有改寫，清單印在 stderr：git 寫法是同一個 module、ref 不同；registry 寫法是解析到別的版本（`resolved to <版本>`）或沒有 init 過（`not resolved`） | `not resolved`：那個 stack 沒有 init 或 `TF_DATA_DIR` 不一致，補 init 後重跑。版本不同：同一個 module 在客戶 repo 裡用了兩個版本，先在專案 repo 統一版本，再重新交付；不要手動把那一行改成 vendored 路徑，會變成用錯版本的程式碼 |
 
-同一個 module 在參數裡出現兩次（例如上面撈出兩個不同的 tag）會直接以碼 1 拒絕，這也是「版本不一致」的訊號。
+如果同一個 module 在參數裡出現兩次（例如上面撈出兩個不同的 tag），腳本直接以碼 1 拒絕，這也表示版本不一致。
 
 跑完之後：
 
@@ -120,17 +120,17 @@ scripts/validate.sh "$CUSTOMER_REPO"
 | `vendor/modules/<module>/` | 跟本 repo 的 `modules/<module>/` 相同（S2 放行 `ssm-publish`、S3 放行 `ssm-read`、S4 放行 `iam-role`、`iam-role-policy`、`security-group`、`vpc-interface-endpoints`、`vpc`） |
 | `infra/terraform/<stack>/` | 跟範本的 stack 相同（S4、S8 一律不准直接宣告 IAM、SG 或其他原生 resource；S5 比對客戶這幾個 stack 的 `common.tf` 彼此是否一致） |
 
-stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。這套換算要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；放在別處的目錄會被當成一般目錄，S2、S3 不放行。
+stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。這套換算要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；目錄放在別處，就當成一般目錄處理，S2、S3 不放行。
 
 確認沒問題之後在客戶 repo 裡 commit，commit message 帶上 `VERSIONS` 的內容，之後誰要追是哪個版本都查得到。
 
 ### 升版重新交付
 
-專案 repo 升了某個 module 的 `version` 或 `ref` 之後（registry 寫法吃到新的 patch 版也算），因為客戶 repo 的那一行已經是 vendored 路徑，腳本找不到可以改的 `source`，所以要從專案 repo 重新產生交付內容：把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 registry 或 `git::` 版本並 commit），照上面的步驟再跑一次（registry 寫法要重新 init）。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
+專案 repo 升了某個 module 的 `version` 或 `ref` 之後（registry 寫法吃到新的 patch 版也算），要從專案 repo 重新產生交付內容。客戶 repo 的那一行已經是 vendored 路徑，腳本找不到可以改的 `source`。做法是把專案 repo 的 `infra/` 同步到客戶 repo（覆蓋成 registry 或 `git::` 版本並 commit），再照上面的步驟跑一次（registry 寫法要重新 init）。腳本會整個換掉 `vendor/modules/<module>/` 並更新 `VERSIONS` 那一行。
 
 ## 2. provider 的離線鏡像：`terraform providers mirror`
 
-這一步是在**準備交付物的機器**上跑，給客戶環境用；不是本 repo 的驗證流程，本 repo 的實作與 CI 不跑它。它只從 registry 下載 provider，不碰任何 AWS 帳號。
+這一步在**準備交付物的機器**上跑，給客戶環境用。它不屬於本 repo 的驗證流程，本 repo 的實作與 CI 都不跑。它只從 registry 下載 provider，不碰任何 AWS 帳號。
 
 ```bash
 cd "$CUSTOMER_REPO"
@@ -175,7 +175,7 @@ provider_installation {
 - 客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要用模式 B 交給客戶。
 - 建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter`、`ssm:DeleteParameter`。
 
-交付前用客戶發布的值做一次檢查：客戶發布完之後，下游 stack 第一次 plan 就會讀那些 key，缺 key 會直接失敗（`ssm-read` 不給預設值），JSON 格式錯會在 `jsondecode` 失敗，所以缺什麼在 plan 就看得到。
+交付前用客戶發布的值檢查一次。客戶發布完之後，下游 stack 第一次 plan 就會讀那些 key：缺 key 會直接失敗（`ssm-read` 不給預設值），JSON 格式錯會在 `jsondecode` 失敗，所以缺什麼在 plan 階段就看得到。
 
 ## 4. 客戶環境差異怎麼回報
 

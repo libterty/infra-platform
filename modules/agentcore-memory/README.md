@@ -25,13 +25,13 @@ module "memory" {
 
 ## 容易出錯的地方
 
-- **事件保留天數預設 90，不用上限 365。** 保留越久、留存的個資範圍越大。這裡預設取中間值，要更長的專案自己明寫。這是判斷，不是實測結果。
-- **保留天數的下限是 7，不是 3。** API 文件寫 3–365，但 aws provider 6.69.0 在 plan 階段就擋掉 7 以下的值（`value must be between 7 and 365`）。module 照 provider 的範圍擋，錯誤訊息在 module 這一層出現，不用等到 provider 才報。
-- **`namespaces` 送進 provider 的 `namespace_templates`。** provider 6.69.0 把 strategy 的 `namespaces` 標成 deprecated，改用 `namespace_templates`。module 的輸入仍叫 `namespaces`，呼叫端不用知道這個改名。
+- **事件保留天數預設 90，不用上限 365。** 保留越久，留下的個資越多，所以預設取中間值；要更長的專案自己明寫。這個預設是判斷出來的，沒有實測。
+- **保留天數的下限是 7，不是 3。** API 文件寫 3–365，但 aws provider 6.69.0 在 plan 階段就擋掉 7 以下的值（`value must be between 7 and 365`）。module 照 provider 的範圍先擋，錯誤直接在 module 這一層報出來，不用等 provider。
+- **`namespaces` 送進 provider 的 `namespace_templates`。** provider 6.69.0 把 strategy 的 `namespaces` 標成 deprecated，改用 `namespace_templates`。module 的輸入仍叫 `namespaces`，呼叫端不用管這個改名。
 
 ## 注意
 
-- 改 `event_expiry_days` 只影響之後寫入的事件，已經存在的事件照舊的天數過期。
+- 改 `event_expiry_days` 只影響之後寫入的事件，已經寫入的事件仍照舊的天數過期。
 - 名稱只能用字母、數字、底線，字母開頭，最長 48 字。不能有 `-`，專案的命名前綴要先把 `-` 換成 `_`。provider 也會在 plan 階段擋同一條規則。
 - strategy 的名稱就是 `strategies` 的 key，規則跟 Memory 名稱相同（照 API 文件，**未實測**）。
 - strategy 只收內建的 `SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE`，每個至少一個 namespace，namespace 以 `/` 開頭（照 API 文件，**未實測**）。內建 strategy 不給 `memory_execution_role_arn` 能不能建、能不能產生長期記憶，也**未實測**。
@@ -41,7 +41,7 @@ module "memory" {
 
 ## 刻意不做
 
-- `CUSTOM` 與 self-managed strategy（`configuration` 區塊）：要自訂模型、`append_to_prompt` 與 Memory execution role，範本就得多一個 role 與權限；需要時 MINOR。
+- `CUSTOM` 與 self-managed strategy（`configuration` 區塊）：這需要自訂模型、`append_to_prompt` 與 Memory execution role，範本得多一個 role 與權限；需要時再加（MINOR）。
 - Memory execution role、Kinesis stream delivery、`indexed_key`。
 - log 與 trace delivery：用 `log-delivery`。
 - IAM。

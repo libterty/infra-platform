@@ -2,7 +2,7 @@
 
 建 interface endpoint（PrivateLink）與它們共用的 security group。
 
-名稱刻意不叫 `vpc-endpoints`：這個 module 只負責 interface endpoint。gateway endpoint（S3、DynamoDB）是路由，留在 [`vpc`](../vpc/README.md)。
+名稱刻意不叫 `vpc-endpoints`，因為這個 module 只負責 interface endpoint。gateway endpoint（S3、DynamoDB）屬於路由，留在 [`vpc`](../vpc/README.md)。
 
 interface endpoint 不碰路由，所以只要給 VPC id、subnet id 與允許的 CIDR，就能放進自己建的 VPC，也能放進客戶已經建好的 VPC。
 
@@ -28,10 +28,10 @@ module "endpoints" {
 
 - 服務名稱是 `com.amazonaws.<region>.` 之後的部分，例如 `ecr.api`；帶完整前綴會被擋下。
 - `services` 為空時什麼都不建，`security_group_id` 是 `null`。
-- SG 沒有任何 egress 規則：interface endpoint 只需要被連入。規則一律是獨立的 rule 資源。
+- SG 沒有任何 egress 規則，因為 interface endpoint 只需要接受連入。規則一律是獨立的 rule 資源。
 - `allowed_cidrs` 不接受 `0.0.0.0/0`。通常給 `[vpc_cidr]`；VPC 有 secondary CIDR 或要讓 peering 過來的網段使用時，再加進清單。
-- `private_dns_enabled = true` 需要 VPC 開啟 `enableDnsSupport` 與 `enableDnsHostnames`。自建的 VPC 由 `vpc` module 固定開啟；客戶的 VPC 要由呼叫端檢查，這個 module 讀不到 VPC 屬性。
-- `subnet_ids` 至少兩個，且應分屬不同 AZ；module 拿不到 subnet 的 AZ，不檢查。放在哪個 tier 由呼叫端決定。
+- `private_dns_enabled = true` 需要 VPC 開啟 `enableDnsSupport` 與 `enableDnsHostnames`。自建的 VPC 由 `vpc` module 固定開啟；客戶的 VPC 要由呼叫端檢查，因為這個 module 讀不到 VPC 屬性。
+- `subnet_ids` 至少兩個，且應分屬不同 AZ；module 拿不到 subnet 的 AZ，所以不檢查。放在哪個 tier 由呼叫端決定。
 - 不支援 endpoint policy，也不為每個服務建獨立的 SG。
 - 不建 IAM 資源。
 

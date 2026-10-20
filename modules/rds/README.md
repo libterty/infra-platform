@@ -1,6 +1,6 @@
 # rds
 
-建一個 PostgreSQL 資料庫，三種型態擇一：一般 RDS（`rds`）、Aurora provisioned（`aurora`）、Aurora Serverless v2（`aurora_serverless`）。RDS Proxy 是選項。不管選哪種，輸出的端點與識別碼格式都一樣，下游不用知道選了哪種。
+建一個 PostgreSQL 資料庫，三種型態擇一：一般 RDS（`rds`）、Aurora provisioned（`aurora`）、Aurora Serverless v2（`aurora_serverless`）。RDS Proxy 可選。不管選哪種，輸出的端點與識別碼格式都一樣，下游不用知道選了哪種。
 
 ## 用法
 
@@ -44,23 +44,23 @@ module "db" {
 | `identifier_type` | `instance` | `cluster` | `cluster` |
 | 連線數告警門檻 | 必填 | 必填 | 沒給時由 `max_capacity` 推算 |
 
-選了哪個型態就必須給對應的物件，另外兩個必須是 null（`deployment` 的交叉 validation）。`cluster_parameters` 只給 Aurora 用，`deployment = "rds"` 時必須為空。
+選了哪個型態就必須給對應的物件，另外兩個必須是 null（由 `deployment` 的交叉 validation 檢查）。`cluster_parameters` 只給 Aurora 用，`deployment = "rds"` 時必須為空。
 
 `aurora` 與 `aurora_serverless` 共用同一組資源位址，互換是就地修改。
 
 ## 注意
 
-- **`rds` 與 Aurora 互換是資料遷移，不是改一個變數。** 兩者的資源型別不同，互換會 destroy 加 create，被 `deletion_protection` 擋下。要換就先用 snapshot 還原或 DMS 搬資料，再切換呼叫端的連線設定。
+- **`rds` 與 Aurora 互換是資料遷移，不是改一個變數。** 兩者的資源型別不同，互換會變成 destroy 再 create，然後被 `deletion_protection` 擋下。要換就先用 snapshot 還原或 DMS 搬資料，再切換呼叫端的連線設定。
 - **一般 RDS 的端點是 `aws_db_instance.this.address`，不是 `.endpoint`**（後者是 `host:port`）。`writer_endpoint` 與 `reader_endpoint` 都不帶 port，port 看 `port` 輸出。
-- **密碼由 RDS 放在 Secrets Manager**（`manage_master_user_password = true`），module 沒有任何 password 變數。`master_user_secret_arn` 是 master 帳號的 secret。應用程式直接用 master 帳號有風險：權限過大、secret 輪替時連線會斷。第一版不管應用程式專用帳號，要的話在資料庫內自己建帳號。
+- **密碼由 RDS 放在 Secrets Manager**（`manage_master_user_password = true`），module 沒有任何 password 變數。`master_user_secret_arn` 是 master 帳號的 secret。應用程式直接用 master 帳號有風險：權限過大、secret 輪替時連線會斷。第一版不處理應用程式專用帳號，需要的話自己在資料庫裡建。
 - **Proxy 的 role 與讀 secret 的 policy 都不在這個 module。** role 由 `iam-base` 建，讀 master secret 的 policy 在 secret 存在之後由 `iam-app` 附加。
-- `proxy.role_arn` 宣告成 `optional(string)`，由 validation 擋 null：必填屬性缺漏時 Terraform 在型別轉換階段就報錯，負向測試鎖不住這件事。
+- `proxy.role_arn` 宣告成 `optional(string)`，再由 validation 擋 null。原因是必填屬性缺漏時，Terraform 在型別轉換階段就報錯，負向測試沒辦法驗證這個錯誤。
 - `app_endpoint` 與 `app_reader_endpoint` 是給應用程式的端點：有 Proxy 時是 Proxy（reader 優先用 read-only endpoint，沒有就用 Proxy 本身），沒有 Proxy 時是 DB 本身。
 - `shared_preload_libraries` 是靜態參數，module 設成 `pending-reboot`；其餘預設參數是動態參數。呼叫端另外給靜態參數時，要列進 `static_parameter_names`（0.2.0 起），否則 module 用 `immediate` 套用，AWS 會拒絕（**未驗證**）。
-- 告警的 `connections_threshold`：`aurora_serverless` 沒給時為 `floor(min(max_capacity × 2 GiB ÷ 9,531,392, 5000) × 0.8)`；`rds` 與 `aurora` 的 `max_connections` 取決於 instance class，離線算不出來，必填。
+- 告警的 `connections_threshold`：`aurora_serverless` 沒給時為 `floor(min(max_capacity × 2 GiB ÷ 9,531,392, 5000) × 0.8)`；`rds` 與 `aurora` 的 `max_connections` 取決於 instance class，離線算不出來，所以必填。
 - **Data API（`data_api = true`）只給 Aurora。** Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取；KB 要的 cluster ARN 就是既有的 `arn` 輸出。Data API 對 Aurora PostgreSQL 有版本要求（AWS 文件寫 13.12、14.9、15.4、16.1 以上這類），**未查證**，沒有做成 validation（design §7.3）。
 - `deployment` 與 `database_name` 兩個輸出直接取變數，不讀 resource 屬性，plan 時就是已知值。
-- 以下都是 mock 驗不到的，列在 design §7.3：型態互換的實際行為、`min_capacity = 0`（閒置自動暫停）跟 engine 版本的關係、Aurora 自動 minor 升級造成的 `engine_version` 差異。
+- 下面這些 mock 驗不到，列在 design §7.3：型態互換的實際行為、`min_capacity = 0`（閒置自動暫停）跟 engine 版本的關係、Aurora 自動 minor 升級造成的 `engine_version` 差異。
 
 - **static 參數要自己列。** module 只知道 `shared_preload_libraries` 是 static；其他 static 參數（例如 `cron.database_name`）如果不列進 `static_parameter_names`，會被送成 `immediate`，apply 時 RDS 會拒絕。列了但沒有出現在 `cluster_parameters`／`instance_parameters` 的名稱不會有任何效果。static 參數的變更要重開機才生效，重開時機由呼叫端決定。
 

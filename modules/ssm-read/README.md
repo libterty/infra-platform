@@ -1,8 +1,8 @@
 # ssm-read
 
-跟 [`ssm-publish`](../ssm-publish/README.md) 配對的讀取 module。給 `<stack>/<key>` 清單，回傳字串與清單。各 stack 的 `ssm-inputs.tf` 呼叫它，不再各自寫 `data "aws_ssm_parameter"` 與 `split()`。
+跟 [`ssm-publish`](../ssm-publish/README.md) 配對的讀取 module。給 `<stack>/<key>` 清單，回傳字串與清單。各 stack 的 `ssm-inputs.tf` 都呼叫它，不用再各自寫 `data "aws_ssm_parameter"` 與 `split()`。
 
-這是專案範本裡唯一可以宣告 `data "aws_ssm_parameter"` 的地方，而且檔案裡不得出現 `.value`（`scripts/validate.sh` 的 S3 規則強制）。
+這是專案範本裡唯一可以宣告 `data "aws_ssm_parameter"` 的地方，而且檔案裡不得出現 `.value`（由 `scripts/validate.sh` 的 S3 規則強制檢查）。
 
 ## 用法
 
@@ -37,14 +37,14 @@ locals {
 - `lists` 的值以逗號切開，對應 `ssm-publish` 的逗號串接。
 - 同一個 `<stack>/<key>` 出現在多個本地名稱（含 `strings` 與 `lists` 兩邊）時只讀一次。
 - 兩個 map 都空時不讀任何參數。
-- 參數不存在時 plan 直接失敗，這是刻意的：上游還沒 apply 或客戶還沒發布，不應該繼續規劃。
+- 參數不存在時 plan 會直接失敗，這是刻意的：上游還沒 apply 或客戶還沒發布時，不應該繼續規劃。
 - JSON 值（例如 `database`）放在 `strings`，由呼叫端 `jsondecode()`；module 不猜哪些值是 JSON。
 
 ## 限制
 
 - 不讀 `SecureString`，secret 走 Secrets Manager。
 - 沒有預設值，缺 key 就是失敗。
-- 不遞迴讀整個路徑（`aws_ssm_parameters_by_path` 會讓讀取清單變成隱性的）。
+- 不遞迴讀整個路徑（`aws_ssm_parameters_by_path` 會讓實際讀了哪些參數變得看不出來）。
 - `<stack>/<key>` 的規則跟 `ssm-publish` 一致：stack 是小寫字母開頭、可含數字與連字號，key 是 snake_case。
 
 ## 輸入

@@ -23,7 +23,7 @@ module "alarm_topic" {
 ## 注意
 
 - **email 訂閱建立後是「待確認」狀態**，收件人要點確認信才會收到告警。`terraform apply` 成功不代表通知會到。
-- 加密 topic 時不能用 `alias/aws/sns`：CloudWatch 告警無法發布到用 AWS 受管金鑰加密的 topic。要用自管 KMS key，key policy 要允許 `cloudwatch.amazonaws.com`。不給 `kms_master_key_id` 時 topic 不加密。
+- 加密 topic 時不能用 `alias/aws/sns`：CloudWatch 告警無法發布到用 AWS 受管金鑰加密的 topic。要用自管 KMS key，而且 key policy 要允許 `cloudwatch.amazonaws.com`。不給 `kms_master_key_id` 時 topic 不加密。
 - 同一個 email 重複出現只會建一個訂閱。
 
 ## 刻意不做

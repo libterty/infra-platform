@@ -33,17 +33,17 @@ module "runtime_logs" {
 
 ## 容易出錯的地方
 
-- **資源重建時 apply 卡在半途**：Runtime 或 Memory 重建後 ARN 換了，delivery source 會被替換；如果 delivery 沒有跟著換，刪 source 時會撞 `ConflictException`。這個 module 讓 delivery 在它的 source `resource_arn` 改變時一起替換。只改 tag 不會連帶替換 delivery。
-- **XRAY 目的地不能帶設定**：`XRAY` 只設 `delivery_destination_type = "XRAY"`，不送 `delivery_destination_configuration`；`CWL`、`S3` 反過來只送 `destination_resource_arn`。validation 會擋 `XRAY` 給 `resource_arn`、`CWL` 沒給或給了 bucket ARN、`S3` 沒給或給了 log group ARN。
+- 資源重建時 apply 卡在半途：Runtime 或 Memory 重建後 ARN 會變，delivery source 也跟著替換；如果 delivery 沒有一起換，刪 source 時會撞上 `ConflictException`。所以 source 的 `resource_arn` 一改，這個 module 就讓 delivery 一起替換。只改 tag 不會連帶替換 delivery。
+- XRAY 目的地不能帶設定：`XRAY` 只設 `delivery_destination_type = "XRAY"`，不送 `delivery_destination_configuration`；`CWL`、`S3` 反過來只送 `destination_resource_arn`。validation 會擋下這幾種情況：`XRAY` 給了 `resource_arn`；`CWL` 沒給，或給了 bucket ARN；`S3` 沒給，或給了 log group ARN。
 
 ## 注意
 
-- **source 與 `CWL` 目的地預設只能在目前的帳號。** source 的 `resource_arn` 必須是帶 12 位數帳號的 ARN；它的帳號、以及 `CWL` 目的地 log group 的帳號，不是目前帳號也不在 `allowed_account_ids` 裡時，plan 會被 precondition 擋下。`S3` 目的地的 bucket ARN 不帶帳號，module 判斷不了 bucket 屬於誰，不檢查；`XRAY` 沒有 ARN。
+- **source 與 `CWL` 目的地預設只能在目前的帳號。** source 的 `resource_arn` 必須是帶 12 位數帳號的 ARN；source 的帳號或 `CWL` 目的地 log group 的帳號，如果既非目前帳號、也不在 `allowed_account_ids` 裡，precondition 會在 plan 時擋下。`S3` 目的地的 bucket ARN 不帶帳號，module 判斷不了 bucket 屬於誰，所以不檢查；`XRAY` 沒有 ARN。
 
 - 名稱是 `<name_prefix>-<key>`，最多 60 字（照 API 文件，**未實測**）。
 - `USAGE_LOGS` 照 AWS 文件放行，**未實測**；`APPLICATION_LOGS`、`TRACES` 有部署過的參考。
 - `CWL` 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
-- trace 送進 X-Ray 需要帳號層開啟 Transaction Search（`aws/spans` log group）。被清掉時 span 全部遺失而且不報錯，部署後要確認 `aws/spans` 存在。
+- trace 送進 X-Ray 需要帳號層開啟 Transaction Search（`aws/spans` log group）。被清掉的話，span 會全部遺失而且不會報錯，所以部署後要確認 `aws/spans` 存在。
 - delivery 的 `tags` 只有輸入的 `tags`；source 與 destination 另外加 `Name`。
 
 ## 刻意不做
@@ -62,7 +62,7 @@ module "runtime_logs" {
 | `name_prefix` | `string` | 無 | 是 | source 與 destination 的名稱是 `<name_prefix>-<key>`，最多 60 字 |
 | `sources` | `map(object)` | `{}` | 否 | `resource_arn`（產生 log 的資源，必須是帶帳號的 ARN，帳號是目前帳號或在 `allowed_account_ids` 裡）、`log_type`（`APPLICATION_LOGS`／`TRACES`／`USAGE_LOGS`） |
 | `destinations` | `map(object)` | `{}` | 否 | `type`（`CWL`／`XRAY`／`S3`）、`resource_arn`（`CWL` 是 log group ARN，帳號是目前帳號或在 `allowed_account_ids` 裡；`S3` 是 bucket ARN，不檢查帳號；`XRAY` 必須是 null） |
-| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、source 與 `CWL` 目的地可以在的帳號（12 位數字）。空的時候兩者都必須在目前帳號 |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 除了目前帳號，source 與 `CWL` 目的地還可以放在哪些帳號（12 位數字）。空的時候兩者都必須在目前帳號 |
 | `deliveries` | `map(object)` | `{}` | 否 | `source`、`destination`，分別是 `sources`、`destinations` 裡存在的 key；同一組不能接兩次 |
 | `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；source 與 destination 另外加 `Name` |
 

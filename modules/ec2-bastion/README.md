@@ -31,9 +31,9 @@ aws ssm start-session --target "$(terraform output -raw instance_id)"
 
 - **沒有 `key_name`，也沒有 SSH。** 進去的唯一方式是 Session Manager，所以 `instance_profile_name` 必填，instance profile 要帶 `AmazonSSMManagedInstanceCore` 的權限（用 `iam-role` 建），subnet 要能連到 SSM endpoint（NAT，或 `ssm`、`ssmmessages`、`ec2messages` 的 VPC endpoint）。
 - **固定的安全設定，沒有開關**：IMDSv2 必須、hop limit 1、不配 public IP、root volume 加密。`associate_public_ip_address` 明確寫 `false`，subnet 即使開了 auto-assign public IP 也不會生效。
-- root volume 用帳號預設的 EBS KMS key 加密；要換成自管 key 目前不支援。
+- root volume 用帳號預設的 EBS KMS key 加密，目前不支援換成自管 key。
 - AMI 是 Amazon Linux 2023 最新版（依 `architecture`）。**`ignore_changes = [ami]`**：之後出了新 AMI，既有的 bastion 不會被取代，要更新就用 `terraform apply -replace=module.bastion.aws_instance.this`。`ami_id` 輸出是目前查到的最新 AMI，不一定是這台實際在用的那個。
-- `instance_type` 必須跟 `architecture` 搭配：Graviton（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。判斷方式是看家族名稱，plan 時擋下不搭的組合；舊的 `a1` 家族是 arm64 但不會被認出來，不支援。
+- `instance_type` 必須跟 `architecture` 搭配：Graviton（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。module 看家族名稱判斷，plan 時擋下不搭的組合；舊的 `a1` 家族是 arm64 但不會被認出來，不支援。
 - `root_volume_size` 最小 8（AMI 快照大小），必須是整數 GiB。
 - security group 由 `security-group` module 建；這個 module 不建 security group、IAM、Elastic IP。
 

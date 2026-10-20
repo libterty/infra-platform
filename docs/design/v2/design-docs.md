@@ -95,7 +95,7 @@ project-b 拆成 11 個 Terraform stack（ALB＋WAF、ECS、Aurora＋RDS Proxy�
 - tests：預設時 versioning 與 notification 都是 0 個、lifecycle filter 是空的；versioning、prefix、notification 各自開啟；validation 組合。
 
 **`rds` 0.1.1 → 0.2.0**
-- `static_parameter_names`（set(string)，預設 `[]`），跟內建的 `shared_preload_libraries` 取聯集，這些參數用 `pending-reboot`。原本只認 `shared_preload_libraries`，其他 static 參數（例如 `cron.database_name`）會被送成 `immediate`，apply 時失敗。
+- `static_parameter_names`（set(string)，預設 `[]`），跟內建的 `shared_preload_libraries` 取聯集，這些參數用 `pending-reboot`。原本只認 `shared_preload_libraries`，其他 static 參數（例如 `cron.database_name`）會送成 `immediate`，apply 時失敗。
 - 新增輸出 `log_group_name`（PostgreSQL log group）。
 - tests：列入清單的參數用 `pending-reboot`、預設行為不變、`log_group_name` 輸出正確。
 
@@ -248,7 +248,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 1. 消費端讀的每個 `<stack>/<key>`，生產端在 ORDER 裡排在它前面，而且確實發布這個 key。樹 B 的 `infra/` 前綴對應到 bridge。解析 `ssm-read` 的輸入與 `ssm-publish` 的 `published_strings`、`published_lists`。
 2. 同一個 env 裡，各 stack tfvars 共用的 key 值必須一致。
 
-原本的其他項目跟 S5、S3、S2 重複，或是遷移期用的，拿掉。
+原本的其他項目跟 S5、S3、S2 重複，或只在遷移期用，所以拿掉。
 
 ### 5.6 tests
 
@@ -295,7 +295,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 | AgentCore Runtime、Memory | `<project>_<env>_<runtime>`、`<project>_<env>_memory`（連字號換成底線） | agent |
 | 自訂 metric namespace | `<Project>/<env>`（`title(project)`，例如 `Example/dev`） | database、operation、postdeploy |
 
-**R2 沒有循環**：Proxy role 的 policy 用 `module.db.master_user_secret_arn`，`rds` 的 Proxy 用 `module.proxy_role.arn`。secret ARN 來自 cluster resource，role ARN 只被 Proxy 的 resource 用，而 Proxy 在 cluster 之後才建，所以圖上沒有環。Proxy role 與 monitoring role 各自一個 `iam-role` 呼叫（不用 for_each），避免 monitoring role 被拉進 secret 的相依鏈。`terraform validate` 與 `tests/graph.tftest.hcl`（不 override `module.db`，讓真實的 module 一起 plan）都通過。
+**R2 沒有循環**：Proxy role 的 policy 用 `module.db.master_user_secret_arn`，`rds` 的 Proxy 用 `module.proxy_role.arn`。secret ARN 來自 cluster resource，只有 Proxy 的 resource 用到 role ARN，而 Proxy 在 cluster 之後才建，所以圖上沒有環。Proxy role 與 monitoring role 各自一個 `iam-role` 呼叫（不用 for_each），避免 monitoring role 被拉進 secret 的相依鏈。`terraform validate` 與 `tests/graph.tftest.hcl`（不 override `module.db`，讓真實的 module 一起 plan）都通過。
 
 **安全收窄與例外**
 
@@ -354,12 +354,12 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - loadbalancer 發布的 `target_group_arn_suffixes` 是 JSON 物件（鍵是 target group key）。
 - operation 多讀 `ecr_repository_urls`、`db_proxy_endpoint`、`db_secret_arn`、`db_name`；不讀 `vpc_id`、`alarm_topic_arn`（用不到）。
 - postdeploy 多讀 application 的 `worker_log_group_name` 與三個數字、agent 的 `agent_memory_arn`；不讀 `waf_web_acl_name`、`stream_redis_id`；這兩個 key 沒有人讀，已經不發布（loadbalancer 與 database→bridge 各拿掉一個）。
-- 沒有任何後段需要、而前段與 bridge 沒提供的 key：VPC CIDR 用 `data "aws_vpc"` 以 `vpc_id` 查。
+- 後段需要的值，前段與 bridge 都有提供；唯一例外是 VPC CIDR，改用 `data "aws_vpc"` 以 `vpc_id` 查。
 - **樹 B 變成 26 個 key**（22 個 String、4 個 StringList）：database 多發布 `db_name` 與 `stream_shard_count`（stream 那組 Redis 的 `num_node_groups`），bridge 原樣轉寫；拿掉 `stream_redis_id`。agent、application、operation 都從樹 B 讀 `db_name`，application 讀 `stream_shard_count`，不再各留一份變數。設了 autoscaling 的 stream Redis，`stream_shard_count` 只是起始值。
 
 **各 stack 的設計決定**
 
-- loadbalancer：`alb` module 用 `web_acl_arn == null` 當 count，Web ACL 跟 ALB 在同一個 stack 建時，ARN 在 plan 還不知道，會報 `Invalid count argument`。B5 先用 `format("%s", ...)` 繞過；使用者決定直接修 module，發 `alb-v0.3.0`（PR #12，新增 `web_acl = object({ arn = string })`，物件是不是 null 在 plan 時就知道），範本改用 `web_acl = { arn = module.waf.web_acl_arn }` 與 `~> 0.3.0`，拿掉繞法。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
+- loadbalancer：`alb` module 用 `web_acl_arn == null` 決定 count；Web ACL 跟 ALB 在同一個 stack 建時，plan 階段還不知道 ARN，會報 `Invalid count argument`。B5 先用 `format("%s", ...)` 繞過；使用者決定直接修 module，發 `alb-v0.3.0`（PR #12，新增 `web_acl = object({ arn = string })`，物件是不是 null 在 plan 時就知道），範本改用 `web_acl = { arn = module.waf.web_acl_arn }` 與 `~> 0.3.0`，拿掉繞法。ALB 加 `depends_on = [module.alb_logs]`，確保 bucket policy 先於 ALB。origin verify 的值變數沒有預設值、`sensitive`、至少 16 字元；tests 讀 tfvars 檔內容斷言沒有賦值。WAF logging 一律開（原本在 postdeploy 有開關）。
 - agent：guardrail 的 profile 是 `default`、`profile_a`；內容（topic、詞彙、拒絕文案）全是示意。輸入 guardrail 只評估輸入，輸出 guardrail 只評估輸出且沒有 prompt attack。Runtime 經 Proxy 連資料庫：環境變數 `AGENT_DB_HOST`、`AGENT_DB_NAME`、`AGENT_DB_SSLMODE` 與 `AGENT_DB_AUTH_ARN`（只放 secret 的 ARN，值由 Runtime role 自己讀；名稱避開 agentcore-runtime 對 SECRET、TOKEN 這類字的檢查）。
 - application：`FORWARDED_ALLOW_IPS` 由變數 `trusted_proxies` 決定，三種值 `any`、`vpc`、`vpc_and_cdn`；VPC CIDR 用 `data "aws_vpc"` 查（tree B 沒有 `vpc_cidr`）。task 拿到的是 secret 的 ARN（環境變數名稱以 `_ARN` 結尾），值由 task role 自己取：execution role 沒有 secret 權限。api 與 worker 都設 TCP keepalive 的 `system_controls`。ECS Exec 用獨立的 `enable_execute_command`，不跟 bastion 綁在一起。
 - operation：`bastion_enabled` 用平的 tfvars key（不是 `bastion.enabled`），這樣 `check-ssm-contract.sh` 的 awk 解析得到；import bucket 沒有開關（Lambda 的觸發與 iam 的授權都依賴它）。import-load 由 `extracted/` 加 `ready.json` 後綴觸發，`ready.json` 由 import-extract 寫，是跟應用程式的約定。ETL 指標共四個：import-load 的 rejected、failed、succeeded，加上 import-extract 的 rejected（各自一個 `log-metric-alarm` 呼叫，因為 filter 掛在各自的 log group）。
@@ -374,7 +374,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - S3 通知：`incoming/`（無後綴）與 `extracted/` 加 `ready.json` 不重疊，S3 在 apply 時才會驗。
 - bastion 的 inline policy（Session Manager 的最小動作集合）是否足夠 agent 註冊與開 session；沒有 `ssm:ListAssociations` 等管理動作。
 - Lambda 放進 VPC 後，只靠 app security group 與 NAT 或 endpoint 的出口能否呼叫 Bedrock、S3、Secrets Manager。
-- 連線數的 step policy 用 metric math，`ecs-service` 的 `queries` 欄位是否被 provider 接受。
+- 連線數的 step policy 用 metric math，provider 接不接受 `ecs-service` 的 `queries` 欄位。
 - guardrail 的 `STANDARD` tier 加 cross-region profile 在 apply 的實際行為。
 
 **使用者已決定的事項（2026-10-20）**
@@ -388,7 +388,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 - `app_port` 在 network、loadbalancer、application 各有一份變數，靠預設值一致；`SHARED_CONFIG_KEYS` 只比對 `bastion_enabled` 與 `guardrail_cross_region_profile_id`。
 - `check-ssm-contract.sh` 的 `bastion_enabled`、`guardrail_cross_region_profile_id` 檢查沒有自動化 fixture（腳本不在 `validate.sh` 的測試範圍）；B5 用暫存複本改 tfvars 手動驗過會失敗。
-- 把 `ecs-service-alarms` 的 dashboard 與告警綁在同一個 module 呼叫，無法只開 dashboard。
+- `ecs-service-alarms` 的 dashboard 與告警綁在同一個 module 呼叫，沒辦法只開 dashboard。
 
 ## 6. `validate.sh` 與 CI
 

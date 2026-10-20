@@ -34,7 +34,7 @@ lifecycle policy 兩條規則：
 
 ## 限制
 
-- 已存在的 repository 改 `kms_key_arn`（加密設定）會讓 repository 重建，映像會跟著消失。這屬於 MAJOR 等級的變更，要先把映像搬走。
+- 對已經存在的 repository 改 `kms_key_arn`（加密設定），repository 會重建，裡面的映像也會跟著消失。這屬於 MAJOR 等級的變更，要先把映像搬走。
 - 因為 tag 不可變，同一個 tag 不能重推；重新部署要換新的 tag。
 - 不支援 repository policy（跨帳號拉映像）、replication、pull-through cache、enhanced scanning（Inspector）。
 

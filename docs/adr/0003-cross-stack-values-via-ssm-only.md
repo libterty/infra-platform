@@ -10,11 +10,11 @@ notes: "validate.sh 第一版只靜態檢查兩條（S2：只有 ssm-publish 可
 
 ## Context and Problem Statement
 
-範本拆成 8 個 stack（見 [ADR-0002](./0002-split-state-by-owner-and-change-rate.md)），下游需要上游的輸出：VPC id、subnet、security group、secret ARN、資料庫端點等。Terraform 有兩種常見做法：`terraform_remote_state` 讀對方的 state，或讀一個雙方約定的外部儲存。
+範本拆成 8 個 stack（見 [ADR-0002](./0002-split-state-by-owner-and-change-rate.md)），下游需要上游的輸出：VPC id、subnet、security group、secret ARN、資料庫端點等。Terraform 有兩種常見做法：用 `terraform_remote_state` 讀對方的 state，或讀雙方約定好的外部儲存。
 
 客戶自管模式下，網路、資料庫、IAM 可能是客戶用他們自己的方式建的，不在我們的 state 裡。問題是：**stack 之間用什麼介面傳值，才能讓「上游由我們建」跟「上游由客戶建」對下游看起來一樣？**
 
-參考專案也用 SSM 傳值；這份把決定與理由寫下來。
+參考專案也用 SSM 傳值；這份 ADR 把決定與理由記下來。
 
 ## Decision Drivers
 

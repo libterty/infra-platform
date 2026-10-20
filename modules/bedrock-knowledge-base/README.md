@@ -52,18 +52,18 @@ module "knowledge_base" {
 
 ## 容易出錯的地方
 
-下面是相對於 AWS 文件範例刻意改掉的地方：
+下面幾點刻意跟 AWS 文件的範例不同：
 
-- **KB 連資料庫用專用帳號，不用 master secret。** AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA`，並讓 KB 帳號自己建表。這裡表由 migration 建，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`。module 拿不到 master secret 的 ARN，擋不了；範本的 `agent` 用 precondition 擋。Bedrock 在 ingestion 與查詢時是否需要更多權限，**未實測**，不夠時只在那張表上補缺的那一項。
+- **KB 連資料庫用專用帳號，不用 master secret。** AWS 文件的範例對 KB 帳號給 `GRANT ALL ON SCHEMA`，並讓 KB 帳號自己建表。這裡表由 migration 建，KB 帳號只有那張表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 與 schema 的 `USAGE`。module 拿不到 master secret 的 ARN，沒辦法擋，改由範本的 `agent` 用 precondition 擋。Bedrock 在 ingestion 與查詢時是否需要更多權限，**未實測**，不夠時只在那張表上補缺的那一項。
 - **`data_deletion_policy` 預設 `RETAIN`。** 刪掉 data source 時不連帶清掉向量，避免一次錯誤的 apply 清空知識庫。要跟著刪的專案明寫 `DELETE`。
-- **`custom_metadata_field` 預設不送。** 有給才送，SQL 不用多建一欄。
+- **`custom_metadata_field` 預設不送。** 有給才送，所以 SQL 不用多建一欄。
 - **名稱一律小寫識別字。** `database_name`、`table_name` 的每一段、`field_mapping` 的五個欄位都只收 `^[a-z_][a-z0-9_]{0,62}$`，避免 SQL 裡要加雙引號才對得上。
 
 ## 注意
 
-- **`aurora.cluster_arn` 與 `aurora.credentials_secret_arn` 必須跟 provider 在同一個帳號、同一個 region。** module 用 `aws_caller_identity`、`aws_region` 比對 ARN 的帳號與 region 欄，不符時 plan 被 KB resource 的 precondition 擋下。
+- **`aurora.cluster_arn` 與 `aurora.credentials_secret_arn` 必須跟 provider 在同一個帳號、同一個 region。** module 用 `aws_caller_identity`、`aws_region` 比對 ARN 的帳號與 region 欄，不符時 KB resource 的 precondition 會在 plan 時擋下。
 - **`credentials_secret_arn` 要給完整的 secret ARN**，含 Secrets Manager 自動加上的 `-` 加 6 個字元尾碼，不收 `*` 或只到名稱為止的 ARN。
-- **每個 data source 都要寫 `bucket_owner_account_id`**（12 位數字）。它必須等於目前的帳號；bucket 在別的帳號時，要把那個帳號列進 `allowed_account_ids`，否則 plan 被 data source 的 precondition 擋下。Bedrock 用這個值確認 bucket 的擁有者，避免讀到別人同名的 bucket。
+- **每個 data source 都要寫 `bucket_owner_account_id`**（12 位數字）。它必須等於目前的帳號；bucket 在別的帳號時，要把那個帳號列進 `allowed_account_ids`，否則 data source 的 precondition 會在 plan 時擋下。Bedrock 用這個值確認 bucket 的擁有者，避免讀到別人同名的 bucket。
 - `role_arn` 允許帶 path，但 path 的每一段都不能是空的（`role//x`、結尾是 `/` 都會被擋）。規則跟 `agentcore-runtime`、`agentcore-gateway` 相同。
 - `kms_key_arn` 只收 `arn:aws:kms:<region>:<account>:key/<uuid>` 或 multi-region key 的 `key/mrk-<32 碼>`，alias 與 `*` 都擋。
 - **`aurora.cluster_arn` 必須是 Aurora cluster 的 ARN**（`:cluster:`），DB instance 的 ARN（`:db:`）會被擋：Bedrock 經 RDS Data API 連資料庫，Data API 只支援 Aurora cluster。用 `rds` module 時就是 `arn` 輸出（部署型態 `aurora` 或 `aurora_serverless`）。
@@ -74,7 +74,7 @@ module "knowledge_base" {
 - chunking 只收 `FIXED_SIZE`（預設 300 token、重疊 20%）與 `NONE`。`NONE` 時不送 `fixed_size_chunking_configuration`。`overlap_percentage` 1–99、`max_tokens` 大於 0；provider 6.69.0 在 plan 時也擋 `overlap_percentage` 1–99 以外的值。
 - `inclusion_prefixes` 不能以 `/` 開頭；空集合時不送，表示整個 bucket。
 - `kms_key_arn` 套到每個 data source 的 `server_side_encryption_configuration`（ingestion 過程的暫存資料）。key policy 要給什麼**未實測**。
-- KB 帳號的 secret 不由 RDS 管理，沒有自動輪替。換密碼時 secret 與 `ALTER ROLE` 要一起改，中間 ingestion 與查詢會認證失敗；KB 會不會快取 secret，**未實測**。
+- KB 帳號的 secret 不由 RDS 管理，沒有自動輪替。換密碼時 secret 與 `ALTER ROLE` 要一起改，兩邊還沒改完的這段時間，ingestion 與查詢會認證失敗；KB 會不會快取 secret，**未實測**。
 - ingestion 不是資源。文件上傳後由人或 CI 呼叫 `StartIngestionJob`。
 - `tags` 只套用到 KB（data source 沒有 tag），另外自動加 `Name`。
 
