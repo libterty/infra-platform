@@ -11,7 +11,7 @@
 - 三個新欄位都沒給的既有呼叫端，resource 與 task definition 都沒有變化，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。** `queries` 內部的組合（`expression` 與 `metric` 擇一、`return_data`）交給 CloudWatch API 檢查，mock 測試驗不到。
 - 原本寫在「刻意不做」的排程擴縮與自訂指標 step scaling，從這一版起支援。
 
-## 0.1.0（未發布）
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 

@@ -13,7 +13,7 @@
 - 改 target group 的 `port` 會重建 target group，規則還在用時會失敗；要換 port 就新增 key、改規則、再移除舊的。**這是讀 provider 行為推論的，沒有用 plan 或 apply 驗證。**
 - origin verify header 的值會以明文存在 state。
 
-## 0.1.0（未發布）
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 
