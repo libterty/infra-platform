@@ -1,2 +1,10 @@
-# Variables of this stack arrive with its resources (phases B3-B5).
-# Never put another stack's ARN or id here; read it through ssm-inputs.tf.
+variable "eval_batch_model_id" {
+  description = "Bedrock model ID (without the inference profile prefix) that the eval-batch role may invoke. Only used when env is dev; leave empty elsewhere."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.env != "dev" || var.eval_batch_model_id != ""
+    error_message = "eval_batch_model_id is required when env is dev, where the eval-batch role is created."
+  }
+}

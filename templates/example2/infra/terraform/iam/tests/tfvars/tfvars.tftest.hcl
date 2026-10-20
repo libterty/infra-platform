@@ -1,6 +1,30 @@
 # Run by scripts/validate.sh with -var-file=envs/<env>.tfvars; it checks the tfvars files themselves.
 mock_provider "aws" {}
 
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = {
+      app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+      signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+      db_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      agent_runtimes     = "[\"agent\"]"
+      ecr_repository_arns = jsonencode({
+        api    = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api"
+        worker = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker"
+        agent  = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-agent"
+      })
+    }
+    lists = {}
+  }
+}
+
+override_data {
+  target = data.aws_kms_alias.secretsmanager
+  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
+}
+
 run "tfvars_pair_env_with_a_registered_account" {
   command = plan
 

@@ -5,6 +5,32 @@ variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+  # Required variables of this stack, so the account checks can plan.
+  eval_batch_model_id = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = {
+      app_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
+      signing_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
+      db_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      agent_runtimes     = "[\"agent\"]"
+      ecr_repository_arns = jsonencode({
+        api    = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api"
+        worker = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker"
+        agent  = "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-agent"
+      })
+    }
+    lists = {}
+  }
+}
+
+override_data {
+  target = data.aws_kms_alias.secretsmanager
+  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
 }
 
 run "dev_accepts_its_account" {
