@@ -1,6 +1,6 @@
 # 範本 example2：11 個 stack 的專案 infra
 
-> 狀態：骨架。目前只有共用檔案、環境檔、`stacks.sh`、`check-ssm-contract.sh` 與 SSM 合約；各 stack 的 module 呼叫與資源會在後續階段補上，這份文件也會跟著補完。設計見 [`docs/design/v2/design-docs.md`](../../../docs/design/v2/design-docs.md) 第 5 章。
+> 狀態：11 個 stack 的 module 呼叫都已完成，離線驗證通過（`scripts/validate.sh`）；還沒有在真實帳號 apply 過。設計見 [`docs/design/v2/design-docs.md`](../../../docs/design/v2/design-docs.md) 第 5 章。
 
 這份範本把一個專案拆成 11 個 Terraform stack，示範跟 `templates/project-infra` 不同的拆法：資料庫、IAM、ALB、AgentCore、ECS、bastion 與告警各自獨立，stack 之間只透過 SSM Parameter Store 傳值。完成後，stack 本身只呼叫 registry 的 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器。
 
@@ -51,11 +51,11 @@ infra/
 | 4 | `database` | foundation、network | 資料庫與 Proxy endpoint、secret ARN、Redis endpoint |
 | 5 | `iam` | foundation、containerimage、database | 各 role ARN |
 | 6 | `bridge` | 前面所有 stack（樹 A） | 樹 B |
-| 7 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、WAF 名稱 |
-| 8 | `agent` | 樹 B | Runtime、Memory、guardrail 的 ARN 與 id |
-| 9 | `application` | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱 |
+| 7 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
+| 8 | `agent` | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
+| 9 | `application` | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
 | 10 | `operation` | 樹 B | bucket、Lambda 名稱 |
-| 11 | `postdeploy` | 樹 B、loadbalancer、application、agent | 不發布 |
+| 11 | `postdeploy` | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
 
 實際的 key 以各 stack 的 `ssm-inputs.tf`、`ssm-outputs.tf` 為準。
 
@@ -77,21 +77,21 @@ String（21 個，值不可為空）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
-| `alarm_topic_arn` | 告警 SNS topic ARN | loadbalancer、agent、application、operation、postdeploy |
+| `alarm_topic_arn` | 告警 SNS topic ARN | loadbalancer、postdeploy |
 | `signing_private_key_secret_arn` | 簽章 private key 的 secret ARN | application |
 | `signing_public_key_secret_arn` | 簽章 public key 的 secret ARN | application |
 | `agent_runtimes` | JSON 陣列，Runtime 名稱 | agent |
-| `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | agent、application |
-| `vpc_id` | VPC id | loadbalancer、application、operation |
+| `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | agent、application、operation |
+| `vpc_id` | VPC id | loadbalancer、application |
 | `alb_sg_id` | ALB 的 security group | loadbalancer |
 | `app_sg_id` | app 層的 security group | application、operation |
 | `agent_sg_id` | agent 層的 security group | agent |
 | `bastion_sg_id` | bastion 的 security group | operation |
-| `db_proxy_endpoint` | RDS Proxy endpoint | application |
-| `db_secret_arn` | 資料庫 secret ARN | application |
+| `db_proxy_endpoint` | RDS Proxy endpoint | application、operation |
+| `db_secret_arn` | 資料庫 secret ARN | application、operation |
 | `rate_limit_redis_endpoint` | `host:port` | application |
 | `stream_redis_endpoint` | `host:port` | application |
-| `stream_redis_id` | stream Redis 的 replication group id | postdeploy |
+| `stream_redis_id` | stream Redis 的 replication group id | 目前沒有 stack 讀（postdeploy 的 stream 告警用應用程式自己發的 metric） |
 | `ecs_execution_role_arn` | ECS execution role | application |
 | `api_task_role_arn` | api task role | application |
 | `worker_task_role_arn` | worker task role | application |
@@ -157,7 +157,7 @@ bash infra/terraform/check-ssm-contract.sh
 只檢查兩件事，其他規則（`common.tf` 一致、`data "aws_ssm_parameter"` 的位置、tfbackend 的 key）由 `scripts/validate.sh` 負責，`validate.sh` 也會呼叫這支腳本：
 
 1. 每個讀的 `<stack>/<key>`：發布它的 stack 在 `ORDER` 裡排在讀它的 stack 前面、真的有發布這個 key、型別（strings 或 lists）相同。樹 B 的 `infra/<key>` 對應到 `bridge`。
-2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`）上的值一致，而且 `env` 等於檔名。
+2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`、`bastion_enabled`）上的值一致；沒設某個 key 的 stack 不參與比對，所以 `bastion_enabled` 只比對 network 與 operation，而且 `env` 等於檔名。
 
 錯誤訊息會指出哪個 stack 的哪一個 key。
 
@@ -174,6 +174,10 @@ cd infra/terraform
 - `all` 依 `ORDER` 跑，`destroy all` 反向；任何一個 stack 失敗就停。
 - `--yes` 讓 `apply`、`destroy` 加 `-auto-approve`；`--dry-run` 只印指令、不執行 terraform。
 - `--` 之後的參數原樣交給 `plan`、`apply`、`destroy`、`output`。
+
+## 不進 tfvars 的值
+
+`loadbalancer` 的 origin verify 值（CDN 加在 origin 請求上的 header 值）只能從環境變數給：`export TF_VAR_origin_verify_header_value=<至少 16 字元>`，跟 CDN 送的是同一個值。tfvars 只放 header 名稱；變數是 `sensitive`、沒有預設值，所以少了它 plan 直接失敗。這個值會寫進 state（ALB 規則的條件），state 的存取權限要照機密管。WAF log 會遮蔽這個 header。
 
 ## 環境切換
 
