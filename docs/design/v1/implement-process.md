@@ -1,6 +1,6 @@
 # infra-platform 第一版實作流程
 
-> 狀態：Phase 0–10 與 LLM 增補的 Phase 11–16 全部完成（驗收結果見下方 Phase 表）。增補動到的 9 個 module 的 `<module>-v0.1.1` tag 已打在 `81ac4d3`（決策 54）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `28a8647`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：Phase 0–10 與 LLM 增補的 Phase 11–16 全部完成（驗收結果見下方 Phase 表）。增補動到的 9 個 module 的 `<module>-v0.1.1` tag 已打在 `52f954e`（決策 54）。2026-10-15 改寫過 git 歷史，拿掉參考專案的名稱與作者資訊，文中的 commit hash 都已換成改寫後的值；19 個 `<module>-v0.1.0` tag 已打在 `38e5f79`。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。模組介面、stack 清單、SSM 合約、靜態規則以 [`design-docs.md`](./design-docs.md) 為準；這份只講「怎麼一步一步做出來、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 >
 > 增補（2026-10-15）：LLM 與 AgentCore 的 7 個 module、範本的 `agent` stack、`rds` 的 Data API 與兩個新輸出、`s3-bucket` 的不過期選項排成 Phase 11–16，見〈增補：Phase 11–16〉。Phase 11–14 已完成，15–16 未開始。
 >
@@ -14,32 +14,32 @@
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
-| 0 | repo 骨架、`validate.sh`、CI、release 設定、ADR 0001–0003 | 已完成 | 1：`9ec62a5` |
-| — | 記錄第一個 tag 手動打的決策 | 已完成（計畫外） | 1：`541ae3c` |
-| — | `validate.sh` 沒有 lock 檔時也用 plugin cache | 已完成（計畫外） | 1：`19608d4` |
-| 1 | `ssm-publish`、`sns-alarm-topic` | 已完成 | 2：`46d5a4d`、`5a0dcf3` |
-| 2 | `vpc` | 已完成 | 1：`09c5342` |
-| 3 | `ecs-cluster`、`ecs-service` | 已完成 | 2：`07552ef`、`4ebf5d9` |
-| 4 | `alb`、`ecs-service-alarms` | 已完成 | 2：`04b33ef`、`74ea776` |
-| 5 | `rds` | 已完成 | 1：`c916c46` |
-| — | 7 個 module 的註解改成只用英文 | 已完成（計畫外） | 7：`0fe260b`、`ed58268`、`8630750`、`56e3bdf`、`4c61c92`、`a5a3c46`、`1bef047` |
-| — | 設計文件擴充到 15 個 module、重排 Phase 6–10 | 已完成 | 1：`6e7fdaa` |
-| 6 | 共用設定更新：release-please 加 7 個 module、`validate.sh` 的 S3／S4／S8、README 的 module 清單 | 已完成 | 1：`eec61df` |
-| 7A–D | 7 個新 module：`iam-role`、`iam-role-policy`、`kms-key`、`s3-bucket`、`ecr-repository`、`ssm-read`、`security-group` | 已完成 | 7：`5de879a`、`5871875`、`9994403`、`d9f8e65`、`86560dc`、`9b56443`、`5675092` |
-| 7E | 觀測性：共用設定、設計文件、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 已完成 | 6：`977cba7`、`21d6513`、`a6dd7ac`、`0cdd874`、`90adc72`、`0bde63f` |
-| 7F | 拆出 `vpc-interface-endpoints`：設計文件、`refactor(vpc)`、新 module、共用設定（release-please 19 個、S4） | 已完成 | 4：`606ba1d`、`92b6200`、`7ebd512`、`d770756` |
-| — | 兩個 IAM module 加上「Allow 不准搭配 `NotResource`」 | 已完成（計畫外） | 2：`5ab5d87`、`fce75f2` |
-| — | 記錄 Phase 7 完成、更新 Phase 8 計畫 | 已完成（計畫外） | 1：`da2820e` |
-| 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 已完成：8 個 stack 共 317 個測試，全量 52 個目錄全過（約 9 分鐘） | 1：`e71db48` |
-| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`a89e478` |
-| 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`6fcd3e2`、`79a6520`、`ff68ca4`、`feat(template): wire x-ray tracing into the template` |
+| 0 | repo 骨架、`validate.sh`、CI、release 設定、ADR 0001–0003 | 已完成 | 1：`273068d` |
+| — | 記錄第一個 tag 手動打的決策 | 已完成（計畫外） | 1：已併入 |
+| — | `validate.sh` 沒有 lock 檔時也用 plugin cache | 已完成（計畫外） | 1：`cc5cad5` |
+| 1 | `ssm-publish`、`sns-alarm-topic` | 已完成 | 2：`16093e8`、`100882c` |
+| 2 | `vpc` | 已完成 | 1：`59d0834` |
+| 3 | `ecs-cluster`、`ecs-service` | 已完成 | 2：`50db926`、`1d4966b` |
+| 4 | `alb`、`ecs-service-alarms` | 已完成 | 2：`4bb065c`、`1b92197` |
+| 5 | `rds` | 已完成 | 1：`0d2e517` |
+| — | 7 個 module 的註解改成只用英文 | 已完成（計畫外） | 7：`7201678`、`751bfda`、`c6e2040`、`7c6eae8`、`dd74416`、`ac4d386`、`4ef22dd` |
+| — | 設計文件擴充到 15 個 module、重排 Phase 6–10 | 已完成 | 1：已併入 |
+| 6 | 共用設定更新：release-please 加 7 個 module、`validate.sh` 的 S3／S4／S8、README 的 module 清單 | 已完成 | 1：`61441a5` |
+| 7A–D | 7 個新 module：`iam-role`、`iam-role-policy`、`kms-key`、`s3-bucket`、`ecr-repository`、`ssm-read`、`security-group` | 已完成 | 7：`313853f`、`dbc4744`、`6cdc63f`、`1183749`、`7893dc9`、`400e85e`、`521d6e2` |
+| 7E | 觀測性：共用設定、設計文件、`log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 已完成 | 6：`3057458`、已併入、`27e1a6b`、`d5c3795`、`aa6081c`、`36ce674` |
+| 7F | 拆出 `vpc-interface-endpoints`：設計文件、`refactor(vpc)`、新 module、共用設定（release-please 19 個、S4） | 已完成 | 4：已併入、`595dd27`、`881c37a`、`f9ab86c` |
+| — | 兩個 IAM module 加上「Allow 不准搭配 `NotResource`」 | 已完成（計畫外） | 2：`212e77e`、`4e9ae2d` |
+| — | 記錄 Phase 7 完成、更新 Phase 8 計畫 | 已完成（計畫外） | 1：已併入 |
+| 8 | 專案範本（8 個 stack，全部改呼叫 module；network 加 `vpc-interface-endpoints`；application 加 `log-metric-alarm`、`xray`） | 已完成：8 個 stack 共 317 個測試，全量 52 個目錄全過（約 9 分鐘） | 1：`8b96413` |
+| 9 | `docs/guides/` 六份、`scripts/vendor-modules.sh`、README 連結、Phase 8 差異寫回設計文件 | 已完成 | 1：`09f0c5b` |
+| 9 補充 | outputs 註解與 D21 分級、`validate.sh` 支援客戶 repo、mirror repository、X-Ray 追蹤接進範本 | 已完成（計畫外，使用者決定） | 4：`a7db594`、`02143ef`、`e6fbb6e`、`feat(template): wire x-ray tracing into the template` |
 | 10 | 整體驗收 | 已完成：刪掉 `.cache/` 後全量 52 個目錄全過（583 秒，provider 重新下載），測試 1,037 個（module 671、範本 366）；修正 ADR 0001 對 tag 檢查的錯誤說明 | 1：`docs: record phase 10 acceptance` |
-| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 已完成 | 2：`66d41d0`、`da991f7` |
-| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`）（版本號已被 design 決策 54 取代：兩者都改發 `0.1.1`） | 已完成 | 3：`fdcaf99`、`8ca62c5`、`7324c41` |
-| 13 | 增補：7 個新 module | 已完成：7 個 module 共 262 個測試，主 agent 逐一重跑 `validate.sh` 通過；差異記在 design §9.4 D30–D36 | 7：`0c79364`、`ea0a365`、`71e7550`、`8708820`、`1948aba`、`4048dbf`、`36d6ee5` |
+| 11 | 增補：LLM 與 AgentCore 的設計文件（design 決策 37–53） | 已完成 | 2：已併入、已併入 |
+| 12 | 增補：共用設定（release-please 26 個、S9、README、ADR 0001）、`rds-v0.2.0`（Data API 與兩個新輸出）、`s3-bucket-v0.2.0`（`never_expire`）（版本號已被 design 決策 54 取代：兩者都改發 `0.1.1`） | 已完成 | 3：`7d6f2e7`、`d075ed1`、`4fac7dc` |
+| 13 | 增補：7 個新 module | 已完成：7 個 module 共 262 個測試，主 agent 逐一重跑 `validate.sh` 通過；差異記在 design §9.4 D30–D36 | 7：`d80ebf4`、`6d9184c`、`75d69f0`、`78e0497`、`174a65e`、`df299d5`、`f5092a2` |
 | 14 | 增補：範本接線（新增 `agent`，改 6 個 stack） | 已完成：9 個 stack 共 462 個 run（Phase 14 之前 310），主 agent 對 9 個 stack 重跑 `validate.sh` 全綠、9 份 `common.tf` 一致；含安全審查後的修正；差異記在 design §9.4 D37–D46 | （commit 見 git log） |
 | 15 | 增補：`docs/guides/llm-agentcore.md` 與相關文件 | 未開始 | 1 |
-| 16 | 增補：整體驗收、manifest 把增補的 9 個 module 登記成 0.1.1、人手動打 9 個 `<module>-v0.1.1` tag（design 決策 54） | 已完成 | 1：`81ac4d3` |
+| 16 | 增補：整體驗收、manifest 把增補的 9 個 module 登記成 0.1.1、人手動打 9 個 `<module>-v0.1.1` tag（design 決策 54） | 已完成 | 1：`52f954e` |
 
 整體驗收標準：`scripts/validate.sh` 在本機與 CI 都不需要任何 AWS 憑證就能全綠；全程沒有執行 `terraform plan`／`apply`、帶 backend 的 `init`、任何 `aws` 指令；commit 都在本機 `main`，沒有 push。
 
@@ -91,7 +91,7 @@ export AWS_EC2_METADATA_DISABLED=true
 
 | 規則 | 理由 |
 |---|---|
-| `validate.sh` 設 `TF_PLUGIN_CACHE_DIR=.cache/plugins` 與 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`19608d4`） | module 不提交 lock 檔。沒有 lock 檔時，terraform 預設不用快取，每個目錄都重新下載 aws provider，約 6 分鐘一個目錄 |
+| `validate.sh` 設 `TF_PLUGIN_CACHE_DIR=.cache/plugins` 與 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`cc5cad5`） | module 不提交 lock 檔。沒有 lock 檔時，terraform 預設不用快取，每個目錄都重新下載 aws provider，約 6 分鐘一個目錄 |
 | **不准用 `TF_CLI_CONFIG_FILE` 指到本機的 provider mirror** | Phase 1 試過：會在 `.cache/plugins` 留下 symlink，之後正常跑 `init` 會失敗，只能刪掉整個 `.cache/` 重來 |
 | 範本 stack 的 lock 檔不能在上面這組快取設定下產生 | 開了 `MAY_BREAK_DEPENDENCY_LOCK_FILE` 時，lock 檔只會記到本機平台的雜湊，CI（Linux）用 `-lockfile=readonly` 會失敗。產生方式見 Phase 8 |
 | `override_during = plan` 在 terraform 1.15.8 可用 | Phase 1 實測（`modules/ssm-publish/tests/ssm-publish.tftest.hcl`）。要斷言 computed 值時，優先用 `override_resource`／`override_data` 加 `override_during = plan`，其次才用 `command = apply` |
@@ -169,18 +169,18 @@ export AWS_EC2_METADATA_DISABLED=true
 
 ### Phase 0–5：已完成
 
-詳細的檔案清單與 run 表見 git 歷史（本文件在 `541ae3c` 時的版本）。以下只記錄結果與計畫外的變動。
+詳細的檔案清單與 run 表見這份文件的 git 歷史。以下只記錄結果與計畫外的變動。
 
 | module | commit | 測試數 |
 |---|---|---|
-| `ssm-publish` | `46d5a4d` | 22 |
-| `sns-alarm-topic` | `5a0dcf3` | 18 |
-| `vpc` | `09c5342`（`92b6200` 後 69：搬走 4 個、刪掉 3 個） | 76 |
-| `ecs-cluster` | `07552ef` | 22 |
-| `ecs-service` | `4ebf5d9` | 67 |
-| `alb` | `04b33ef` | 32 |
-| `ecs-service-alarms` | `74ea776` | 25 |
-| `rds` | `c916c46` | 108 |
+| `ssm-publish` | `16093e8` | 22 |
+| `sns-alarm-topic` | `100882c` | 18 |
+| `vpc` | `59d0834`（`595dd27` 後 69：搬走 4 個、刪掉 3 個） | 76 |
+| `ecs-cluster` | `50db926` | 22 |
+| `ecs-service` | `1d4966b` | 67 |
+| `alb` | `4bb065c` | 32 |
+| `ecs-service-alarms` | `1b92197` | 25 |
+| `rds` | `0d2e517` | 108 |
 
 全量 `scripts/validate.sh`：21 個目錄（8 個 module 加 13 個 example）通過。
 
@@ -190,7 +190,7 @@ export AWS_EC2_METADATA_DISABLED=true
 | `19608d4 fix(validate)` | 加 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true` | module 沒有 lock 檔時不用快取，每個目錄要下載約 6 分鐘 |
 | 7 個 `style(<module>)` | 註解、`description`、`error_message` 改成只用英文 | 新規則（硬性限制第 6 條）；`alb` 原本就符合 |
 
-### Phase 6：共用設定更新（已完成，`eec61df`）
+### Phase 6：共用設定更新（已完成，`61441a5`）
 
 **實際結果**：全量 `scripts/validate.sh` 通過。跟計畫的差異：S3 放行 `each.value`（`for_each` 的迭代變數，不是參數值），寫在 `scripts/validate.sh` 的註解。
 
@@ -211,7 +211,7 @@ export AWS_EC2_METADATA_DISABLED=true
 |---|---|
 | S2 | 範圍確認涵蓋 `modules/` 與 `templates/`（現行已是） |
 | S3 | 改寫：`data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 不得出現 `.value`。原本「範本 `ssm-inputs.tf` 不讀 `.value`」由這條涵蓋 |
-| S4 | 改寫：`resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`d770756` 起；Phase 6 時的版本允許 `modules/vpc/`） |
+| S4 | 改寫：`resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`f9ab86c` 起；Phase 6 時的版本允許 `modules/vpc/`） |
 | S8 | 新增：範本 stack 裡 `resource "aws_*"` 只能是 design §5.3〈stack 裡的原生資源〉上的型別與 stack（目前只有 `foundation` 的 `aws_secretsmanager_secret`）。清單寫成腳本開頭的一個陣列，跟 design 的表一一對應 |
 
 **反向驗證**（在 scratchpad 的暫存複本做，不在 repo 留 fixture）
@@ -252,13 +252,13 @@ scripts/validate.sh                                                # 既有 21 �
 
 | module | commit | 測試數 |
 |---|---|---|
-| `iam-role` | `5de879a`（`5ab5d87` 後 34） | 30 |
-| `iam-role-policy` | `5871875`（`fce75f2` 後 27） | 23 |
-| `kms-key` | `9994403` | 27 |
-| `s3-bucket` | `d9f8e65` | 28 |
-| `ecr-repository` | `86560dc` | 17 |
-| `ssm-read` | `9b56443` | 19 |
-| `security-group` | `5675092` | 44 |
+| `iam-role` | `313853f`（`212e77e` 後 34） | 30 |
+| `iam-role-policy` | `dbc4744`（`4e9ae2d` 後 27） | 23 |
+| `kms-key` | `6cdc63f` | 27 |
+| `s3-bucket` | `1183749` | 28 |
+| `ecr-repository` | `7893dc9` | 17 |
+| `ssm-read` | `400e85e` | 19 |
+| `security-group` | `521d6e2` | 44 |
 
 全量 `scripts/validate.sh`：35 個目錄通過。跟計畫的差異：`iam-role` 與 `iam-role-policy` 多了一條 validation，Allow statement 不准搭配 `NotAction`（`NotAction` 等於「除了這些以外全部允許」，會繞過禁止萬用動作的檢查）。兩個 module 這條的寫法也一字不差。
 
@@ -410,10 +410,10 @@ scripts/validate.sh                                       # 全量
 |---|---|---|
 | `977cba7 chore(repo)` | release-please 加 `log-group`、`log-metric-alarm`、`xray`；README 改成 18 個 | — |
 | `21d6513 docs(design)` | 設計文件的 7E 變更，並補記 Phase 7 的計畫外差異 | — |
-| `a6dd7ac` | `log-group` | 18 |
-| `0cdd874` | `log-metric-alarm` | 27 |
-| `90adc72` | `xray` | 22 |
-| `0bde63f` | `ecs-service` 的 `sidecars` | `ecs-service` 合計 90；既有 5 個測試檔沒有變動 |
+| `27e1a6b` | `log-group` | 18 |
+| `d5c3795` | `log-metric-alarm` | 27 |
+| `aa6081c` | `xray` | 22 |
+| `36ce674` | `ecs-service` 的 `sidecars` | `ecs-service` 合計 90；既有 5 個測試檔沒有變動 |
 
 跟計畫的差異：
 
@@ -548,7 +548,7 @@ scripts/validate.sh                                                # 全量
 | `7ebd512 feat(vpc-interface-endpoints)` | interface endpoint 加專用 SG（只對 `allowed_cidrs` 開 443，獨立 rule 資源，沒有 egress） | 22 |
 | `d770756 chore(repo)` | release-please 改成 19 個；S4 改成 SG 只能在 `security-group` 與 `vpc-interface-endpoints`、`aws_default_security_group` 只能在 `vpc` | — |
 
-### Phase 8：`templates/project-infra`（8 個 stack，已完成，`e71db48`）
+### Phase 8：`templates/project-infra`（8 個 stack，已完成，`8b96413`）
 
 結果：8 個 stack 共 317 個測試全過，全量 `scripts/validate.sh` 52 個目錄全過（約 9 分鐘）。跟下面計畫的差異：`reads_only_listed_keys`、`publishes_under_stack_path` 改成斷言 local 與 `module.ssm_publish.names`；loadbalancer 的 tfvars 與 examples 測試改成每個 run 釘住 `certificate_arn`；設計面的差異記在 design §9.4 D20、D21。
 
@@ -873,9 +873,9 @@ Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Ph
 
 | commit | 內容 | 影響的測試 |
 |---|---|---|
-| `6fcd3e2` `docs(template): mark outputs as human-only and set D21 release levels` | 8 份 `outputs.tf` 檔頭註明下游不讀、跨 stack 只走 SSM；D21 依 §3.5 分級（`ecs-service` 是 PATCH，`rds` 與 `vpc-interface-endpoints` 是 MINOR） | 無 |
-| `79a6520` `fix(scripts): validate vendored modules and stacks in customer repos` | `scripts/validate.sh` 能在客戶 repo 裡驗證 vendored 的 module 與 stack（路徑對照到本 repo 的規則），`delivering-to-customer.md` 對應補上 | 沒有改任何 module 或 stack 的測試 |
-| `ff68ca4` `feat(template): add mirror repositories for external images` | `containerimage` 新增 `mirrored_images`（每個名稱一個 `<project>-<env>-mirror-<name>` repository，發布 `mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn`）；`iam-base` 讀它，execution role 的 ECR 拉取權限涵蓋 mirror；`observability.md` 補上沒有 NAT 時的做法 | `containerimage`、`iam-base` 的測試增加 |
+| `a7db594` `docs(template): mark outputs as human-only and set D21 release levels` | 8 份 `outputs.tf` 檔頭註明下游不讀、跨 stack 只走 SSM；D21 依 §3.5 分級（`ecs-service` 是 PATCH，`rds` 與 `vpc-interface-endpoints` 是 MINOR） | 無 |
+| `02143ef` `fix(scripts): validate vendored modules and stacks in customer repos` | `scripts/validate.sh` 能在客戶 repo 裡驗證 vendored 的 module 與 stack（路徑對照到本 repo 的規則），`delivering-to-customer.md` 對應補上 | 沒有改任何 module 或 stack 的測試 |
+| `e6fbb6e` `feat(template): add mirror repositories for external images` | `containerimage` 新增 `mirrored_images`（每個名稱一個 `<project>-<env>-mirror-<name>` repository，發布 `mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn`）；`iam-base` 讀它，execution role 的 ECR 拉取權限涵蓋 mirror；`observability.md` 補上沒有 NAT 時的做法 | `containerimage`、`iam-base` 的測試增加 |
 | `feat(template): wire x-ray tracing into the template` | X-Ray 追蹤完整接進範本，預設關閉，見下 | `iam-app` 30 到 37、`application` 48 到 70、`network` 90 到 97 |
 
 **本次的範圍**：使用者要求「第一版就讓 X-Ray 能完整用起來」。這推翻 design 決策 32 的後半句（ADOT、collector 設定、task role 的 X-Ray 權限由專案自己決定）與 §4.20「範本預設不開追蹤，放進範本會讓每個專案都背一個預設關閉的 sidecar」的理由；新增決策 36。`modules/` 一個檔案都沒動：`ecs-service` 的 `sidecars` 介面夠用。
@@ -910,7 +910,7 @@ Phase 9 的六份文件與 `vendor-modules.sh` 完成後，又有四件事在 Ph
 
 ### 增補：Phase 11–16（LLM 與 AgentCore，design 決策 37–53）
 
-**結論**：在 v1 上增補 7 個新 module、範本的 `agent` stack、`rds-v0.1.1`（Data API 加 `deployment`、`database_name` 兩個輸出）、`s3-bucket-v0.1.1`（`never_expire`）。增補動到的 9 個 module 都發 `<module>-v0.1.1`，7 個新 module 不打 `v0.1.0`（design 決策 54）。分 6 個 Phase，規則全部沿用上面的〈全局規則〉（硬性限制 10 條、TDD 節奏、一個 module 一個 commit、主 agent 自己重跑驗證才 commit、不 push）。19 個既有的 `<module>-v0.1.0` tag 留在 `28a8647`，整個增補過程不得移動。
+**結論**：在 v1 上增補 7 個新 module、範本的 `agent` stack、`rds-v0.1.1`（Data API 加 `deployment`、`database_name` 兩個輸出）、`s3-bucket-v0.1.1`（`never_expire`）。增補動到的 9 個 module 都發 `<module>-v0.1.1`，7 個新 module 不打 `v0.1.0`（design 決策 54）。分 6 個 Phase，規則全部沿用上面的〈全局規則〉（硬性限制 10 條、TDD 節奏、一個 module 一個 commit、主 agent 自己重跑驗證才 commit、不 push）。19 個既有的 `<module>-v0.1.0` tag 留在 `38e5f79`，整個增補過程不得移動。
 
 | Phase | 內容 | 只能動的路徑 | commit |
 |---|---|---|---|
@@ -1021,13 +1021,13 @@ S9 的反向驗證在 scratchpad 的暫存複本做（同 Phase 6）：
 
 | module | commit | 測試數 |
 |---|---|---|
-| `log-delivery` | `0c79364` | 28 |
-| `bedrock-guardrail` | `ea0a365` | 45 |
-| `bedrock-inference-profile` | `71e7550` | 14 |
-| `agentcore-memory` | `8708820` | 24 |
-| `agentcore-runtime` | `1948aba` | 47 |
-| `agentcore-gateway` | `4048dbf` | 54 |
-| `bedrock-knowledge-base` | `36d6ee5` | 50 |
+| `log-delivery` | `d80ebf4` | 28 |
+| `bedrock-guardrail` | `6d9184c` | 45 |
+| `bedrock-inference-profile` | `75d69f0` | 14 |
+| `agentcore-memory` | `78e0497` | 24 |
+| `agentcore-runtime` | `174a65e` | 47 |
+| `agentcore-gateway` | `df299d5` | 54 |
+| `bedrock-knowledge-base` | `f5092a2` | 50 |
 
 主 agent 對每個 module 重跑 `scripts/validate.sh modules/<name>`，全部通過，並另外確認 aws provider 6.69.0 在 plan 時拒收 Memory 保留天數 3（`value must be between 7 and 365, got: 3`）。git 歷史的 commit 順序是 `bedrock-inference-profile` → `agentcore-runtime` → `agentcore-memory` → `bedrock-knowledge-base` → `log-delivery` → `agentcore-gateway` → `bedrock-guardrail`，跟下面計畫的順序不同；module 之間沒有檔案重疊，結果相同。
 
@@ -1176,26 +1176,26 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 **結果（2026-10-15）**：
 
 - **乾淨狀態全綠**：刪掉 `.cache/tf-data` 後重跑 `scripts/validate.sh`，分三組並行（`modules`、stack 1–5、stack 6–9），68 個目錄全部通過；9 份 `common.tf` 一致。
-- **舊 tag**：19 個 `<module>-v0.1.0` 都還在 `28a8647`。
+- **舊 tag**：19 個 `<module>-v0.1.0` 都還在 `38e5f79`。
 - **module 只用英文**：通過；唯一的非 ASCII 是 `bedrock-guardrail/examples/zh-tw-standard` 的中文資料值，它就是要示範擋中文。
 - **commit 歷史**：`28a8647..HEAD` 的 author 都是 `<author-email>`；每個 module 的 commit 只動該 module 目錄。repo 已有 remote，沒有推送。
 - **Phase 14 的安全審查**：沒有 BLOCKER；兩個 HIGH（Gateway 讀不到 S3 工具定義、KB secret ARN 可用萬用字元）與 M3 已修並補雙向測試、做過突變驗證，其餘記在 design §8.8（D42–D46）。
-- **manifest 與 tag**：`81ac4d3` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。在 zsh 原樣執行 `releasing-modules.md` 的指令，把 9 個 `<module>-v0.1.1` annotated tag 打在 `81ac4d3`；執行時發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
-- **後續（Phase 17）**：~~9 個 `v0.1.1` 在 `81ac4d3`~~ 那 9 個 tag 從未推送，Phase 17 補強後刪掉，在 `54f2837` 重打 10 個（加 `iam-role`，design 決策 54 附註、決策 56）。下面的預期值已改成 Phase 17 之後的數字。
+- **manifest 與 tag**：`52f954e` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。在 zsh 原樣執行 `releasing-modules.md` 的指令，把 9 個 `<module>-v0.1.1` annotated tag 打在 `52f954e`；執行時發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
+- **後續（Phase 17）**：~~9 個 `v0.1.1` 在 `52f954e`~~ 那 9 個 tag 從未推送，Phase 17 補強後刪掉，在 `74149bc` 重打 10 個（加 `iam-role`，design 決策 54 附註、決策 56）。下面的預期值已改成 Phase 17 之後的數字。
 
 由主 agent 自己做，不派 subagent。
 
 | 檢查 | 指令或做法 | 預期 |
 |---|---|---|
 | 乾淨狀態全綠 | 刪掉 `.cache/` 後跑 `scripts/validate.sh` | 全綠：26 個 module、它們的 example、9 個 stack 與各自的 `-var-file` 執行（68 個目錄） |
-| 舊 tag 沒動 | 每支 Phase 前的 19 個 tag 跑 `git rev-parse "<tag>^{commit}"` | 全部是 `28a8647` |
+| 舊 tag 沒動 | 每支 Phase 前的 19 個 tag 跑 `git rev-parse "<tag>^{commit}"` | 全部是 `38e5f79` |
 | module 只用英文 | 同 Phase 10 | 沒有輸出 |
 | 靜態規則 | S1–S9 | 通過 |
 | 介面與 design 一致 | 7 個新 module、`rds`、`s3-bucket` 的變數名、預設值、輸出對照 design §4.24–§4.32；範本的 key 對照 §5.6 增補 | 不一致要揭露，回寫 design §9.4，不自行改 design 的決策 |
 | 測試數量 | 彙整每個 module／stack 的 `n passed` | 與 Phase 12–14 的回報一致 |
 | commit 歷史 | `git log --format='%ae %s' 28a8647..HEAD` | Phase 11–15 的 commit，每個 module 的 commit 只動該 module 目錄，author 都是 `<author-email>`；沒有 remote |
 
-驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 裡增補的 9 個 module（7 個新 module 加 `rds`、`s3-bucket`；Phase 17 起再加 `iam-role`，共 10 個，`54f2837`）改成 `0.1.1`（`chore(repo): record the llm addendum modules as 0.1.1`），理由同決策 27：release-please 把 manifest 的版本當成已發布。其他 17 個 module 維持 `0.1.0`。**tag 由人打**，在這個 commit 上手動打 9 個 `<module>-v0.1.1`（design 決策 54），7 個新 module 不打 `v0.1.0`；指令寫在 `docs/guides/releasing-modules.md`（Phase 12 加入，`db5dee9` 已照決策 54 改成從 manifest 讀出這 9 個、打 `v0.1.1`）。原則上主 agent 不打 tag；本 repo 這一輪由使用者指定版本後，主 agent 在本機打，不推送。
+驗收通過後，主 agent 用一個 commit 把 `.release-please-manifest.json` 裡增補的 9 個 module（7 個新 module 加 `rds`、`s3-bucket`；Phase 17 起再加 `iam-role`，共 10 個，`74149bc`）改成 `0.1.1`（`chore(repo): record the llm addendum modules as 0.1.1`），理由同決策 27：release-please 把 manifest 的版本當成已發布。其他 17 個 module 維持 `0.1.0`。**tag 由人打**，在這個 commit 上手動打 9 個 `<module>-v0.1.1`（design 決策 54），7 個新 module 不打 `v0.1.0`；指令寫在 `docs/guides/releasing-modules.md`（Phase 12 加入，`49d550c` 已照決策 54 改成從 manifest 讀出這 9 個、打 `v0.1.1`）。原則上主 agent 不打 tag；本 repo 這一輪由使用者指定版本後，主 agent 在本機打，不推送。
 
 ```bash
 jq -r 'to_entries[] | .value' .release-please-manifest.json | sort | uniq -c   # 16 個 0.1.0、10 個 0.1.1（Phase 17 之後）
@@ -1210,30 +1210,30 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 
 #### Phase 17：補強（模組安全審查與 Phase 14 審查的待辦，design 決策 55、56）
 
-**範圍**：§8.8〈已知風險，這一輪不修〉的 M1、M4、L1–L5，加上之後對 module 做的安全審查找到的項目，以及 design §9.5 Q1 的定案（決策 55：KB 的 secret 由 `agent` 建、兩段式 `database_user_ready`）。使用者決定 `iam-role` 一起進 `v0.1.1`；Phase 16 打在 `81ac4d3` 的 9 個 tag 從未推送，刪掉重打。
+**範圍**：§8.8〈已知風險，這一輪不修〉的 M1、M4、L1–L5，加上之後對 module 做的安全審查找到的項目，以及 design §9.5 Q1 的定案（決策 55：KB 的 secret 由 `agent` 建、兩段式 `database_user_ready`）。使用者決定 `iam-role` 一起進 `v0.1.1`；Phase 16 打在 `52f954e` 的 9 個 tag 從未推送，刪掉重打。
 
 **commit**（`git log --format='%h %s' 81ac4d3..54f2837`，module 一個 commit，只動該 module 目錄）
 
 | commit | 對象 | 內容 |
 |---|---|---|
-| `16eb2aa` | docs | Phase 16 紀錄；tag 迴圈改用 `mods`（zsh） |
-| `59f647b` | `iam-role` | `trust.source_arn` |
-| `484cdb9` | `s3-bucket` | `never_expire` 不准配 `log_delivery` |
-| `f7420dd` | `agentcore-gateway` | Lambda target 同帳號、`role_arn` 允許 path、JWT 空白項目、KMS key ARN |
-| `0ed7943` | `agentcore-runtime` | ECR 同帳號、請求標頭黑名單、名稱像 secret 的環境變數、`role_arn` 允許 path |
-| `8edede6` | `log-delivery` | source 與 CWL 目的地同帳號 |
-| `8d46a8d` | `bedrock-knowledge-base` | cluster／secret 同帳號同 region、secret 確切 ARN、`bucket_owner_account_id` 必填、`allowed_account_ids` |
-| `e39b772` | `bedrock-inference-profile` | `Name` tag、`copy_from` 不准萬用字元、inference profile 同帳號 |
-| `de5499a` | `bedrock-guardrail` | PII 類型白名單、KMS key ARN、README 的 `UpdateGuardrail` 限制建議 |
-| `648383b` | `agentcore-memory` | KMS key ARN |
-| `8ab4b91` | `agentcore-gateway` | KMS key ARN 收多區域 `mrk-` key |
-| `c6bb164` | 範本 `iam-base` | 三種 agent 服務角色加 `aws:SourceArn`（M1） |
-| `7a7593d` | 範本 `network` | 沒有 NAT 時 Runtime egress 只到 VPC CIDR（L4） |
-| `0641431` | 範本 `iam-app` | KB 的 `kms:EncryptionContext:SecretARN`、S3 的 `aws:ResourceAccount`（M4）；Runtime metrics 與 workload identity（L5） |
-| `22191ed` | 範本 `agent`、`validate.sh` | KB secret 由 `agent` 建、`database_user_ready`、`bucket_owner_account_id`、`workload_identity`；S8 加 `agent:aws_secretsmanager_secret` |
-| `8b840ea` | 範本 `iam-app` | `agent_access` 不准列還沒 ready 的 KB |
-| `4797f0f` | `iam-role` | README 的用法範例指向 `v0.1.1` |
-| `54f2837` | repo | manifest 把 `iam-role` 登記成 `0.1.1`（共 10 個） |
+| `6dd44b8` | docs | Phase 16 紀錄；tag 迴圈改用 `mods`（zsh） |
+| `86b633b` | `iam-role` | `trust.source_arn` |
+| `3a1f347` | `s3-bucket` | `never_expire` 不准配 `log_delivery` |
+| `380a91c` | `agentcore-gateway` | Lambda target 同帳號、`role_arn` 允許 path、JWT 空白項目、KMS key ARN |
+| `ad7f0e6` | `agentcore-runtime` | ECR 同帳號、請求標頭黑名單、名稱像 secret 的環境變數、`role_arn` 允許 path |
+| `c2e25ec` | `log-delivery` | source 與 CWL 目的地同帳號 |
+| `45808d2` | `bedrock-knowledge-base` | cluster／secret 同帳號同 region、secret 確切 ARN、`bucket_owner_account_id` 必填、`allowed_account_ids` |
+| `e842939` | `bedrock-inference-profile` | `Name` tag、`copy_from` 不准萬用字元、inference profile 同帳號 |
+| `9f8b849` | `bedrock-guardrail` | PII 類型白名單、KMS key ARN、README 的 `UpdateGuardrail` 限制建議 |
+| `055ac17` | `agentcore-memory` | KMS key ARN |
+| `e4dcb22` | `agentcore-gateway` | KMS key ARN 收多區域 `mrk-` key |
+| `59e69ca` | 範本 `iam-base` | 三種 agent 服務角色加 `aws:SourceArn`（M1） |
+| `cd2c07d` | 範本 `network` | 沒有 NAT 時 Runtime egress 只到 VPC CIDR（L4） |
+| `45b3b68` | 範本 `iam-app` | KB 的 `kms:EncryptionContext:SecretARN`、S3 的 `aws:ResourceAccount`（M4）；Runtime metrics 與 workload identity（L5） |
+| `66d8256` | 範本 `agent`、`validate.sh` | KB secret 由 `agent` 建、`database_user_ready`、`bucket_owner_account_id`、`workload_identity`；S8 加 `agent:aws_secretsmanager_secret` |
+| `d594c07` | 範本 `iam-app` | `agent_access` 不准列還沒 ready 的 KB |
+| `e3d7398` | `iam-role` | README 的用法範例指向 `v0.1.1` |
+| `74149bc` | repo | manifest 把 `iam-role` 登記成 `0.1.1`（共 10 個） |
 
 **結果（2026-10-16）**：
 
@@ -1241,14 +1241,14 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 - **反向驗證**：MEDIUM 以上的修正都做過突變驗證（暫時拿掉檢查，對應 run 要紅）；LOW 的項目照使用者決定不做。
 - **測試數量**：module 這一輪新增 111 個 run；範本的變動見 design §7.1〈決策 55、56 的測試〉（`agent` 仍是 86 個）。
 - **未實測**：服務角色的 `aws:SourceArn` 形狀、`PutMetricData` 的 namespace、`GetWorkloadAccessToken*`、沒有 NAT 時只到 VPC CIDR 的 egress、KB 建立時會不會檢查資料庫帳號，都列在 design §7.3 第 21、26–28 項。
-- **tag**：`81ac4d3` 上的 9 個本機 `v0.1.1` tag（從未推送）已刪除；主 agent 照 `releasing-modules.md` 的補打迴圈（從 manifest 讀版本）在 `54f2837` 打 10 個 annotated `<module>-v0.1.1`。19 個 `v0.1.0` 仍在 `28a8647`。沒有推送。
+- **tag**：`52f954e` 上的 9 個本機 `v0.1.1` tag（從未推送）已刪除；主 agent 照 `releasing-modules.md` 的補打迴圈（從 manifest 讀版本）在 `74149bc` 打 10 個 annotated `<module>-v0.1.1`。19 個 `v0.1.0` 仍在 `38e5f79`。沒有推送。
 
 | 檢查 | 指令 | 預期 |
 |---|---|---|
 | manifest | `jq -r 'to_entries[] \| .value' .release-please-manifest.json \| sort \| uniq -c` | 16 個 `0.1.0`、10 個 `0.1.1` |
 | 新 tag | `git tag --points-at 54f2837 \| wc -l` | 10 |
-| 舊 tag | `git tag -l '*-v0.1.0' \| wc -l`；每個 `git rev-parse "<tag>^{commit}"` | 19，全部是 `28a8647` |
-| 舊的 `v0.1.1` 不在 `81ac4d3` | `git tag --points-at 81ac4d3` | 沒有輸出 |
+| 舊 tag | `git tag -l '*-v0.1.0' \| wc -l`；每個 `git rev-parse "<tag>^{commit}"` | 19，全部是 `38e5f79` |
+| 舊的 `v0.1.1` 不在 `52f954e` | `git tag --points-at 81ac4d3` | 沒有輸出 |
 
 ## 驗證指令的具體寫法
 
@@ -1276,7 +1276,7 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 | S1 | 每個 `*.tftest.hcl`（含 `tests/tfvars/`、`tests/examples/`）都宣告 `mock_provider "aws"` |
 | S2 | `resource "aws_ssm_parameter"` 只能出現在 `modules/ssm-publish/`（範圍含 `modules/` 與 `templates/`） |
 | S3 | `data "aws_ssm_parameter"` 只能出現在 `modules/ssm-read/`；`modules/ssm-read/` 不得出現 `.value` |
-| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`d770756` 起；Phase 6 時的版本允許 `modules/vpc/`） |
+| S4 | `resource "aws_iam_*"` 只能出現在 `modules/iam-role/` 與 `modules/iam-role-policy/`（後者只允許 `aws_iam_role_policy`）；`aws_security_group`、`aws_vpc_security_group_ingress_rule`、`aws_vpc_security_group_egress_rule` 只能出現在 `modules/security-group/` 與 `modules/vpc-interface-endpoints/`；`aws_default_security_group` 只能出現在 `modules/vpc/`；範本 stack 都不得出現（`f9ab86c` 起；Phase 6 時的版本允許 `modules/vpc/`） |
 | S5 | 範本 8 個 stack 的 `common.tf` 雜湊相同 |
 | S6 | 每份 `envs/<env>.tfbackend` 的 `key` 等於 `<project>-<env>/<stack>/terraform.tfstate`；`envs/examples/` 不得有 tfbackend |
 | S7 | `modules/rds/variables.tf` 不得宣告名稱含 `password` 的變數；`modules/` 底下不得出現 `random_password` |
@@ -1367,15 +1367,15 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 | P1 | 一個 module 一個 commit，非 module 的 Phase 各一個；主 agent 驗證後才 commit；直接在 `main`，不 push，author `<author-email>` |
 | P2 | 執行型 subagent 只能透過 `scripts/validate.sh` 跑 terraform；唯一例外是 Phase 8 產生範本 lock 檔，照原文執行 |
 | P3 | 不准 `terraform providers lock`；不准用 `TF_CLI_CONFIG_FILE` 指到本機 mirror |
-| P4 | `validate.sh` 設 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`19608d4`） |
-| P5 | 第一個 tag 由人手動打 19 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（`541ae3c`、design 決策 27） |
+| P4 | `validate.sh` 設 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`（`cc5cad5`） |
+| P5 | 第一個 tag 由人手動打 19 個 `<module>-v0.1.0`，本 repo 的實作流程不打 tag（已併入、design 決策 27） |
 | P6 | `modules/` 底下的註解、`description`、`error_message` 只用英文，禁止 icon（design 決策 26） |
 | P7 | 新增 7 個 module（再加 7E 的 3 個、7F 的 `vpc-interface-endpoints`，共 19 個）；IAM 只由 `iam-role`、`iam-role-policy` 建；SG 只由 `security-group`、`vpc` 建；stack 只呼叫 module，例外只有 foundation 的 secret 容器（design 決策 24、25、28、29、30） |
 | P8 | tfvars（dev、prod、examples）不在測試裡複製值，由 `validate.sh` 對範本 stack 另跑 `terraform test -var-file=...` |
 | P9 | Phase 7E：先一個 docs commit（設計文件）、一個 chore commit（release-please 加 3 個 module、README 改成 18 個），再 3 個新 module 與 `feat(ecs-service)` 的 sidecars 各一個 commit；`ecs-service` 既有測試檔一行都不改（design 決策 31–33） |
-| P10 | 增補 Phase 11–16 沿用 P1–P6；19 個既有 tag 留在 `28a8647`，不得移動（design 決策 37） |
+| P10 | 增補 Phase 11–16 沿用 P1–P6；19 個既有 tag 留在 `38e5f79`，不得移動（design 決策 37） |
 | P11 | Phase 12 的 `feat(rds)` 是單獨一個 commit，既有 5 個測試檔一行不改；`rds` 發 `0.1.1`，內容是 `data_api` 加 `deployment`、`database_name` 兩個輸出（照 semver 表是 MINOR，這一次照 design 決策 54 用 `0.1.1`；決策 39、52、§4.31） |
-| P12 | Phase 16 驗收後，manifest 裡增補的 9 個 module 由主 agent 改成 `0.1.1`；9 個 `<module>-v0.1.1` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27、54）。後續：這一輪由使用者指定版本後主 agent 在本機打；Phase 17 加 `iam-role`，10 個 tag 重打在 `54f2837`（design 決策 56） |
+| P12 | Phase 16 驗收後，manifest 裡增補的 9 個 module 由主 agent 改成 `0.1.1`；9 個 `<module>-v0.1.1` 由人手動打，主 agent 不打 tag（比照 P5、design 決策 27、54）。後續：這一輪由使用者指定版本後主 agent 在本機打；Phase 17 加 `iam-role`，10 個 tag 重打在 `74149bc`（design 決策 56） |
 | P13 | Phase 14 的 `agent` lock 檔照 Phase 8 原文產生，是硬性限制第 9 條例外的延伸（design J65） |
 | P14 | Phase 12 的 `feat(s3-bucket)` 是單獨一個 commit，既有 `tests/s3-bucket.tftest.hcl` 一行不改；`s3-bucket` 發 `0.1.1`（照 semver 表是 MINOR，這一次照 design 決策 54 用 `0.1.1`；決策 51、§4.32）。KB 用專用資料庫帳號、secret 由專案在範本外建（design 決策 53）；範本不建 secret 容器，除非使用者對 design §9.5 Q1 改變決定 |
 
@@ -1385,7 +1385,7 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 
 | # | 位置 | 狀況 | 建議 |
 |---|---|---|---|
-| 1 | design §5.6 S4 的說明欄 | 還寫「`scripts/validate.sh` 現在的 S4 允許 `modules/vpc`，要跟著改」。`d770756` 已經改好 | design 拿掉這句，或改成「`d770756` 起生效」 |
+| 1 | design §5.6 S4 的說明欄 | 還寫「`scripts/validate.sh` 現在的 S4 允許 `modules/vpc`，要跟著改」。`f9ab86c` 已經改好 | design 拿掉這句，或改成「`f9ab86c` 起生效」 |
 
 ### 待補資訊
 

@@ -58,7 +58,7 @@ module "guardrail" {
 
 注意三件事：
 
-1. **這 10 個 tag 由人手動打**（見 [`releasing-modules.md`](./releasing-modules.md)），打在 `54f2837`。tag 推上遠端之前 `terraform init` 會抓不到 ref。
+1. **這 10 個 tag 由人手動打**（見 [`releasing-modules.md`](./releasing-modules.md)），打在 `74149bc`。tag 推上遠端之前 `terraform init` 會抓不到 ref。
 2. **7 個新 module 的 aws provider 是 `>= 6.69, < 7.0`**，不是其他 module 的 `>= 6.0`：`aws_bedrockagentcore_*` 在舊版不存在。root 的 lock 檔如果釘在 6.69 以前，`init` 會失敗，要 `terraform init -upgrade` 並提交新的 lock 檔。
 3. [`consuming-modules.md`](./consuming-modules.md) 那支一次改完的指令已經把這 10 個 module 設成 `v0.1.1`，其餘留在 `v0.1.0`。`foundation` 的兩個 log bucket 也會一起換成 `s3-bucket-v0.1.1`，它們明寫 `expiration_days = 90`，plan 應該零差異；換完對 `foundation` 跑一次 plan 確認。
 

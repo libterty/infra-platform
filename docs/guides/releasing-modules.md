@@ -107,13 +107,13 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 推完到 GitHub 的 tag 頁面確認 19 個都在。打錯了（例如打在錯的 commit）而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，照上面的規則發下一個 PATCH 版。
 
-本 repo 已照這個迴圈在 `28a8647` 打好 19 個 `<module>-v0.1.0` annotated tag。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。
+本 repo 已照這個迴圈在 `38e5f79` 打好 19 個 `<module>-v0.1.0` annotated tag。本 repo 是範例，不部署到 AWS（2026-10-15 決定）。
 
 ## 增補：手動打 10 個 `<module>-v0.1.1` tag
 
 LLM 與 AgentCore 的增補（設計文件決策 37–54）動到 10 個 module：7 個新 module，加上 `rds`、`s3-bucket`、`iam-role`。照使用者決定（決策 54），這 10 個一律打 `v0.1.1`。`rds`、`s3-bucket`、`iam-role` 的變更照上面的 semver 表本該是 MINOR，只有這一版例外，之後照表走。其餘 16 個 module 沒有變，只有 `v0.1.0`；manifest 因此是 16 個 `0.1.0`、10 個 `0.1.1`。
 
-理由同上一節：增補驗收的 commit 把這 10 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
+理由同上一節：增補驗收的 commit 把這 10 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `38e5f79`，不移動。
 
 前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 已經改好，每個要發的 module 的 CHANGELOG 標題已經從「（未發布）」改成發版日期（理由見上一節的前提），而且那個 commit 已經在 GitHub 的 `main` 上。
 
@@ -153,4 +153,4 @@ git push origin $(git tag -l "*-v${VERSION}" | sed 's#^#refs/tags/#')
 
 推完到 GitHub 的 tag 頁面確認 10 個都在、舊的 19 個沒變。打錯了而且還沒推，用 `git tag -d <tag>` 刪掉重打；已經推上去就不要移動，發下一個 PATCH 版。
 
-本 repo 已照這個迴圈在 `54f2837` 打好 10 個 `<module>-v0.1.1` annotated tag。第一次是在本機打在 `81ac4d3`，之後的強化與 `iam-role` 的變更還要進同一版，所以在任何 push 之前就用 `git tag -d` 全部刪掉，改在 `54f2837` 重打；遠端從來沒有指向 `81ac4d3` 的 `v0.1.1` tag。
+本 repo 已照這個迴圈在 `74149bc` 打好 10 個 `<module>-v0.1.1` annotated tag。第一次是在本機打在 `52f954e`，之後的強化與 `iam-role` 的變更還要進同一版，所以在任何 push 之前就用 `git tag -d` 全部刪掉，改在 `74149bc` 重打；遠端從來沒有指向 `52f954e` 的 `v0.1.1` tag。
