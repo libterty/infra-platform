@@ -29,7 +29,7 @@ override_module {
 
 override_data {
   target = data.aws_kms_alias.secretsmanager
-  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
+  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab" }
 }
 
 # ---- reads ----
@@ -232,7 +232,7 @@ run "secrets_are_decrypted_only_through_secrets_manager_with_the_named_key" {
     condition = alltrue([
       for role in ["api_task", "worker_task", "lambda", "agent_runtime"] : anytrue([
         for s in local.statements[role] : s.Sid == "DecryptSecrets" &&
-        s.Resource == ["arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"] &&
+        s.Resource == ["arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"] &&
         s.Condition.StringEquals["kms:ViaService"] == "secretsmanager.ap-northeast-1.amazonaws.com"
       ])
     ])

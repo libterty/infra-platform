@@ -32,7 +32,7 @@ override_module {
 
 override_data {
   target = data.aws_kms_alias.secretsmanager
-  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" }
+  values = { target_key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab" }
 }
 
 # Computed outputs are unknown at plan time, so the cluster and the Redis clusters get fixed ones. The real modules are
@@ -194,7 +194,7 @@ run "proxy_role_may_read_only_the_cluster_secret_and_decrypt_through_secrets_man
         Sid       = "DecryptThroughSecretsManager"
         Effect    = "Allow"
         Action    = ["kms:Decrypt"]
-        Resource  = ["arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"]
+        Resource  = ["arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"]
         Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.ap-northeast-1.amazonaws.com" } }
       },
     ]
