@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0（未發布）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新變數 `versioning`（預設 `null`）：有給時建 `aws_s3_bucket_versioning`，並多一條 lifecycle rule `cleanup-noncurrent-versions`（整個 bucket：舊版本 `noncurrent_expiration_days` 天後過期，預設 30，範圍 1–3650；清掉過期的 delete marker）。不能跟非空的 `log_delivery` 一起用。
+- 新變數 `expiration_prefix`（預設 `null`）：有給時，過期那條 rule 只套用在這個 prefix；`null` 時 filter 維持空的。
+- 新變數 `lambda_notifications`（預設 `{}`）：非空才建 `aws_s3_bucket_notification`，每個 entry 一個 Lambda 目標，`events` 預設 `s3:ObjectCreated:*`，可加 prefix／suffix filter。`function_arn` 必須是 Lambda function ARN。Lambda 端的 invoke permission 由呼叫端負責。
+- 三個變數都沒給的既有呼叫端，resource 與既有 rule 都沒有變化，換版應該零差異：`filter { prefix = null }` 與原本的空 `filter {}` 在設定上相同。**這是測試與讀程式推論的，沒有用 plan 驗證；mock provider 下 `filter.prefix` 是 unknown，測試只能確認 filter 區塊還在，無法直接斷言它是空的。**
+
 ## 0.1.1（未發布）
 
 新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（design 決策 54）跟 7 個新 module 一起用 `0.1.1`，在增補驗收後手動打 tag（manifest 屆時才改成 `0.1.1`），release-please 不會產生這一段。之後的版本照 semver 表。

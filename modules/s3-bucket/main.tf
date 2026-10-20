@@ -107,6 +107,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "this" {
+  count = var.versioning == null ? 0 : 1
+
+  bucket = aws_s3_bucket.this.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -115,7 +125,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     id     = var.never_expire ? "abort-incomplete-uploads" : "expire-objects"
     status = "Enabled"
 
-    filter {}
+    # A null prefix renders the same as an empty filter block.
+    filter {
+      prefix = var.expiration_prefix
+    }
 
     dynamic "expiration" {
       for_each = var.never_expire ? [] : [local.expiration_days]
@@ -126,6 +139,46 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+  }
+
+  # A separate rule: expired_object_delete_marker cannot share an expiration block with days. It covers the whole
+  # bucket so old versions never outlive the retention window, whatever expiration_prefix is.
+  dynamic "rule" {
+    for_each = var.versioning == null ? [] : [var.versioning]
+    content {
+      id     = "cleanup-noncurrent-versions"
+      status = "Enabled"
+
+      filter {}
+
+      noncurrent_version_expiration {
+        noncurrent_days = rule.value.noncurrent_expiration_days
+      }
+
+      expiration {
+        expired_object_delete_marker = true
+      }
+    }
+  }
+
+  # The noncurrent actions only make sense once versioning is on.
+  depends_on = [aws_s3_bucket_versioning.this]
+}
+
+resource "aws_s3_bucket_notification" "this" {
+  count = length(var.lambda_notifications) == 0 ? 0 : 1
+
+  bucket = aws_s3_bucket.this.id
+
+  dynamic "lambda_function" {
+    for_each = var.lambda_notifications
+    content {
+      id                  = lambda_function.key
+      lambda_function_arn = lambda_function.value.function_arn
+      events              = lambda_function.value.events
+      filter_prefix       = lambda_function.value.filter_prefix
+      filter_suffix       = lambda_function.value.filter_suffix
     }
   }
 }
