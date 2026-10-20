@@ -85,6 +85,91 @@ variable "web_acl_arn" {
   }
 }
 
+variable "vpc_id" {
+  type        = string
+  default     = null
+  description = "VPC of the target groups. Required when target_groups is non-empty."
+  validation {
+    condition     = length(var.target_groups) == 0 || var.vpc_id != null
+    error_message = "vpc_id is required when target_groups is non-empty."
+  }
+}
+
+variable "target_groups" {
+  type = map(object({
+    port                 = number
+    protocol_version     = optional(string, "HTTP1")
+    deregistration_delay = optional(number, 300)
+    health_check = optional(object({
+      path                = optional(string, "/health")
+      matcher             = optional(string, "200")
+      interval            = optional(number, 15)
+      timeout             = optional(number, 5)
+      healthy_threshold   = optional(number, 2)
+      unhealthy_threshold = optional(number, 3)
+    }), {})
+  }))
+  default     = {}
+  description = "Key => IP target group named <name>-<key>. Changing a port replaces the target group, which fails while a rule still uses it; add a new key and move the rule instead."
+  validation {
+    condition     = alltrue([for k in keys(var.target_groups) : can(regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$", "${var.name}-${k}"))])
+    error_message = "<name>-<key> must be 1-32 letters, digits or hyphens, not starting or ending with a hyphen."
+  }
+}
+
+variable "listener_rules" {
+  type = map(object({
+    priority              = number
+    target_group          = string
+    path_patterns         = optional(list(string), [])
+    host_headers          = optional(list(string), [])
+    require_origin_verify = optional(bool, false)
+  }))
+  default     = {}
+  description = "Key => forward rule on the HTTPS listener (the HTTP listener when there is no certificate). Needs at least one path pattern or host header. require_origin_verify = true (opt-in) adds the origin verify header condition and needs origin_verify_header_name."
+  validation {
+    condition     = alltrue([for r in values(var.listener_rules) : contains(keys(var.target_groups), r.target_group)])
+    error_message = "Every rule target_group must be a key of target_groups."
+  }
+  validation {
+    condition     = length(distinct([for r in values(var.listener_rules) : r.priority])) == length(var.listener_rules)
+    error_message = "Rule priorities must be unique."
+  }
+  validation {
+    condition     = alltrue([for r in values(var.listener_rules) : length(r.path_patterns) + length(r.host_headers) > 0])
+    error_message = "Every rule needs at least one path pattern or host header."
+  }
+  validation {
+    condition     = alltrue([for r in values(var.listener_rules) : !r.require_origin_verify || var.origin_verify_header_name != null])
+    error_message = "A rule with require_origin_verify = true needs origin_verify_header_name and origin_verify_header_value."
+  }
+  # ALB allows five condition values per rule; the origin verify header takes one of them.
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) :
+      length(r.path_patterns) + length(r.host_headers) + (r.require_origin_verify ? 1 : 0) <= 5
+    ])
+    error_message = "A rule can have at most 5 condition values in total (path patterns, host headers and the origin verify header)."
+  }
+}
+
+variable "origin_verify_header_name" {
+  type        = string
+  default     = null
+  description = "Header the CDN adds to origin requests. Give it together with origin_verify_header_value."
+  validation {
+    condition     = (var.origin_verify_header_name == null) == nonsensitive(var.origin_verify_header_value == null)
+    error_message = "origin_verify_header_name and origin_verify_header_value must be given together or not at all."
+  }
+}
+
+variable "origin_verify_header_value" {
+  type        = string
+  default     = null
+  sensitive   = true
+  description = "Secret value of the origin verify header. Pass it from a TF_VAR_ environment variable, never from a tfvars file."
+}
+
 variable "sns_topic_arns" {
   type        = list(string)
   description = "Topics for alarm_actions and ok_actions. Required: an alarm nobody receives is not an alarm."

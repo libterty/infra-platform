@@ -36,7 +36,8 @@ variable "alarms" {
     comparison_operator = optional(string, "GreaterThanOrEqualToThreshold")
     treat_missing_data  = optional(string, "notBreaching")
   }))
-  description = "Alarm key => log pattern and alarm settings. Keys must be snake_case. description says what the alarm means and what to check first."
+  default     = {}
+  description = "Alarm key => log pattern and alarm settings. Keys must be snake_case. description says what the alarm means and what to check first. Needs sns_topic_arns when non-empty."
   validation {
     condition     = alltrue([for k, v in var.alarms : can(regex("^[a-z][a-z0-9_]*$", k)) && length(trimspace(v.pattern)) > 0 && length(trimspace(v.description)) > 0])
     error_message = "Keys must be snake_case; pattern and description must not be empty."
@@ -53,12 +54,41 @@ variable "alarms" {
   }
 }
 
+variable "metrics" {
+  type = map(object({
+    pattern       = string
+    metric_name   = string
+    metric_value  = optional(string, "1")
+    default_value = optional(number, 0)
+  }))
+  default     = {}
+  description = "Metric key => log pattern. Creates only the metric filter, no alarm, for dashboards or alarms managed elsewhere. Keys must be snake_case and must not appear in alarms."
+  validation {
+    condition     = alltrue([for k, v in var.metrics : can(regex("^[a-z][a-z0-9_]*$", k)) && length(trimspace(v.pattern)) > 0])
+    error_message = "Keys must be snake_case; pattern must not be empty."
+  }
+  validation {
+    condition     = length(setintersection(toset(keys(var.alarms)), toset(keys(var.metrics)))) == 0
+    error_message = "A key cannot be in both alarms and metrics."
+  }
+  # alarms = {} with sns_topic_arns set stays valid and creates nothing, as in 0.1.0; only a call with no alarms, no metrics and no topics is rejected.
+  validation {
+    condition     = length(var.alarms) + length(var.metrics) > 0 || length(var.sns_topic_arns) > 0
+    error_message = "Give alarms or metrics; the module has nothing to create."
+  }
+}
+
 variable "sns_topic_arns" {
   type        = list(string)
-  description = "Topics for alarm_actions and ok_actions. Required."
+  default     = []
+  description = "Topics for alarm_actions and ok_actions. Required when alarms is non-empty."
   validation {
-    condition     = length(var.sns_topic_arns) > 0 && alltrue([for a in var.sns_topic_arns : can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", a))])
-    error_message = "Give at least one SNS topic ARN."
+    condition     = length(var.alarms) == 0 || length(var.sns_topic_arns) > 0
+    error_message = "Give at least one SNS topic ARN when alarms is non-empty."
+  }
+  validation {
+    condition     = alltrue([for a in var.sns_topic_arns : can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", a))])
+    error_message = "sns_topic_arns must be SNS topic ARNs."
   }
 }
 

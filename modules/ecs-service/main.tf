@@ -43,6 +43,10 @@ locals {
     },
     # Only added when a sidecar asks, so a single-container task definition stays byte-identical.
     length(local.app_dependencies) == 0 ? {} : { dependsOn = local.app_dependencies },
+    # Omitted when empty so the task definition does not change for existing callers.
+    length(var.system_controls) == 0 ? {} : {
+      systemControls = [for k in sort(keys(var.system_controls)) : { namespace = k, value = var.system_controls[k] }]
+    },
   )
 
   app_dependencies = [

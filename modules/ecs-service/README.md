@@ -44,7 +44,15 @@ module "worker" {
 - `policy = "target_tracking"`（預設）：CPU 60%；`requests_per_target` 有值時多一條 ALB 請求數。冷卻 scale-in 300 秒、scale-out 60 秒。
 - `policy = "step"`：CPU 與記憶體各一組 scale-out（門檻 70，三階 +1／+2／+3，每階 10%，冷卻 180 秒、評估 1 分鐘）與 scale-in（CPU 40、記憶體 50，−1，冷卻 300 秒、評估 5 分鐘）。共 4 個 policy 與 4 個 CloudWatch alarm。
 - `autoscaling != null` 時 `desired_count` 必須落在 `min_capacity` 與 `max_capacity` 之間。
-- 排程擴縮與自訂指標的 policy 不在 module 內；用輸出的 `autoscaling_resource_id` 在 module 外自己加。
+- `policy = "custom"`（0.2.0 起）：不建內建的 CPU、請求數與 step policy，只建下面兩種。scheduled action 與自訂 step policy 也可以跟其他三種 policy 一起用。
+- `scheduled_actions`（0.2.0 起）：key（snake_case）對應 `schedule`（`cron()`、`rate()` 或 `at()`）、`timezone`（`UTC`）、`min_capacity`、`max_capacity`，每項建一個 scheduled action，名稱 `<name>-<key>`。`min_capacity` 不可大於 `max_capacity`，`max_capacity` 不可超過 `autoscaling.max_capacity`。
+- `step_policies`（0.2.0 起）：key（snake_case）對應 `comparison_operator`、`threshold`、`evaluation_periods`，`metric`（單一指標）與 `queries`（metric math）二選一，以及 `adjustments`（`lower`、`upper`、`change` 的 list）；可選 `cooldown`（300）、`datapoints_to_alarm`、`treat_missing_data`（`notBreaching`）。每項建一個 StepScaling policy 與觸發它的 CloudWatch alarm（`alarm_actions` 指向該 policy），名稱 `<name>-step-<key>`。`lower`、`upper` 是相對於 alarm 門檻的區間。
+- `queries` 裡的項目照 CloudWatch metric math 的規則寫：`expression` 或 `metric` 擇一，最後算出結果的那一項 `return_data = true`；module 不替你檢查，錯誤由 CloudWatch API 回報。
+- 用輸出的 `autoscaling_resource_id` 仍然可以在 module 外加自己的 policy。
+
+## system_controls
+
+`system_controls`（0.2.0 起）預設 `{}`，此時 container definition 不會出現 `systemControls`，task definition 與 0.1.0 完全一致。有給時只加在 `app`，不加在 sidecar，依 namespace 排序。**設了之後會產生新的 task definition revision，觸發一次部署。**
 
 ## Sidecars
 
@@ -78,7 +86,7 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 
 - 不建 security group、不建 IAM。
 - 不寫死任何 sidecar 產品（ADOT、log router 等）；`sidecars` 只負責把額外 container 放進 task，映像、設定與權限由呼叫端決定。
-- 不做排程擴縮、自訂指標 step scaling、`readonlyRootFilesystem`。
+- 不做 `readonlyRootFilesystem`。
 
 ## 輸入
 
@@ -100,12 +108,13 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 | `network` | `object` | 無 | 是 | `subnet_ids`（至少 2 個不同）與 `security_group_ids`（至少 1 個） |
 | `capacity_provider_strategy` | `list(object)` | `[{ capacity_provider = "FARGATE" }]` | 否 | service 的策略 |
 | `desired_count` | `number` | `2` | 否 | 初始 task 數 |
-| `autoscaling` | `object` | `null` | 否 | 見上方 Autoscaling |
+| `autoscaling` | `object` | `null` | 否 | 見上方 Autoscaling；`policy` 可為 `target_tracking`、`step`、`custom`，另有 `scheduled_actions`、`step_policies`（皆預設 `{}`） |
 | `load_balancer` | `object` | `null` | 否 | 見上方兩種 LB 接法 |
 | `health_check_grace_period_seconds` | `number` | `180` | 否 | 只在有 LB 時套用 |
 | `container_health_check` | `object` | `null` | 否 | `command` 必填，其餘有預設 |
 | `service_connect` | `object` | `null` | 否 | `namespace_arn` 必填，`dns_name` 預設為 `name` |
 | `sidecars` | `list(object)` | `[]` | 否 | 主 container `app` 以外的 container，見下方 Sidecars |
+| `system_controls` | `map(string)` | `{}` | 否 | `app` container 的核心參數（namespace → 值）；空的時候 container definition 不含 `systemControls`。見上方 system_controls |
 | `enable_execute_command` | `bool` | `false` | 否 | ECS Exec |
 | `log_group_name` | `string` | `null` | 否 | `null` 時為 `/ecs/<name>` |
 | `log_retention_days` | `number` | `30` | 否 | log 保留天數 |

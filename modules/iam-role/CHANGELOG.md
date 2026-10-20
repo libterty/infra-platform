@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.1.1（未發布）
+## 0.2.0（2026-10-20）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新增選填變數 `instance_profile_name`（預設 `null`）：有給時建一個 `aws_iam_instance_profile`，綁這個 role；沒給就不建。格式 `^[\w+=,.@-]{1,128}$`，不合法由 validation 擋下。
+- 新增輸出 `instance_profile_name`、`instance_profile_arn`；沒建 instance profile 時為 `null`。
+- 沒給 `instance_profile_name` 的既有呼叫端，resource 與既有輸出都沒有變化，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
+
+## 0.1.1（2026-10-16）
 
 新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（比照 design 決策 54）用 `0.1.1`，在驗收後手動打 tag，release-please 不會產生這一段。之後的版本照 semver 表。
 
@@ -8,7 +16,7 @@
 - `source_arn` 必須以 `arn:` 開頭、不含空白，否則 validation 擋下。
 - 沒給 `source_arn` 的既有呼叫端，trust policy JSON 與 0.1.0 逐字相同（測試 `source_account_only_policy_unchanged` 固定了整段字串），換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
 
-## 0.1.0（未發布）
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 

@@ -1,9 +1,14 @@
 locals {
-  names = { for k in keys(var.alarms) : k => "${var.name_prefix}-${replace(k, "_", "-")}" }
+  # Alarm entries and metric-only entries share one filter shape; keys cannot overlap (see var.metrics).
+  filters = merge(
+    { for k, v in var.alarms : k => { pattern = v.pattern, metric_name = v.metric_name, metric_value = v.metric_value, default_value = v.default_value } },
+    { for k, v in var.metrics : k => { pattern = v.pattern, metric_name = v.metric_name, metric_value = v.metric_value, default_value = v.default_value } },
+  )
+  names = { for k in keys(local.filters) : k => "${var.name_prefix}-${replace(k, "_", "-")}" }
 }
 
 resource "aws_cloudwatch_log_metric_filter" "this" {
-  for_each = var.alarms
+  for_each = local.filters
 
   name           = local.names[each.key]
   log_group_name = var.log_group_name

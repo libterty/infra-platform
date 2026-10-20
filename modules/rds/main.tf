@@ -28,8 +28,9 @@ locals {
     "rds.force_ssl"            = "1"
     shared_preload_libraries   = "pg_stat_statements"
   }
-  # shared_preload_libraries is a static parameter; everything else the module sets is dynamic.
-  static_parameters = ["shared_preload_libraries"]
+  # shared_preload_libraries is the only static parameter the module sets itself; callers list any other static
+  # parameter they pass, because RDS rejects "immediate" for a static parameter.
+  static_parameters = setunion(["shared_preload_libraries"], var.static_parameter_names)
 
   parameters = merge(local.default_parameters, local.is_rds ? var.instance_parameters : var.cluster_parameters)
 

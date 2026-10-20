@@ -32,3 +32,13 @@ output "alarm_arns" {
   description = "ALB alarm ARNs keyed by alarm."
   value       = { elb_5xx = aws_cloudwatch_metric_alarm.elb_5xx.arn }
 }
+
+output "target_group_arns" {
+  description = "Target group ARNs keyed by the target_groups key."
+  value       = { for k, t in aws_lb_target_group.this : k => t.arn }
+}
+
+output "target_group_arn_suffixes" {
+  description = "targetgroup/<name>/<id> keyed by the target_groups key, for CloudWatch dimensions."
+  value       = { for k, t in aws_lb_target_group.this : k => t.arn_suffix }
+}

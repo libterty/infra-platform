@@ -107,3 +107,8 @@ output "database_name" {
   description = "Name of the database created with the instance or cluster."
   value       = var.database_name
 }
+
+output "log_group_name" {
+  description = "Name of the PostgreSQL CloudWatch log group the module creates."
+  value       = aws_cloudwatch_log_group.postgresql.name
+}
