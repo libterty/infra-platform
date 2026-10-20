@@ -1,11 +1,12 @@
 locals {
   shared_input_strings = {
-    vpc_id                  = "infra/vpc_id"
     app_sg_id               = "infra/app_sg_id"
     bastion_sg_id           = "infra/bastion_sg_id"
     import_extract_role_arn = "infra/import_extract_role_arn"
     import_load_role_arn    = "infra/import_load_role_arn"
-    alarm_topic_arn         = "infra/alarm_topic_arn"
+    db_proxy_endpoint       = "infra/db_proxy_endpoint"
+    db_secret_arn           = "infra/db_secret_arn"
+    ecr_repository_urls     = "infra/ecr_repository_urls"
   }
 
   shared_input_lists = {

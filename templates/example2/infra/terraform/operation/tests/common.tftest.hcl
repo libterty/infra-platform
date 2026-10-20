@@ -1,10 +1,39 @@
 # The account and env checks in common.tf and providers.tf. Every stack carries the same file.
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111111111111" }
+  }
+}
 
 variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+  # Required variables of this stack, so the account checks can plan.
+  import_extract_image_tag = "0.1.0"
+  import_load_image_tag    = "0.1.0"
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.shared
+  outputs = {
+    strings = {
+      app_sg_id               = "sg-0123456789abcdef0"
+      bastion_sg_id           = "sg-0fedcba9876543210"
+      import_extract_role_arn = "arn:aws:iam::111111111111:role/example-dev-import-extract"
+      import_load_role_arn    = "arn:aws:iam::111111111111:role/example-dev-import-load"
+      db_proxy_endpoint       = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_secret_arn           = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      ecr_repository_urls = jsonencode({
+        import-extract = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-import-extract"
+        import-load    = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-import-load"
+      })
+    }
+    lists = {
+      app_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
+    }
+  }
 }
 
 run "dev_accepts_its_account" {
