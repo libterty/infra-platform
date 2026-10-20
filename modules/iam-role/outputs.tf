@@ -13,3 +13,13 @@ output "id" {
   description = "Role ID."
   value       = aws_iam_role.this.id
 }
+
+output "instance_profile_name" {
+  description = "Instance profile name, or null when instance_profile_name is not set."
+  value       = one(aws_iam_instance_profile.this[*].name)
+}
+
+output "instance_profile_arn" {
+  description = "Instance profile ARN, or null when instance_profile_name is not set."
+  value       = one(aws_iam_instance_profile.this[*].arn)
+}
