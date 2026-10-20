@@ -139,6 +139,15 @@ project-b 是 11 個 Terraform stack、約 240 個原生 resource 的專案（AL
 | `elasticache-redis` | `name`（≤40）、`description`、`engine_version`、`node_type`、`port = 6379`、`subnet_ids`、`security_group_ids`、`num_node_groups = 1`、`replicas_per_node_group = 1`（≥1）、`parameters`（merge 在 `cluster-enabled = yes` 之上，family 由 major 版本推得）、`snapshot_retention_limit = 0`、`apply_immediately = false`、`kms_key_arn`、`log_retention_days`、`autoscaling`（可選：`min_shards`、`max_shards`、`target_cpu = 70`）、`alarm_config`（`memory_percent = 80`、`evictions_threshold` 可選）、`sns_topic_arns`（必填） | `configuration_endpoint`、`port`、`replication_group_id`、`member_clusters`、`arn`、`log_group_names`、`alarm_arns` | at-rest 與 transit 加密固定開、沒有開關；automatic failover 與 multi-AZ 固定開；`cache.t*` 不能配 autoscaling；每個 member 一條 memory 告警；沒給 `evictions_threshold` 不建 evictions 告警；member id 推導用 precondition 核對 |
 | `waf-web-acl` | `name`、`kill_switch`（可選：`action = "count"` 或 `"block"`、`response_json`）、`rate_limit`（可選：`limit`、`allowlist_cidrs = []`）、`managed_rule_groups = list(object({ name, vendor = "AWS", count_overrides = [] }))`、`body_size_exempt_path_prefixes = []`、`logging`（可選：`retention_days = 14`、`kms_key_arn`、`redacted_headers = ["authorization", "cookie"]`）、`tags` | `web_acl_arn`、`web_acl_name`、`ip_set_arn`、`log_group_name` | 只支援 REGIONAL；priority 依固定順序產生；allowlist 為空時不建 IP set；有 body-size 例外時，common rule set 必須已經把 `SizeRestrictions_BODY` 設成 count，否則拒絕；logging 的 log group 名稱是 `aws-waf-logs-<name>`；`redacted_headers` 要能加入 origin verify header；不建 association |
 
+Phase A2 的實作差異（2026-10-20）：
+
+- `metric-alarm`：預設 `period = 300`、`statistic = "Average"`、`GreaterThanOrEqualToThreshold`；AWS 服務的基本指標多半 1 或 5 分鐘一筆，60 秒容易落在 INSUFFICIENT_DATA。`sns_topic_arns` 一律必填，`alarms = {}` 時不建任何東西。不支援 percentile、anomaly detection、composite alarm。
+- `vpc-peering`：Terraform 1.15 沒有 `cidrcontains`，重疊檢查改用 `cidrsubnet`／`cidrhost` 比對較短 prefix 的網段，放在 `peer_cidrs` 的 validation。為了測「route table ID 還不知道時也能 plan」，多一個測試 fixture `tests/fixtures/unknown-ids/`。
+- `ec2-bastion`：`instance_type` 跟 `architecture` 不搭時拒絕，用家族名稱判斷（世代數字後有 `g` 是 Graviton）；舊的 `a1` 會被誤擋。`ami_id` 輸出的是目前查到的最新 AMI，不一定是實際在用的（`ignore_changes = [ami]`）。root volume 用帳號預設的 EBS KMS key。
+- `lambda-function`：預設 `memory_size = 512`、`timeout = 30`；`source_arn` 的資源部分不能以萬用字元開頭；`action` 只能是單一 `lambda:<Action>`；`name` 只收小寫與連字號。tests 依主題拆成 4 個檔。
+
+mock 驗不到、要真實環境才能確認的推論：`function_arn` 的 `depends_on` 確實讓下游在授權後才建；peering 還在等對方接受時能不能先建 route；AL2023 AMI 的名稱篩選條件。
+
 已知限制（寫進各 module 的 README）：
 
 - `elasticache-redis` 固定 `ignore_changes = [num_node_groups]`，讓 autoscaling 調整 shard 數；所以建好之後改 `num_node_groups` 不會生效，autoscaling 改變 shard 數後 member 告警也會跟實際不符。

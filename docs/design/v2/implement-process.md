@@ -25,7 +25,7 @@
 |---|---|---|---|---|
 | 0 | A | v2 設計文件、實作流程、整合流程 | 已完成 | 1：`542423c` |
 | A1 | A | 擴充 6 個既有 module 到 0.2.0：`iam-role`、`s3-bucket`、`rds`、`alb`、`ecs-service`、`log-metric-alarm` | 已完成：主 agent 重跑 `validate.sh` 16 個目錄全過，432 個 run（原本 343，新增 89），既有 test 檔零修改；差異已寫回 design §4.1 | 6：`8e6ebfc`、`86ffbf6`、`b51a78f`、`adc433e`、`0542b16`、`0fd44bb` |
-| A2 | A | 新 module：`metric-alarm`、`vpc-peering`、`ec2-bastion`、`lambda-function` | 未開始 | |
+| A2 | A | 新 module：`metric-alarm`、`vpc-peering`、`ec2-bastion`、`lambda-function` | 已完成：主 agent 重跑 `validate.sh` 9 個目錄全過，218 個 run；lambda-function 的 tests 拆成 4 個檔（都在 800 行內）；差異已寫回 design §4.2 | 4：`adccd3f`、`aa36845`、`cc5bda0`、`22f25de` |
 | A3 | A | 新 module：`elasticache-redis`、`waf-web-acl` | 未開始 | |
 | A4 | A | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG | 未開始 | |
 | A5 | — | （使用者確認後）合併 PR-A、打 12 個 tag、補 GitHub Release、HCP 登記 6 個新 module | 未開始 | |
