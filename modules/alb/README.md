@@ -1,6 +1,6 @@
 # alb
 
-建一個 Application Load Balancer、HTTP／HTTPS listener、ALB 整體的 ELB 5xx 告警，可選 access log 與 WAF 關聯。target group 與 listener rule 由 `ecs-service` 建。
+建一個 Application Load Balancer、HTTP／HTTPS listener、ALB 整體的 ELB 5xx 告警，可選 access log 與 WAF 關聯。target group 與 listener rule 可以由 `ecs-service` 建；0.2.0 起也可以在這個 module 建，見〈target group 與 listener rule〉。
 
 ## 用法
 

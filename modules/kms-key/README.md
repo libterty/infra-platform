@@ -43,7 +43,7 @@ policy 由三種 statement 依序串成，一律用 `jsonencode` 產生：
 - key policy 是 resource policy，不是 IAM 資源，所以這個 module 不建任何 `aws_iam_*`。
 - 服務 principal 必須以 `.amazonaws.com` 結尾；動作不可給 `*` 或 `kms:*`；管理者必須是 IAM role 或 user ARN，且不可含萬用字元。
 - 每個 AWS 服務接受的條件 key 都不一樣。這個 module 只把你給的條件原樣寫進 policy，**沒有在實際環境驗證過**。`rds`、`secretsmanager` 這類服務通常靠 `kms:ViaService` 走 IAM 授權就夠了，要不要放進 key policy，看實測結果決定。
-- `deletion_window_in_days` 預設 30，範圍 7–30。刪除 key 前，所有用它加密的資料都會變成無法解密。
+- `deletion_window_in_days` 預設 30，範圍 7–30。key 刪除後，所有用它加密的資料都無法再解密。
 
 ## 刻意不做
 
