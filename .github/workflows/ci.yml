@@ -56,13 +56,15 @@ jobs:
           {
             echo "### Module versions resolved from the registry by the template stacks"
             echo
-            echo "| module | version | stacks |"
-            echo "|---|---|---|"
-            for mj in .cache/tf-data/templates__project-infra__infra__terraform__*/modules/modules.json; do
+            echo "| template | module | version | stacks |"
+            echo "|---|---|---|---|"
+            for mj in .cache/tf-data/templates__*__infra__terraform__*/modules/modules.json; do
               [ -f "$mj" ] || continue
-              stack="$(basename "$(dirname "$(dirname "$mj")")")"
-              jq -r --arg s "${stack##*__}" '.Modules[] | select(.Version) | "\(.Source | split("/")[2])\t\(.Version)\t\($s)"' "$mj"
+              dir="$(basename "$(dirname "$(dirname "$mj")")")"
+              tpl="${dir#templates__}"
+              tpl="${tpl%%__infra__terraform__*}"
+              jq -r --arg t "$tpl" --arg s "${dir##*__}" '.Modules[] | select(.Version) | "\($t)\t\(.Source | split("/")[2])\t\(.Version)\t\($s)"' "$mj"
             done | sort | awk -F'\t' '
-              { k = $1 "\t" $2; if (!(k in s)) { o[++n] = k; s[k] = $3 } else { s[k] = s[k] " " $3 } }
-              END { for (i = 1; i <= n; i++) { split(o[i], a, "\t"); print "| `" a[1] "` | " a[2] " | " s[o[i]] " |" } }'
+              { k = $1 "\t" $2 "\t" $3; if (!(k in s)) { o[++n] = k; s[k] = $4 } else { s[k] = s[k] " " $4 } }
+              END { for (i = 1; i <= n; i++) { split(o[i], a, "\t"); print "| " a[1] " | `" a[2] "` | " a[3] " | " s[o[i]] " |" } }'
           } >>"$GITHUB_STEP_SUMMARY"
