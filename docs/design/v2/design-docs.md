@@ -146,7 +146,16 @@ Phase A2 的實作差異（2026-10-20）：
 - `ec2-bastion`：`instance_type` 跟 `architecture` 不搭時拒絕，用家族名稱判斷（世代數字後有 `g` 是 Graviton）；舊的 `a1` 會被誤擋。`ami_id` 輸出的是目前查到的最新 AMI，不一定是實際在用的（`ignore_changes = [ami]`）。root volume 用帳號預設的 EBS KMS key。
 - `lambda-function`：預設 `memory_size = 512`、`timeout = 30`；`source_arn` 的資源部分不能以萬用字元開頭；`action` 只能是單一 `lambda:<Action>`；`name` 只收小寫與連字號。tests 依主題拆成 4 個檔。
 
-mock 驗不到、要真實環境才能確認的推論：`function_arn` 的 `depends_on` 確實讓下游在授權後才建；peering 還在等對方接受時能不能先建 route；AL2023 AMI 的名稱篩選條件。
+Phase A3 的實作差異（2026-10-20）：
+
+- `waf-web-acl` 的 allowlist 只讓名單內的 IP 跳過 rate limit（rate 規則加 `NOT ip_set_reference` 的 scope-down），managed rules 與 body size 照樣檢查；不用 allow 規則，因為 allow 會結束評估、跳過所有規則（使用者 2026-10-20 決定）。
+- `waf-web-acl` 的 `redacted_headers` 跟 `authorization`、`cookie` 取聯集，傳 `[]` 也不會關掉這兩個的遮蔽；名稱轉小寫。
+- `waf-web-acl` 的 priority 用固定欄位：kill switch 10、rate limit 30、managed rule groups 從 100 起依清單順序、body size 1000；少一條規則時其他規則不位移。body size 上限固定 8192 bytes。kill switch 給了就要明確選 `action`，`response_json` 只有 `block` 能給。allowlist 拒絕 `0.0.0.0/0` 與 IPv6。
+- `elasticache-redis`：Redis 6 的 parameter group family 是 `redis6.x`，7 是 `redis7`，其他 major 拒絕。`kms_key_arn` 同時用在 at-rest 加密與兩個 log group。evictions 告警也是每個 member 一條。`subnet_ids` 至少 2 個、`replicas_per_node_group` 最多 5。member id 的 precondition：沒有 autoscaling 時推導集合要等於實際 `member_clusters`（所以改 `num_node_groups` 會直接 apply 失敗，不會默默沒效果）；有 autoscaling 時只要求有交集。
+
+mock 驗不到、要真實環境才能確認的推論（A3）：ElastiCache member id 命名規則 `<name>-<shard 4 位>-<node 3 位>`、shard autoscaling 的 metric 與 dimension 名稱、`redis6.x` family；WAF body size 規則的 `oversize_handling = "MATCH"`、巢狀 statement 深度；WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`。
+
+mock 驗不到、要真實環境才能確認的推論（A2）：`function_arn` 的 `depends_on` 確實讓下游在授權後才建；peering 還在等對方接受時能不能先建 route；AL2023 AMI 的名稱篩選條件。
 
 已知限制（寫進各 module 的 README）：
 
