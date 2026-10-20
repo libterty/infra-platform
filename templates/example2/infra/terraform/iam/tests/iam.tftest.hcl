@@ -51,12 +51,12 @@ run "reads_the_secrets_the_repositories_and_the_runtime_list" {
 
 # ---- which roles exist ----
 
-run "dev_has_six_roles_including_eval_batch" {
+run "dev_has_seven_roles_including_eval_batch" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "lambda", "agent_runtime", "eval_batch"])
-    error_message = "dev gets the five service roles and the eval-batch role"
+    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eval_batch"])
+    error_message = "dev gets the six service roles (one per Lambda function) and the eval-batch role"
   }
 }
 
@@ -69,7 +69,7 @@ run "sit_has_no_eval_batch_role" {
   }
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "lambda", "agent_runtime"])
+    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime"])
     error_message = "eval_batch exists only when env is dev"
   }
 
@@ -99,7 +99,7 @@ run "sit_does_not_need_an_eval_batch_model" {
   }
 
   assert {
-    condition     = length(module.role) == 5
+    condition     = length(module.role) == 6
     error_message = "Without eval_batch there is nothing to name a model for"
   }
 }
@@ -109,12 +109,13 @@ run "role_names_follow_the_prefix" {
 
   assert {
     condition = { for k, r in local.roles : k => r.name } == {
-      ecs_execution = "example-dev-ecs-execution"
-      api_task      = "example-dev-api-task"
-      worker_task   = "example-dev-worker-task"
-      lambda        = "example-dev-lambda"
-      agent_runtime = "example-dev-agent-runtime"
-      eval_batch    = "example-dev-eval-batch"
+      ecs_execution  = "example-dev-ecs-execution"
+      api_task       = "example-dev-api-task"
+      worker_task    = "example-dev-worker-task"
+      import_extract = "example-dev-import-extract"
+      import_load    = "example-dev-import-load"
+      agent_runtime  = "example-dev-agent-runtime"
+      eval_batch     = "example-dev-eval-batch"
     }
     error_message = "Roles are named <project>-<env>-<role>"
   }
@@ -132,12 +133,13 @@ run "every_role_trusts_one_service_in_this_account_only" {
 
   assert {
     condition = { for k, r in local.roles : k => one(r.trust.service_principals) } == {
-      ecs_execution = "ecs-tasks.amazonaws.com"
-      api_task      = "ecs-tasks.amazonaws.com"
-      worker_task   = "ecs-tasks.amazonaws.com"
-      lambda        = "lambda.amazonaws.com"
-      agent_runtime = "bedrock-agentcore.amazonaws.com"
-      eval_batch    = "bedrock.amazonaws.com"
+      ecs_execution  = "ecs-tasks.amazonaws.com"
+      api_task       = "ecs-tasks.amazonaws.com"
+      worker_task    = "ecs-tasks.amazonaws.com"
+      import_extract = "lambda.amazonaws.com"
+      import_load    = "lambda.amazonaws.com"
+      agent_runtime  = "bedrock-agentcore.amazonaws.com"
+      eval_batch     = "bedrock.amazonaws.com"
     }
     error_message = "Each role is trusted by the service that runs it"
   }
@@ -165,7 +167,8 @@ run "wildcard_resources_are_the_known_exceptions_only" {
       "worker_task/TraceSegments",
       "worker_task/EcsExec",
       "worker_task/PutCustomMetrics",
-      "lambda/VpcNetworkInterfaces",
+      "import_extract/VpcNetworkInterfaces",
+      "import_load/VpcNetworkInterfaces",
       "agent_runtime/EcrLoginToken",
       "agent_runtime/TraceSegments",
     ])
@@ -213,7 +216,7 @@ run "the_private_key_secret_is_for_the_api_only" {
 
   assert {
     condition = alltrue([
-      for role in ["worker_task", "lambda", "agent_runtime", "ecs_execution"] :
+      for role in ["worker_task", "import_extract", "import_load", "agent_runtime", "ecs_execution"] :
       !contains(flatten([for s in local.statements[role] : s.Resource]), "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl")
     ])
     error_message = "No other role may read the private key secret"
@@ -230,7 +233,7 @@ run "secrets_are_decrypted_only_through_secrets_manager_with_the_named_key" {
 
   assert {
     condition = alltrue([
-      for role in ["api_task", "worker_task", "lambda", "agent_runtime"] : anytrue([
+      for role in ["api_task", "worker_task", "import_load", "agent_runtime"] : anytrue([
         for s in local.statements[role] : s.Sid == "DecryptSecrets" &&
         s.Resource == ["arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"] &&
         s.Condition.StringEquals["kms:ViaService"] == "secretsmanager.ap-northeast-1.amazonaws.com"
@@ -283,20 +286,68 @@ run "api_may_invoke_only_the_runtimes_of_this_env" {
   }
 }
 
-run "lambda_reaches_the_import_bucket_by_name" {
+run "import_extract_reads_incoming_writes_extracted_and_embeds_but_has_no_database" {
   command = plan
 
   assert {
-    condition = toset(flatten([for s in local.statements.lambda : s.Resource if contains(["ReadWriteImportObjects", "ListImportBucket"], s.Sid)])) == toset([
-      "arn:aws:s3:::example-dev-import-111111111111/*",
-      "arn:aws:s3:::example-dev-import-111111111111",
-    ])
-    error_message = "The import bucket is created later by the operation stack, so its ARN is built from the naming rule <project>-<env>-import-<account>"
+    condition = {
+      for s in local.statements.import_extract : s.Sid => flatten([s.Resource]) if startswith(s.Sid, "Read") || startswith(s.Sid, "Write") && s.Sid != "WriteLogs"
+      } == {
+      ReadIncoming   = ["arn:aws:s3:::example-dev-import-111111111111/incoming/*"]
+      WriteExtracted = ["arn:aws:s3:::example-dev-import-111111111111/extracted/*"]
+    }
+    error_message = "import-extract reads uploads under incoming/ and writes results under extracted/ only; the bucket name follows <project>-<env>-import-<account>"
   }
 
   assert {
-    condition     = flatten([for s in local.statements.lambda : s.Resource if s.Sid == "WriteLogs"]) == ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/lambda/example-dev-import-*:*"]
-    error_message = "Lambda log groups are /aws/lambda/<project>-<env>-<function>, both functions start with import-"
+    condition     = !anytrue(flatten([for s in local.statements.import_extract : [for a in s.Action : startswith(a, "secretsmanager:") || startswith(a, "kms:")]]))
+    error_message = "import-extract never connects to the database, so it gets no secret and no key"
+  }
+
+  assert {
+    condition     = flatten([for s in local.statements.import_extract : s.Action if s.Sid == "InvokeEmbeddingModel"]) == ["bedrock:InvokeModel"] && alltrue([for a in flatten([for s in local.statements.import_extract : s.Resource if s.Sid == "InvokeEmbeddingModel"]) : startswith(a, "arn:aws:bedrock:ap-northeast-1::foundation-model/")])
+    error_message = "import-extract may invoke the two embedding foundation models only"
+  }
+
+  assert {
+    condition     = flatten([for s in local.statements.import_extract : s.Resource if s.Sid == "WriteLogs"]) == ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/lambda/example-dev-import-extract:*"]
+    error_message = "Each function writes only to its own log group"
+  }
+}
+
+run "import_load_reads_extracted_and_the_database_secret_and_can_write_nothing_else" {
+  command = plan
+
+  assert {
+    condition     = toset(flatten([for s in local.statements.import_load : s.Resource if contains(["ReadExtracted", "ListExtracted"], s.Sid)])) == toset(["arn:aws:s3:::example-dev-import-111111111111/extracted/*", "arn:aws:s3:::example-dev-import-111111111111"])
+    error_message = "import-load reads the objects under extracted/ only"
+  }
+
+  assert {
+    condition     = !anytrue(flatten([for s in local.statements.import_load : [for a in s.Action : a == "s3:PutObject" || startswith(a, "bedrock:")]]))
+    error_message = "import-load cannot write to the bucket or call a model"
+  }
+
+  assert {
+    condition     = flatten([for s in local.statements.import_load : s.Resource if s.Sid == "ReadSecrets"]) == ["arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"]
+    error_message = "import-load reads the database secret and no signing key"
+  }
+
+  assert {
+    condition     = flatten([for s in local.statements.import_load : s.Resource if s.Sid == "WriteLogs"]) == ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/lambda/example-dev-import-load:*"]
+    error_message = "Each function writes only to its own log group"
+  }
+}
+
+run "extract_writes_the_prefix_that_load_reads_and_nothing_else_overlaps" {
+  command = plan
+
+  assert {
+    condition = length(setintersection(
+      toset(flatten([for s in local.statements.import_extract : s.Resource if contains(["ReadIncoming", "WriteExtracted"], s.Sid)])),
+      toset(flatten([for s in local.statements.import_load : s.Resource if s.Sid == "ReadExtracted"])),
+    )) == 1
+    error_message = "The only object path both functions touch is extracted/*, written by extract and read by load"
   }
 }
 
@@ -382,7 +433,7 @@ run "a_missing_repository_is_reported_by_name" {
 
 # ---- publishing ----
 
-run "publishes_the_five_role_arns" {
+run "publishes_the_six_role_arns" {
   command = plan
 
   override_module {
@@ -398,8 +449,12 @@ run "publishes_the_five_role_arns" {
     outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-worker-task" }
   }
   override_module {
-    target  = module.role["lambda"]
-    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-lambda" }
+    target  = module.role["import_extract"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-import-extract" }
+  }
+  override_module {
+    target  = module.role["import_load"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-import-load" }
   }
   override_module {
     target  = module.role["agent_runtime"]
@@ -412,23 +467,25 @@ run "publishes_the_five_role_arns" {
 
   assert {
     condition = local.published_strings == {
-      ecs_execution_role_arn = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-      api_task_role_arn      = "arn:aws:iam::111111111111:role/example-dev-api-task"
-      worker_task_role_arn   = "arn:aws:iam::111111111111:role/example-dev-worker-task"
-      lambda_role_arn        = "arn:aws:iam::111111111111:role/example-dev-lambda"
-      agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
+      ecs_execution_role_arn  = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
+      api_task_role_arn       = "arn:aws:iam::111111111111:role/example-dev-api-task"
+      worker_task_role_arn    = "arn:aws:iam::111111111111:role/example-dev-worker-task"
+      import_extract_role_arn = "arn:aws:iam::111111111111:role/example-dev-import-extract"
+      import_load_role_arn    = "arn:aws:iam::111111111111:role/example-dev-import-load"
+      agent_runtime_role_arn  = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
     }
     error_message = "Each published ARN must come from the matching role; eval_batch is not published"
   }
 
   assert {
     condition = module.ssm_publish.names == {
-      ecs_execution_role_arn = "/example/dev/iam/ecs_execution_role_arn"
-      api_task_role_arn      = "/example/dev/iam/api_task_role_arn"
-      worker_task_role_arn   = "/example/dev/iam/worker_task_role_arn"
-      lambda_role_arn        = "/example/dev/iam/lambda_role_arn"
-      agent_runtime_role_arn = "/example/dev/iam/agent_runtime_role_arn"
+      ecs_execution_role_arn  = "/example/dev/iam/ecs_execution_role_arn"
+      api_task_role_arn       = "/example/dev/iam/api_task_role_arn"
+      worker_task_role_arn    = "/example/dev/iam/worker_task_role_arn"
+      import_extract_role_arn = "/example/dev/iam/import_extract_role_arn"
+      import_load_role_arn    = "/example/dev/iam/import_load_role_arn"
+      agent_runtime_role_arn  = "/example/dev/iam/agent_runtime_role_arn"
     }
-    error_message = "ssm-publish must write the five role keys under the iam path"
+    error_message = "ssm-publish must write the six role keys under the iam path"
   }
 }

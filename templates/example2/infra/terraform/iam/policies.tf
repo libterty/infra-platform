@@ -55,6 +55,25 @@ locals {
     Action   = ["ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel"]
     Resource = "*"
   }
+  lambda_logs_statements = {
+    for f in ["import-extract", "import-load"] : f => {
+      Sid      = "WriteLogs"
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource = ["${local.logs_arn_prefix}:log-group:/aws/lambda/${local.name_prefix}-${f}:*"]
+    }
+  }
+  # EC2 network interface actions do not support resource-level permissions.
+  lambda_eni_statement = {
+    Sid      = "VpcNetworkInterfaces"
+    Effect   = "Allow"
+    Action   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface", "ec2:AssignPrivateIpAddresses", "ec2:UnassignPrivateIpAddresses"]
+    Resource = "*"
+  }
+  embedding_model_arns = [
+    "arn:aws:bedrock:${local.region}::foundation-model/cohere.embed-multilingual-v3",
+    "arn:aws:bedrock:${local.region}::foundation-model/amazon.titan-embed-text-v2:0",
+  ]
   ecr_login_statement = {
     Sid      = "EcrLoginToken"
     Effect   = "Allow"
@@ -132,32 +151,56 @@ locals {
         local.ecs_exec_statement,
       ]
 
-      # One role for both import functions: the bucket and the database are theirs together.
-      lambda = concat(
+      # import-extract is started by an upload: it reads the uploaded file, writes the extracted result and embeds it.
+      # It never touches the database.
+      import_extract = [
+        local.lambda_logs_statements["import-extract"],
+        local.lambda_eni_statement,
+        {
+          Sid      = "ReadIncoming"
+          Effect   = "Allow"
+          Action   = ["s3:GetObject"]
+          Resource = ["${local.import_bucket_arn}/incoming/*"]
+        },
+        {
+          Sid       = "ListIncoming"
+          Effect    = "Allow"
+          Action    = ["s3:ListBucket"]
+          Resource  = [local.import_bucket_arn]
+          Condition = { StringLike = { "s3:prefix" = ["incoming/*"] } }
+        },
+        {
+          Sid      = "WriteExtracted"
+          Effect   = "Allow"
+          Action   = ["s3:PutObject"]
+          Resource = ["${local.import_bucket_arn}/extracted/*"]
+        },
+        {
+          Sid      = "InvokeEmbeddingModel"
+          Effect   = "Allow"
+          Action   = ["bedrock:InvokeModel"]
+          Resource = local.embedding_model_arns
+        },
+      ]
+
+      # import-load reads what import-extract wrote and loads it into the database. It cannot write to the bucket or
+      # call a model.
+      import_load = concat(
         [
+          local.lambda_logs_statements["import-load"],
+          local.lambda_eni_statement,
           {
-            Sid      = "WriteLogs"
+            Sid      = "ReadExtracted"
             Effect   = "Allow"
-            Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-            Resource = ["${local.logs_arn_prefix}:log-group:/aws/lambda/${local.name_prefix}-import-*:*"]
+            Action   = ["s3:GetObject"]
+            Resource = ["${local.import_bucket_arn}/extracted/*"]
           },
           {
-            Sid      = "VpcNetworkInterfaces"
-            Effect   = "Allow"
-            Action   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface", "ec2:AssignPrivateIpAddresses", "ec2:UnassignPrivateIpAddresses"]
-            Resource = "*"
-          },
-          {
-            Sid      = "ReadWriteImportObjects"
-            Effect   = "Allow"
-            Action   = ["s3:GetObject", "s3:PutObject"]
-            Resource = ["${local.import_bucket_arn}/*"]
-          },
-          {
-            Sid      = "ListImportBucket"
-            Effect   = "Allow"
-            Action   = ["s3:ListBucket"]
-            Resource = [local.import_bucket_arn]
+            Sid       = "ListExtracted"
+            Effect    = "Allow"
+            Action    = ["s3:ListBucket"]
+            Resource  = [local.import_bucket_arn]
+            Condition = { StringLike = { "s3:prefix" = ["extracted/*"] } }
           },
         ],
         local.db_secret_statements,

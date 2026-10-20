@@ -15,8 +15,12 @@ locals {
         name  = "${local.name_prefix}-worker-task"
         trust = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id, source_arn = null }
       }
-      lambda = {
-        name  = "${local.name_prefix}-lambda"
+      import_extract = {
+        name  = "${local.name_prefix}-import-extract"
+        trust = { service_principals = ["lambda.amazonaws.com"], source_account = local.account_id, source_arn = null }
+      }
+      import_load = {
+        name  = "${local.name_prefix}-import-load"
         trust = { service_principals = ["lambda.amazonaws.com"], source_account = local.account_id, source_arn = null }
       }
       agent_runtime = {
