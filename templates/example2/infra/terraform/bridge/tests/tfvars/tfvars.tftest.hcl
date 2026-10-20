@@ -20,7 +20,6 @@ override_module {
       db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
       stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
-      stream_redis_id                = "example-dev-stream"
       ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
       api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
       worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"

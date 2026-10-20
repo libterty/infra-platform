@@ -14,7 +14,6 @@ locals {
     db_secret_arn                  = "database/db_secret_arn"
     rate_limit_redis_endpoint      = "database/rate_limit_redis_endpoint"
     stream_redis_endpoint          = "database/stream_redis_endpoint"
-    stream_redis_id                = "database/stream_redis_id"
     ecs_execution_role_arn         = "iam/ecs_execution_role_arn"
     api_task_role_arn              = "iam/api_task_role_arn"
     worker_task_role_arn           = "iam/worker_task_role_arn"

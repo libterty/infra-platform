@@ -7,7 +7,6 @@ locals {
     # Redis endpoints are host:port; clients need a cluster-aware client and TLS.
     rate_limit_redis_endpoint = "${module.redis["rate-limit"].configuration_endpoint}:${module.redis["rate-limit"].port}"
     stream_redis_endpoint     = "${module.redis["stream"].configuration_endpoint}:${module.redis["stream"].port}"
-    stream_redis_id           = module.redis["stream"].replication_group_id
   }
 }
 

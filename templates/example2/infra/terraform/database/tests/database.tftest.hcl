@@ -346,7 +346,6 @@ run "publishes_endpoints_and_the_secret" {
       db_secret_arn             = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
       rate_limit_redis_endpoint = "clustercfg.example-dev-rate-limit.abc.apne1.cache.amazonaws.com:6379"
       stream_redis_endpoint     = "clustercfg.example-dev-stream.abc.apne1.cache.amazonaws.com:6379"
-      stream_redis_id           = "example-dev-stream"
     }
     error_message = "Each published value must come from the matching module output; Redis endpoints are host:port"
   }
@@ -359,8 +358,7 @@ run "publishes_endpoints_and_the_secret" {
       db_secret_arn             = "/example/dev/database/db_secret_arn"
       rate_limit_redis_endpoint = "/example/dev/database/rate_limit_redis_endpoint"
       stream_redis_endpoint     = "/example/dev/database/stream_redis_endpoint"
-      stream_redis_id           = "/example/dev/database/stream_redis_id"
     }
-    error_message = "ssm-publish must write the seven database keys under the database path"
+    error_message = "ssm-publish must write the six database keys under the database path"
   }
 }
