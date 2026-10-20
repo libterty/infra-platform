@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.1.0（未發布）
+## 0.2.0（2026-10-20）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新變數 `vpc_id`、`target_groups`、`listener_rules`（預設 `null`、`{}`、`{}`）：在 module 內建 IP target group（名稱 `<name>-<key>`）與 forward 規則。規則掛在 HTTPS listener，沒有憑證時掛在 HTTP listener。一個 target group 可以有多條規則，條件可用 path pattern、host header 與 origin verify header。`require_origin_verify` 預設 `false`（要用才開），設成 `true` 的規則才會加 header 條件。
+- 新變數 `origin_verify_header_name` 與 `origin_verify_header_value`（`sensitive`）：分成兩個變數，因為包成一個物件時 `var.x == null` 會變成 sensitive，不能當 `for_each` 的條件。要一起給或一起不給。
+- validation：規則指到的 target group 要存在、`priority` 不重複、每條規則至少有一個 path pattern 或 host header、條件值合計不超過 5（`require_origin_verify = true` 時算 1 個）、`<name>-<key>` 不超過 32 字元、`target_groups` 非空時必須給 `vpc_id`。
+- 新輸出 `target_group_arns`、`target_group_arn_suffixes`（map，key 同 `target_groups`）。
+- 三組變數都沒給的既有呼叫端，resource 與輸出都沒有變化，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
+- `require_origin_verify = true` 但沒設定 `origin_verify_header_name` 與 value 會被 validation 擋下，不會有規則靜默失去保護。
+- 改 target group 的 `port` 會重建 target group，規則還在用時會失敗；要換 port 就新增 key、改規則、再移除舊的。**這是讀 provider 行為推論的，沒有用 plan 或 apply 驗證。**
+- origin verify header 的值會以明文存在 state。
+
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 

@@ -165,17 +165,75 @@ variable "autoscaling" {
       scale_out_cooldown         = optional(number, 180)
       scale_in_cooldown          = optional(number, 300)
     }), {})
+    scheduled_actions = optional(map(object({
+      schedule     = string
+      timezone     = optional(string, "UTC")
+      min_capacity = number
+      max_capacity = number
+    })), {})
+    step_policies = optional(map(object({
+      comparison_operator = string
+      threshold           = number
+      evaluation_periods  = number
+      datapoints_to_alarm = optional(number)
+      treat_missing_data  = optional(string, "notBreaching")
+      cooldown            = optional(number, 300)
+      # Exactly one of metric and queries.
+      metric = optional(object({
+        namespace   = string
+        metric_name = string
+        dimensions  = optional(map(string), {})
+        period      = optional(number, 60)
+        statistic   = optional(string, "Average")
+      }))
+      queries = optional(list(object({
+        id          = string
+        expression  = optional(string)
+        label       = optional(string)
+        return_data = optional(bool)
+        metric = optional(object({
+          namespace   = string
+          metric_name = string
+          dimensions  = optional(map(string), {})
+          period      = optional(number, 60)
+          stat        = optional(string, "Average")
+        }))
+      })))
+      adjustments = list(object({
+        lower  = optional(number)
+        upper  = optional(number)
+        change = number
+      }))
+    })), {})
   })
   default     = null
-  description = "null keeps a fixed task count of desired_count."
+  description = "null keeps a fixed task count of desired_count. policy custom creates no built-in policy; scheduled_actions and step_policies work with every policy. A step_policies entry needs exactly one of metric and queries and creates a StepScaling policy plus the alarm that triggers it."
 
   validation {
     condition = var.autoscaling == null ? true : (
-      contains(["target_tracking", "step"], var.autoscaling.policy) &&
+      contains(["target_tracking", "step", "custom"], var.autoscaling.policy) &&
       var.autoscaling.min_capacity >= 1 &&
       var.autoscaling.max_capacity >= var.autoscaling.min_capacity
     )
-    error_message = "policy must be target_tracking or step, and 1 <= min_capacity <= max_capacity."
+    error_message = "policy must be target_tracking, step or custom, and 1 <= min_capacity <= max_capacity."
+  }
+
+  validation {
+    condition = var.autoscaling == null ? true : alltrue([
+      for k, p in var.autoscaling.step_policies :
+      can(regex("^[a-z][a-z0-9_]*$", k)) && (p.metric == null) != (p.queries == null)
+    ])
+    error_message = "step_policies keys must be snake_case, and each entry needs exactly one of metric and queries."
+  }
+
+  validation {
+    condition = var.autoscaling == null ? true : alltrue([
+      for k, a in var.autoscaling.scheduled_actions :
+      can(regex("^[a-z][a-z0-9_]*$", k)) &&
+      a.min_capacity <= a.max_capacity &&
+      a.max_capacity <= var.autoscaling.max_capacity
+    ])
+    error_message = "scheduled_actions keys must be snake_case, min_capacity must not exceed max_capacity, and max_capacity must not exceed autoscaling.max_capacity."
   }
 
   validation {
@@ -193,6 +251,12 @@ variable "autoscaling" {
     )
     error_message = "autoscaling.target_tracking.requests_per_target needs load_balancer.alb_arn_suffix."
   }
+}
+
+variable "system_controls" {
+  type        = map(string)
+  default     = {}
+  description = "Namespaced kernel parameters for the app container, such as net.ipv4.tcp_keepalive_time => \"240\". Empty omits systemControls from the container definition. A non-empty map changes the task definition and starts a new deployment."
 }
 
 variable "load_balancer" {

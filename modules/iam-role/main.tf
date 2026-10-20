@@ -32,3 +32,12 @@ resource "aws_iam_role_policy" "this" {
   role   = aws_iam_role.this.name
   policy = each.value
 }
+
+resource "aws_iam_instance_profile" "this" {
+  count = var.instance_profile_name == null ? 0 : 1
+
+  name = var.instance_profile_name
+  role = aws_iam_role.this.name
+
+  tags = merge(var.tags, { Name = var.instance_profile_name })
+}

@@ -1,13 +1,22 @@
 # Changelog
 
-## 0.1.1（未發布）
+## 0.2.0（2026-10-20）
+
+新增功能，升 MINOR。tag 在驗收後由人手動打。
+
+- 新變數 `static_parameter_names`（`set(string)`，預設 `[]`）：跟內建的 `shared_preload_libraries` 取聯集，這些參數在 DB 參數群組與 cluster 參數群組都用 `apply_method = "pending-reboot"`。0.1.x 只認 `shared_preload_libraries`，其他 static 參數（例如 `cron.database_name`）會被送成 `immediate`，apply 時失敗。
+- 新輸出 `log_group_name`：module 預先建立的 PostgreSQL log group 名稱，給 subscription filter 或 metric filter 使用。
+- 沒給 `static_parameter_names` 的既有呼叫端，參數群組內容與 `apply_method` 都跟 0.1.1 相同，換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
+- 列進 `static_parameter_names` 的既有參數，`apply_method` 會從 `immediate` 變成 `pending-reboot`，plan 會顯示參數群組原地更新；該參數值要在下次重開機後才生效。
+
+## 0.1.1（2026-10-16）
 
 新增功能，照 semver 表本該升 MINOR；這一版照使用者決定（design 決策 54）跟 7 個新 module 一起用 `0.1.1`，在增補驗收後手動打 tag（manifest 屆時才改成 `0.1.1`），release-please 不會產生這一段。之後的版本照 semver 表。
 
 - 新變數 `data_api`（預設 `false`）：在 Aurora cluster 開 RDS Data API（`enable_http_endpoint`），給 Bedrock Knowledge Base 的 Aurora 向量儲存用；`deployment = "rds"` 配 `true` 會被 validation 擋下。既有消費端換版、不改程式碼時 plan 應零差異：`enable_http_endpoint` 在 schema 是 optional、非 computed，沒設時 provider 當成 `false`，現在明寫 `false`。**這是讀 schema 推論的，沒有用 plan 驗證。**
 - 新輸出 `deployment`、`database_name`：輸入值原樣輸出（design D21 的待辦），讓呼叫端發布資料庫資訊時不用再從自己的變數取。
 
-## 0.1.0（未發布）
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 

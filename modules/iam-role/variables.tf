@@ -76,6 +76,16 @@ variable "permissions_boundary" {
   description = "Permissions boundary policy ARN."
 }
 
+variable "instance_profile_name" {
+  type        = string
+  default     = null
+  description = "Instance profile name. When set, an instance profile bound to this role is created; null creates none."
+  validation {
+    condition     = var.instance_profile_name == null ? true : can(regex("^[\\w+=,.@-]{1,128}$", var.instance_profile_name))
+    error_message = "instance_profile_name must be 1-128 chars of letters, digits or _+=,.@-."
+  }
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}

@@ -71,7 +71,7 @@ tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發�
 
 v1 發版時，`.release-please-manifest.json` 把 19 個 module 都登記成 `0.1.0`。release-please 會把它當成已經發過，不會自己產生 `<module>-v0.1.0`，所以第一個 tag 由 platform team 手動打，之後的版本才交給 release-please（設計文件 §3.5、決策 27）。
 
-前提：整體驗收（implement-process 的 Phase 10）已通過，而且那個 commit 已經在 GitHub 的 `main` 上。
+前提：整體驗收（implement-process 的 Phase 10）已通過；每個要發的 module 的 `CHANGELOG.md` 已經把這一版標題的「（未發布）」改成發版日期，而且那個 commit 已經在 GitHub 的 `main` 上。release-please 發版時會自己改 CHANGELOG，手動打 tag 時要自己改；19 個 `v0.1.0` 與 10 個 `v0.1.1` 當初漏了這一步，2026-10-20 才補上。
 
 ```bash
 # 1. 回到整體驗收通過的那個 commit（通常就是 main 的最新 commit）
@@ -115,7 +115,7 @@ LLM 與 AgentCore 的增補（設計文件決策 37–54）動到 10 個 module�
 
 理由同上一節：增補驗收的 commit 把這 10 個在 `.release-please-manifest.json` 登記成 `0.1.1`，release-please 會當成已經發過，所以 tag 由 platform team 手動打。v1 的 19 個 `<module>-v0.1.0` 留在 `28a8647`，不移動。
 
-前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 已經改好，而且那個 commit 已經在 GitHub 的 `main` 上。
+前提：增補的整體驗收（implement-process 的 Phase 16）已通過，manifest 已經改好，每個要發的 module 的 CHANGELOG 標題已經從「（未發布）」改成發版日期（理由見上一節的前提），而且那個 commit 已經在 GitHub 的 `main` 上。
 
 ```bash
 # 1. 回到增補驗收通過的那個 commit
