@@ -1,5 +1,25 @@
 # Run by scripts/validate.sh with -var-file=envs/<env>.tfvars; it checks the tfvars files themselves.
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111111111111" }
+  }
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.shared
+  outputs = {
+    strings = {
+      agent_sg_id            = "sg-0123456789abcdef0"
+      agent_runtime_role_arn = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
+      agent_runtimes         = "[\"agent\"]"
+      ecr_repository_urls    = jsonencode({ agent = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-agent" })
+    }
+    lists = {
+      agent_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
+    }
+  }
+}
 
 run "tfvars_pair_env_with_a_registered_account" {
   command = plan
