@@ -11,7 +11,7 @@ override_module {
   outputs = {
     strings = {
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
-      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789abcdef\"}"
+      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
       cluster_name              = "example-dev-app"
       api_service_name          = "example-dev-api"
       worker_service_name       = "example-dev-worker"
@@ -20,8 +20,8 @@ override_module {
       api_max_capacity          = "10"
       worker_max_capacity       = "6"
       stream_maxlen             = "100000"
-      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\"}"
-      agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQrSt"
+      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
+      agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
     }
   }
 }

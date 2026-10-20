@@ -10,9 +10,9 @@ override_module {
   target = module.in
   outputs = {
     strings = {
-      api_target_group_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789abcdef"
+      api_target_group_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
       alb_arn_suffix       = "app/example-dev-alb/0123456789abcdef"
-      agent_runtime_arns   = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGhIj\"}"
+      agent_runtime_arns   = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       guardrail_ids        = "{\"default\":\"gr0input00001\",\"output\":\"gr0output00003\"}"
     }
   }
