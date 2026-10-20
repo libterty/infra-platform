@@ -1,6 +1,6 @@
 # infra-platform v2 實作流程：example2
 
-> 狀態：設計已拍板，尚未開始實作。設計以 [`design-docs.md`](./design-docs.md) 為準；這份只講「一步一步怎麼做、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
+> 狀態：v2 完成（A1–A5、B1–B6 都已完成；PR-A 已合併發版，PR-B 待使用者決定合併）。設計以 [`design-docs.md`](./design-docs.md) 為準；這份只講「一步一步怎麼做、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
 ## 結論
@@ -13,7 +13,7 @@
 
 - Terraform 只准跑 `init -backend=false`（從 HCP 抓 module），以及建在它上面的 `validate`、搭配 `mock_provider` 的 `test`；`scripts/validate.sh` 就是這樣跑的，而且會清掉 AWS 環境變數。
 - 不准連 AWS；不准 `plan`、`apply`、帶 `-backend-config` 的 `init`、`terraform providers lock`；不准跑 `stacks.sh` 的 `init`、`plan`、`apply`、`destroy`。
-- lock 檔用 `init -backend=false` 產生，或照 project-infra 同一個 provider 版本的 lock 檔。
+- lock 檔不要在 macOS 上單獨 `init -backend=false` 產生（只會有 darwin 的 `h1:`）；新 provider 的段落從 repo 裡已有兩個 `h1:` 的 lock 檔複製。S10 會擋。
 - code、tfvars、tests、註解、commit message 只出現 `dev`、`sit` 兩個環境名稱。
 - 不從來源專案複製任何 tfvars、tfbackend；所有值都重新寫成佔位值。
 - 去機密掃描照 [`integration-playbook.md`](./integration-playbook.md) §4；真名 pattern 在本機的 `docs/design/v2/private/`，不進版控。
@@ -34,7 +34,7 @@
 | B3 | B | 前段 stack：`containerimage`、`foundation`、`network`、`database`、`iam` | 已完成：主 agent 重跑 `validate.sh templates/example2/infra/terraform` 11 個目錄、184 個 run 全過；去機密掃描零命中。R2 沒有循環（graph test 不 mock `rds` 也通過）。使用者決定：secret key 以內容命名、兩個 import Lambda 各一個 role（同步改後段骨架的 key 名稱）。差異與後段命名規則見 design §5.7、§5.8 | 10：`c06c17a`、`bdc8020`、`d050b3f`、`84d71b6`、`479cf97`、`090c0c6`、`abdae98`、`e276bc4`、`e03751d`、`a10b674` |
 | B4 | B | `bridge` 與樹 B 合約 | 已完成：主 agent 重跑 `validate.sh templates/example2/infra/terraform` 11 個目錄、191 個 run 全過；照 playbook 完整清單掃描零命中。轉寫 25 個 key（21 個 string、4 個 list），等於後段讀的聯集；guard 擋空字串、subnet 少於 2 個、不合法的 JSON；README 列出給外部發布者的樹 B 合約。差異見 design §5.9 | 2：`f1b874d`、本 commit |
 | B5 | B | 後段 stack：`loadbalancer`、`agent`、`application`、`operation`、`postdeploy` | 已完成：主 agent 重跑 `validate.sh templates/example2/infra/terraform` 11 個目錄、299 個 run 全過；lock 檔每個 provider 都有 2 個 `h1:`；用來源專案全部字串反向比對，照抄的文案、metric 名稱、error message、變數名稱都已換掉。使用者決定：補 guardrail-profile 權限、Runtime 經樹 B 接 DB（`db_name`、`stream_shard_count`）、拿掉沒人讀的 key、還原 extract 端 rejected 指標。命名規則對照見 design §5.10。待辦：alb 0.3.0 發佈後拿掉 `format()` 繞法 | 見 git log（`feat/example2-b5`） |
-| B6 | B | lock 檔、去機密掃描、範本 README、repo README、guides 更新、全量驗收 | 未開始 | |
+| B6 | B | lock 檔、去機密掃描、範本 README、repo README、guides 更新、全量驗收 | 已完成：新增靜態規則 S10（範本 stack 的 lock 檔每個 provider 至少 2 個 `h1:`；fixture 的單一 `h1:` 舊版不擋、新版擋，兩個 `h1:` 通過，客戶 repo 的 stack 同樣適用）；主 agent 重跑全量 `validate.sh` 91 個目錄、2,346 個 run 全過（7 分 10 秒）；範本 README 補齊各 stack、`stacks.sh`、複製後要改的值、destroy 前的事與已知限制；repo README、兩份 guides 補上 example2，`hcp-registry-setup.md` 的「9 個目錄」指的是 project-infra 的 9 個 stack，實際跑過仍是 9，不用改；整合流程補上這次學到的事 | 見 git log |
 
 ## 每個 Phase 的做法與驗收
 
@@ -105,7 +105,7 @@
 
 ### B6：收尾
 
-- lock 檔：用 `init -backend=false` 產生，確認 CI 的 `-lockfile=readonly` 能過。
+- lock 檔：每個 provider 段落至少 2 個 `h1:`（S10 檢查），確認 CI 的 `-lockfile=readonly` 能過。
 - 範本 README：樹 A／樹 B 合約、外部發布樹 B 要給的 key、apply 順序、環境切換。
 - repo README 的範本列表；`docs/guides/hcp-registry-setup.md` 裡驗證的目錄數。
 - 去機密掃描全 repo 跑一次；commit message、PR 標題與描述、branch 名稱人工看一次。
