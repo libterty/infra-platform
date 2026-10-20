@@ -2,6 +2,7 @@ locals {
   ssm_input_strings = {
     alarm_topic_arn = "foundation/alarm_topic_arn"
     db_sg_id        = "network/db_sg_id"
+    db_proxy_sg_id  = "network/db_proxy_sg_id"
     cache_sg_id     = "network/cache_sg_id"
   }
 
