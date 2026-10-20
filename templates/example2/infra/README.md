@@ -67,7 +67,48 @@ infra/
 樹 B 由誰寫：
 
 - 預設由 `bridge` stack 讀樹 A 再寫過去（`ssm_prefix = local.shared_ssm_prefix`、`stack = "infra"`）。
-- 列在 `stacks.sh` 的 `EXTERNAL_SHARED_ENVS` 裡的 env，樹 B 由外部發布：`stacks.sh <env> all` 自動跳過 `bridge`，單獨指定 `bridge` 會報錯。外部要發布的 key 就是 `bridge/ssm-outputs.tf` 發布的那份清單，名稱、型別（String 或 StringList）都要一致。`EXTERNAL_SHARED_ENVS` 預設是空的，所有 env 都跑 `bridge`。
+- 列在 `stacks.sh` 的 `EXTERNAL_SHARED_ENVS` 裡的 env，樹 B 由外部發布：`stacks.sh <env> all` 自動跳過 `bridge`，單獨指定 `bridge` 會報錯。外部要發布的 key 見下表，名稱、型別（String 或 StringList）都要一致。`EXTERNAL_SHARED_ENVS` 預設是空的，所有 env 都跑 `bridge`。
+
+### 樹 B 的 key 合約（給外部發布者）
+
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 25 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+
+String（21 個，值不可為空）：
+
+| key | 內容 | 讀的 stack |
+|---|---|---|
+| `alarm_topic_arn` | 告警 SNS topic ARN | loadbalancer、agent、application、operation、postdeploy |
+| `signing_private_key_secret_arn` | 簽章 private key 的 secret ARN | application |
+| `signing_public_key_secret_arn` | 簽章 public key 的 secret ARN | application |
+| `agent_runtimes` | JSON 陣列，Runtime 名稱 | agent |
+| `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | agent、application |
+| `vpc_id` | VPC id | loadbalancer、application、operation |
+| `alb_sg_id` | ALB 的 security group | loadbalancer |
+| `app_sg_id` | app 層的 security group | application、operation |
+| `agent_sg_id` | agent 層的 security group | agent |
+| `bastion_sg_id` | bastion 的 security group | operation |
+| `db_proxy_endpoint` | RDS Proxy endpoint | application |
+| `db_secret_arn` | 資料庫 secret ARN | application |
+| `rate_limit_redis_endpoint` | `host:port` | application |
+| `stream_redis_endpoint` | `host:port` | application |
+| `stream_redis_id` | stream Redis 的 replication group id | postdeploy |
+| `ecs_execution_role_arn` | ECS execution role | application |
+| `api_task_role_arn` | api task role | application |
+| `worker_task_role_arn` | worker task role | application |
+| `import_extract_role_arn` | import-extract Lambda role | operation |
+| `import_load_role_arn` | import-load Lambda role | operation |
+| `agent_runtime_role_arn` | AgentCore Runtime role | agent |
+
+StringList（4 個，逗號分隔）：
+
+| key | 內容 | 讀的 stack |
+|---|---|---|
+| `services` | 服務名稱 | application |
+| `public_subnet_ids` | public subnet，至少 2 個 | loadbalancer |
+| `app_subnet_ids` | app subnet，至少 2 個 | application、operation |
+| `agent_subnet_ids` | agent subnet，至少 2 個 | agent |
+
+`bridge` 在 apply 前用 `guards.tf` 檢查：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes` 與 `ecr_repository_urls` 是合法 JSON。外部發布者也應該照這幾條驗過再寫。
 
 ### 合約的寫法慣例
 
@@ -105,7 +146,7 @@ locals {
 }
 ```
 
-骨架階段還沒有資源可以接，所以 `ssm-outputs.tf` 只有 `# planned_strings: <key>...` 與 `# planned_lists: <key>...` 註解行，列出打算發布的 key；`check-ssm-contract.sh` 把它們當成已發布。加上 `module "ssm_publish"` 與 `published_*` 時，同一個 PR 把註解行換掉，不要兩種並存。
+骨架階段（B2）還沒有資源可以接，所以 `ssm-outputs.tf` 只有 `# planned_strings: <key>...` 與 `# planned_lists: <key>...` 註解行，列出打算發布的 key；`check-ssm-contract.sh` 把它們當成已發布。加上 `module "ssm_publish"` 與 `published_*` 時，同一個 PR 把註解行換掉，不要兩種並存。
 
 ## check-ssm-contract.sh
 

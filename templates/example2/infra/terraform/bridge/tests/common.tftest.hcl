@@ -7,6 +7,42 @@ variables {
   expected_account_id = "111111111111"
 }
 
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = {
+      alarm_topic_arn                = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/signing-private-AbCdEf"
+      signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/signing-public-GhIjKl"
+      agent_runtimes                 = "[\"agent\"]"
+      ecr_repository_urls            = "{\"api\":\"111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api\"}"
+      vpc_id                         = "vpc-0aaaaaaa00000001"
+      alb_sg_id                      = "sg-0aaaaaaa00000001"
+      app_sg_id                      = "sg-0aaaaaaa00000002"
+      agent_sg_id                    = "sg-0aaaaaaa00000003"
+      bastion_sg_id                  = "sg-0aaaaaaa00000004"
+      db_proxy_endpoint              = "example-dev.proxy-abc.ap-northeast-1.rds.amazonaws.com"
+      db_secret_arn                  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000"
+      rate_limit_redis_endpoint      = "rl.example.cache.amazonaws.com:6379"
+      stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
+      stream_redis_id                = "example-dev-stream"
+      ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
+      api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
+      worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
+      import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
+      import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
+      agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+    }
+    lists = {
+      services          = ["api", "worker"]
+      public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
+      app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+      agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
+    }
+  }
+}
+
 run "dev_accepts_its_account" {
   command = plan
 

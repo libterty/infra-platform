@@ -1,2 +1,1 @@
-# Variables of this stack arrive with its resources (phases B3-B5).
-# Never put another stack's ARN or id here; read it through ssm-inputs.tf.
+# This stack has no variables of its own; it only copies tree A to tree B (see ssm-inputs.tf, ssm-outputs.tf).
