@@ -11,7 +11,7 @@
 - `alarms`、`metrics`、`sns_topic_arns` 都沒給會被擋下。為了讓既有的 `alarms = {}` 搭配 `sns_topic_arns` 仍然什麼都不建（0.1.0 的行為），這個檢查只在 `sns_topic_arns` 也是空的時候才成立。
 - 只用 `alarms` 的既有呼叫端，filter 與 alarm 的 resource 位址不變（`for_each` 的 key 沒變），換版應該零差異。**這是測試與讀程式推論的，沒有用 plan 驗證。**
 
-## 0.1.0（未發布）
+## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
 

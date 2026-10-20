@@ -74,7 +74,7 @@
 
 每一步做之前先問使用者：
 
-1. 合併 PR-A，`git switch main && git pull`。
+1. 合併 PR-A 之前，在 PR-A 裡把 12 段 CHANGELOG 標題的「（未發布）」改成預計發版日期（手動打 tag 時 release-please 不會改，見 `docs/guides/releasing-modules.md`）；合併後 `git switch main && git pull`。
 2. 從 manifest 讀出 12 個 tag，在合併後的 commit 打 annotated tag，只 push 這 12 個。
 3. `gh release create <tag> --notes-file modules/<m>/CHANGELOG.md`，不設 latest。
 4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 6 個新 module，等狀態變成 `setup_complete`。
