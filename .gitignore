@@ -12,3 +12,6 @@ docs/slides/open-slide-redesign/slides/*/
 crash.log
 .cache/
 modules/**/.terraform.lock.hcl
+
+# 整合來源專案時的真名對照表與去機密掃描 pattern：本身就含機密，只留在本機
+docs/design/v2/private/
