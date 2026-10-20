@@ -71,9 +71,9 @@ infra/
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 25 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 24 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
 
-String（21 個，值不可為空）：
+String（20 個，值不可為空）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
@@ -91,7 +91,6 @@ String（21 個，值不可為空）：
 | `db_secret_arn` | 資料庫 secret ARN | application、operation |
 | `rate_limit_redis_endpoint` | `host:port` | application |
 | `stream_redis_endpoint` | `host:port` | application |
-| `stream_redis_id` | stream Redis 的 replication group id | 目前沒有 stack 讀（postdeploy 的 stream 告警用應用程式自己發的 metric） |
 | `ecs_execution_role_arn` | ECS execution role | application |
 | `api_task_role_arn` | api task role | application |
 | `worker_task_role_arn` | worker task role | application |

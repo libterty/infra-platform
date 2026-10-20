@@ -253,7 +253,7 @@ run "access_log_bucket_follows_the_naming_pattern" {
 
 # ---- publishing ----
 
-run "publishes_the_four_keys_under_the_stack_path" {
+run "publishes_the_three_keys_under_the_stack_path" {
   command = plan
 
   override_module {
@@ -278,10 +278,9 @@ run "publishes_the_four_keys_under_the_stack_path" {
     condition = module.ssm_publish.names == {
       alb_arn_suffix            = "/example/dev/loadbalancer/alb_arn_suffix"
       target_group_arn_suffixes = "/example/dev/loadbalancer/target_group_arn_suffixes"
-      waf_web_acl_name          = "/example/dev/loadbalancer/waf_web_acl_name"
       api_target_group_arn      = "/example/dev/loadbalancer/api_target_group_arn"
     }
-    error_message = "loadbalancer publishes four keys under its own path"
+    error_message = "loadbalancer publishes three keys under its own path"
   }
 
   assert {
