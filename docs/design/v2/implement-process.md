@@ -27,7 +27,7 @@
 | A1 | A | 擴充 6 個既有 module 到 0.2.0：`iam-role`、`s3-bucket`、`rds`、`alb`、`ecs-service`、`log-metric-alarm` | 已完成：主 agent 重跑 `validate.sh` 16 個目錄全過，432 個 run（原本 343，新增 89），既有 test 檔零修改；差異已寫回 design §4.1 | 6：`8e6ebfc`、`86ffbf6`、`b51a78f`、`adc433e`、`0542b16`、`0fd44bb` |
 | A2 | A | 新 module：`metric-alarm`、`vpc-peering`、`ec2-bastion`、`lambda-function` | 已完成：主 agent 重跑 `validate.sh` 9 個目錄全過，218 個 run；lambda-function 的 tests 拆成 4 個檔（都在 800 行內）；差異已寫回 design §4.2 | 4：`adccd3f`、`aa36845`、`cc5bda0`、`22f25de` |
 | A3 | A | 新 module：`elasticache-redis`、`waf-web-acl` | 已完成：主 agent 重跑 `validate.sh` 4 個目錄全過，146 個 run；差異已寫回 design §4.2 | 2：`6a6f132`、`419996f` |
-| A4 | A | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG | 未開始 | |
+| A4 | A | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG | 已完成：manifest 19 個 `0.1.0`、7 個 `0.1.1`、6 個 `0.2.0`；主 agent 全量 `validate.sh` 80 個目錄、2,046 個 test run 全過（5 分 24 秒）；PR-A 整段去機密掃描零命中。另補已發佈 29 段 CHANGELOG 的日期（`4b179c1`） | 1：`7c19a50` |
 | A5 | — | （使用者確認後）合併 PR-A、打 12 個 tag、補 GitHub Release、HCP 登記 6 個新 module | 未開始 | |
 | B1 | B | `validate.sh` 與 `ci.yml` 支援多份範本 | 未開始 | |
 | B2 | B | example2 骨架：11 份 `common.tf`、`providers.tf`、`versions.tf`，envs 佔位檔，`stacks.sh`，`check-ssm-contract.sh` | 未開始 | |
