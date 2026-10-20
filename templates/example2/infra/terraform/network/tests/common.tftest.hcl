@@ -5,6 +5,19 @@ variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+  # Required variables of this stack, so the account checks can plan.
+  vpc_cidr    = "10.10.0.0/16"
+  azs         = ["ap-northeast-1a", "ap-northeast-1c"]
+  alb_ingress = { cidrs = ["203.0.113.0/24"] }
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.in
+  outputs = {
+    strings = { alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms" }
+    lists   = {}
+  }
 }
 
 run "dev_accepts_its_account" {

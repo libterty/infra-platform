@@ -1,6 +1,6 @@
 locals {
-  ssm_input_lists = {
-    services = "containerimage/services"
+  ssm_input_strings = {
+    alarm_topic_arn = "foundation/alarm_topic_arn"
   }
 }
 
@@ -10,5 +10,5 @@ module "in" {
   version = "~> 0.1.0"
 
   ssm_prefix = local.ssm_prefix
-  lists      = local.ssm_input_lists
+  strings    = local.ssm_input_strings
 }

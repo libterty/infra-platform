@@ -47,7 +47,7 @@ infra/
 |---|---|---|---|
 | 1 | `containerimage` | 無 | 服務清單、Runtime 清單、ECR URL 與 ARN |
 | 2 | `foundation` | 無 | 告警 topic、secret ARN |
-| 3 | `network` | containerimage | VPC、各層 subnet、各 security group、peering |
+| 3 | `network` | foundation | VPC、各層 subnet、各 security group、peering |
 | 4 | `database` | foundation、network | 資料庫與 Proxy endpoint、secret ARN、Redis endpoint |
 | 5 | `iam` | foundation、containerimage、database | 各 role ARN |
 | 6 | `bridge` | 前面所有 stack（樹 A） | 樹 B |
