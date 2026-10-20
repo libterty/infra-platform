@@ -57,7 +57,7 @@ infra/
 
 ## apply 順序
 
-依賴是單向的：下游只讀上游發布的 key。apply 照下表由上往下，destroy 反過來。順序的唯一來源是 `stacks.sh` 的 `ORDER`，`check-ssm-contract.sh` 也從那裡讀。
+依賴是單向的：下游只讀上游發布的 key。apply 照下表由上往下，destroy 反過來。順序只定義在 `stacks.sh` 的 `ORDER`，`check-ssm-contract.sh` 也從那裡讀。
 
 | 順序 | stack | 讀 | 發布 |
 |---|---|---|---|
@@ -87,7 +87,7 @@ infra/
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 26 個 key，少一個，讀它的後段 stack 就會在 plan 失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 26 個 key。少了任何一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
 
 String（22 個，值不可為空）：
 
@@ -171,12 +171,12 @@ locals {
 bash infra/terraform/check-ssm-contract.sh
 ```
 
-只檢查兩件事，其他規則（`common.tf` 一致、`data "aws_ssm_parameter"` 的位置、tfbackend 的 key）由 `scripts/validate.sh` 負責，`validate.sh` 也會呼叫這支腳本：
+這支腳本只檢查下面兩件事。其他規則（`common.tf` 一致、`data "aws_ssm_parameter"` 的位置、tfbackend 的 key）由 `scripts/validate.sh` 負責，`validate.sh` 也會呼叫這支腳本。
 
-1. 每個讀的 `<stack>/<key>`：發布它的 stack 在 `ORDER` 裡排在讀它的 stack 前面、真的有發布這個 key、型別（strings 或 lists）相同。樹 B 的 `infra/<key>` 對應到 `bridge`。
-2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`、`bastion_enabled`、`guardrail_cross_region_profile_id`）上的值一致；沒設某個 key 的 stack 不參與比對，所以 `bastion_enabled` 只比對 network 與 operation，`guardrail_cross_region_profile_id` 只比對 iam 與 agent，而且 `env` 等於檔名。
+1. 每個被讀取的 `<stack>/<key>`：發布它的 stack 在 `ORDER` 裡排在讀它的 stack 前面，真的有發布這個 key，而且型別（strings 或 lists）相同。樹 B 的 `infra/<key>` 對應到 `bridge`。
+2. 同一個 env 裡，各 stack 的 tfvars 在 `SHARED_CONFIG_KEYS`（`project`、`env`、`aws_region`、`expected_account_id`、`deploy_role_arn`、`bastion_enabled`、`guardrail_cross_region_profile_id`）上的值一致，而且 `env` 等於檔名。沒設某個 key 的 stack 不參與比對，所以 `bastion_enabled` 只比對 network 與 operation，`guardrail_cross_region_profile_id` 只比對 iam 與 agent。
 
-錯誤訊息會指出哪個 stack 的哪一個 key。
+出錯時，訊息會指出是哪個 stack 的哪個 key。
 
 ## stacks.sh
 
@@ -225,7 +225,7 @@ cd infra/terraform
    - `agent`：`model_id`、`backend_mode`（目前是 `fake`）、`guardrail_cross_region_profile_id`。
 5. **origin verify 的值**：不放 tfvars。`export TF_VAR_origin_verify_header_value=<至少 16 字元>`，見上面「不進 tfvars 的值」。
 6. **guardrail 的內容**：`agent/guardrails.tf` 的 denied topic、詞彙、拒絕文案都只是示意，換成自己產品的政策。module 不建 guardrail 版本，apply 的內容就是線上生效的政策。
-7. **命名規則**：`iam` 比後段 stack 先 apply，讀不到資源，所以用命名規則組 ARN；規則的兩邊沒有東西檢查是否一致，只有各 stack 的 test 斷言。改任何一邊的名稱，另一邊要一起改：
+7. **命名規則**：`iam` 比後段 stack 先 apply，讀不到資源，所以用命名規則組 ARN。兩邊是否一致沒有東西檢查，只有各 stack 的 test 會斷言。改任何一邊的名稱，另一邊要一起改：
    - import bucket：`<project>-<env>-import-<account>`，prefix `incoming/`、`extracted/`；eval-batch bucket：`<project>-<env>-eval-batch-<account>`（`operation`）。
    - Lambda log group：`/aws/lambda/<project>-<env>-import-extract`、`-import-load`（`operation`）。
    - ECS log group：`/ecs/<project>-<env>-*`（`application`）。
@@ -236,7 +236,7 @@ cd infra/terraform
 
 ## destroy 之前
 
-`stacks.sh <env> all destroy` 會依反向順序跑，但這幾件事會讓它停下來，要先處理（預設值取自各 module 與 stack）：
+`stacks.sh <env> all destroy` 會依反向順序跑，但遇到下面幾種情況會停下來，要先處理（預設值取自各 module 與 stack）：
 
 | 資源 | 預設 | 要先做什麼 |
 |---|---|---|
@@ -247,7 +247,7 @@ cd infra/terraform
 | Secrets Manager secret（`foundation`） | `recovery_window_in_days = 7` | 刪除後保留 7 天，期間不能用同名重建；secret 的值是在 Terraform 外面寫的，刪了就沒有，要先備份 |
 | Redis（`database`） | module 沒有設定 final snapshot | 要保留資料就先手動做 snapshot |
 
-`bridge` 之後的 stack（7–11）只依賴樹 B，所以 destroy `bridge` 之前要先 destroy 它們；`stacks.sh` 的反向順序已經處理這點，單獨 destroy 單一 stack 時要自己注意順序。destroy 不會刪掉不是這份範本建的東西（外部發布的樹 B、state bucket 本身）。
+`bridge` 之後的 stack（7–11）只依賴樹 B，所以要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經照這樣排；單獨 destroy 某個 stack 時要自己注意順序。destroy 不會刪掉不是這份範本建的東西（外部發布的樹 B、state bucket 本身）。
 
 ## 已知限制
 

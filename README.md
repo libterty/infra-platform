@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/libterty/infra-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/libterty/infra-platform/actions/workflows/ci.yml) [![Registry](https://img.shields.io/badge/registry-app.terraform.io%2Flibterty-7B42BC?logo=terraform&logoColor=white)](https://app.terraform.io/app/libterty/registry/private/modules)
 
-Terraform private registry 的範例 repo。共用 module 放在同一個 monorepo，用 Git tag 標版本，透過 HCP Terraform private registry 發布，各專案用版本範圍引用，不用每個專案各寫一套。
+Terraform private registry 的範例 repo。共用 module 放在同一個 monorepo，用 Git tag 標版本，透過 HCP Terraform private registry 發布。各專案用版本範圍引用，不用每個專案各寫一套。
 
 ## module
 
@@ -52,7 +52,7 @@ module "api" {
 }
 ```
 
-`<org>` 是 HCP Terraform 的 organization。本 repo 發佈在 `app.terraform.io/libterty`，是 private registry，只有該 organization 的成員抓得到；其他人或沒有 HCP token 時，改用 `git::...?ref=<tag>` 的備案。「最新版」欄是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本。認證、升版、從範本複製出去的改法，以及 git 備案的寫法，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+`<org>` 是 HCP Terraform 的 organization。本 repo 發布在 `app.terraform.io/libterty` 這個 private registry，只有該 organization 的成員抓得到；其他人或沒有 HCP token 時，改走 `git::...?ref=<tag>` 備案。「最新版」欄是各 module 在 GitHub 上最新的 tag，去掉前綴就是 registry 上的版本。認證、升版、從範本複製出去的改法，以及 git 備案的寫法，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)。module 怎麼登記到 HCP 見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 範本
 
@@ -85,7 +85,7 @@ scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 
 這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
 
-本專案禁止在這個 repo 跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
+這個 repo 禁止跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
 
 commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 是 module 名稱或 `repo`。一個 commit 只動一個 module 目錄，release-please 才能依路徑歸屬各 module 的 CHANGELOG。
 
