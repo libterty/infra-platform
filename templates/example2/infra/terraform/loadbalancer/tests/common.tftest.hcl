@@ -5,6 +5,24 @@ variables {
   project             = "example"
   env                 = "dev"
   expected_account_id = "111111111111"
+  # Required variables of this stack, so the account checks can plan. The value is a throwaway for the tests.
+  origin_verify_header_name  = "X-Origin-Verify"
+  origin_verify_header_value = "test-only-origin-secret"
+}
+
+# The SSM values are only read here, so fixed ones stand in for them (the mock would return random text).
+override_module {
+  target = module.shared
+  outputs = {
+    strings = {
+      vpc_id          = "vpc-0123456789abcdef0"
+      alb_sg_id       = "sg-0123456789abcdef0"
+      alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+    }
+    lists = {
+      public_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
+    }
+  }
 }
 
 run "dev_accepts_its_account" {
