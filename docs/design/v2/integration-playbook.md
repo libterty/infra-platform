@@ -104,6 +104,6 @@
 8. dev、sit 以外的環境名稱（只掃新範本與新增或擴充的 module）
 9. 非 `example.com` 的 email
 
-另外要做反向比對：subagent 會照抄來源專案的字面值（文案、指標名稱、錯誤訊息、變數名稱），pattern 掃描抓不到。**每個 Phase** 都用來源專案**全部**檔案（`.tf`、`.tfvars`、`.tfbackend`、`.hcl`、`.sh`、`.md`）裡長度 ≥ 10 的字串，在 scratchpad 比對整個 repo。命中次數高的多半是公開識別（AWS 動作名稱、資源型別），低頻的命中要逐筆看。用完刪掉；機密值不能寫進任何 pattern 檔。
+另外要做反向比對：subagent 會照抄來源專案的字面值（文案、指標名稱、錯誤訊息、變數名稱），pattern 掃描抓不到。**每個 Phase** 都用來源專案**全部**檔案（`.tf`、`.tfvars`、`.tfbackend`、`.hcl`、`.sh`、`.md`）裡長度 ≥ 10 的字串，在 scratchpad 比對整個 repo。命中次數高的多半是公開識別（AWS 動作名稱、資源型別），低頻的命中要逐筆看。比對用的字串清單與結果檔含有來源字串，用完就刪掉；機密值不能寫進任何 pattern 檔。
 
 什麼時候跑：每個 Phase 的 commit 前、PR 送出前、合併前。commit message、PR 標題與描述、branch 名稱另外人工看。

@@ -2356,7 +2356,7 @@ variable "sidecars" {
 | 位置 | 內容 | 為什麼放這裡 |
 |---|---|---|
 | `modules/ecs-service/examples/adot-sidecar/` | 只示範 `sidecars` 怎麼填一個 ADOT collector：映像、`essential = false`（collector 掛掉不應該連帶讓整個 task 重啟、中斷服務）、`AOT_CONFIG_CONTENT` 用 `environment` 帶入 collector 設定、health check、`app_depends_on = "START"`、主 container 的 `OTEL_EXPORTER_OTLP_ENDPOINT = http://localhost:4317` | module 的 example 會被 CI 跑 `init -backend=false` 與 `validate`，寫法壞了會被抓到 |
-| `docs/guides/observability.md`（新增） | 範本已接好之後怎麼開：`iam-app` 的 `tracing`、`application` 的 `adot_collector`、沒有 NAT 時的 mirror 與 endpoint；collector 設定檔（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter、`health_check` extension）、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、log 告警 | 牽涉三個 stack，但接線都在範本裡，預設關閉（決策 36；原本決策 32 把這些留給專案、範本不放，理由是預設關閉的 sidecar 每個專案都要背，使用者要第一版就能用，所以改成範本已接好、預設關閉）。guide 不會被 CI 驗證，所以 HCL 片段要跟 module example 與範本對照 |
+| `docs/guides/observability.md`（新增） | 範本已接好之後怎麼開：`iam-app` 的 `tracing`、`application` 的 `adot_collector`、沒有 NAT 時的 mirror 與 endpoint；collector 設定檔（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter、`health_check` extension）、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、log 告警 | 牽涉三個 stack，但接線都在範本裡，預設關閉（決策 36；原本決策 32 把這些留給專案、範本不放，理由是放進範本會讓每個專案都背一個預設關閉的 sidecar；後來使用者要第一版就能用，所以改成範本已接好、預設關閉）。guide 不會被 CI 驗證，所以 HCL 片段要跟 module example 與範本對照 |
 
 collector 設定用 `environment` 帶，不存成 SSM parameter 再用 `secrets` 讀：設定檔不是機密，而範本規定 `aws_ssm_parameter` 只能由 `ssm-publish` 建（§5.6 S2）。設定檔太大放不進環境變數時，改成把設定烤進自己的 collector 映像。
 

@@ -354,7 +354,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - loadbalancer 發布的 `target_group_arn_suffixes` 是 JSON 物件（鍵是 target group key）。
 - operation 多讀 `ecr_repository_urls`、`db_proxy_endpoint`、`db_secret_arn`、`db_name`；不讀 `vpc_id`、`alarm_topic_arn`（用不到）。
 - postdeploy 多讀 application 的 `worker_log_group_name` 與三個數字、agent 的 `agent_memory_arn`；不讀 `waf_web_acl_name`、`stream_redis_id`；這兩個 key 沒有人讀，已經不發布（loadbalancer 與 database→bridge 各拿掉一個）。
-- 沒有任何後段需要、而前段與 bridge 沒提供的 key：VPC CIDR 用 `data "aws_vpc"` 以 `vpc_id` 查。
+- 後段需要的值，前段與 bridge 都有提供；唯一例外是 VPC CIDR，改用 `data "aws_vpc"` 以 `vpc_id` 查。
 - **樹 B 變成 26 個 key**（22 個 String、4 個 StringList）：database 多發布 `db_name` 與 `stream_shard_count`（stream 那組 Redis 的 `num_node_groups`），bridge 原樣轉寫；拿掉 `stream_redis_id`。agent、application、operation 都從樹 B 讀 `db_name`，application 讀 `stream_shard_count`，不再各留一份變數。設了 autoscaling 的 stream Redis，`stream_shard_count` 只是起始值。
 
 **各 stack 的設計決定**
