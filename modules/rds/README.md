@@ -56,11 +56,13 @@ module "db" {
 - **Proxy 的 role 與讀 secret 的 policy 都不在這個 module。** role 由 `iam-base` 建，讀 master secret 的 policy 在 secret 存在之後由 `iam-app` 附加。
 - `proxy.role_arn` 宣告成 `optional(string)`，由 validation 擋 null：必填屬性缺漏時 Terraform 在型別轉換階段就報錯，負向測試鎖不住這件事。
 - `app_endpoint` 與 `app_reader_endpoint` 是給應用程式的端點：有 Proxy 時是 Proxy（reader 優先用 read-only endpoint，沒有就用 Proxy 本身），沒有 Proxy 時是 DB 本身。
-- `shared_preload_libraries` 是靜態參數，module 設成 `pending-reboot`；其餘預設參數是動態參數。呼叫端另外給靜態參數時，module 用 `immediate` 套用，AWS 會拒絕，這種情況目前要自己處理（**未驗證**）。
+- `shared_preload_libraries` 是靜態參數，module 設成 `pending-reboot`；其餘預設參數是動態參數。呼叫端另外給靜態參數時，要列進 `static_parameter_names`（0.2.0 起），否則 module 用 `immediate` 套用，AWS 會拒絕（**未驗證**）。
 - 告警的 `connections_threshold`：`aurora_serverless` 沒給時為 `floor(min(max_capacity × 2 GiB ÷ 9,531,392, 5000) × 0.8)`；`rds` 與 `aurora` 的 `max_connections` 取決於 instance class，離線算不出來，必填。
 - **Data API（`data_api = true`）只給 Aurora。** Bedrock Knowledge Base 的 Aurora 向量儲存只能經 Data API 存取；KB 要的 cluster ARN 就是既有的 `arn` 輸出。Data API 對 Aurora PostgreSQL 有版本要求（AWS 文件寫 13.12、14.9、15.4、16.1 以上這類），**未查證**，沒有做成 validation（design §7.3）。
 - `deployment` 與 `database_name` 兩個輸出直接取變數，不讀 resource 屬性，plan 時就是已知值。
 - 以下都是 mock 驗不到的，列在 design §7.3：型態互換的實際行為、`min_capacity = 0`（閒置自動暫停）跟 engine 版本的關係、Aurora 自動 minor 升級造成的 `engine_version` 差異。
+
+- **static 參數要自己列。** module 只知道 `shared_preload_libraries` 是 static；其他 static 參數（例如 `cron.database_name`）如果不列進 `static_parameter_names`，會被送成 `immediate`，apply 時 RDS 會拒絕。列了但沒有出現在 `cluster_parameters`／`instance_parameters` 的名稱不會有任何效果。static 參數的變更要重開機才生效，重開時機由呼叫端決定。
 
 ## 刻意不做
 
@@ -92,6 +94,7 @@ module "db" {
 | `skip_final_snapshot` | `bool` | `false` | 否 | |
 | `cluster_parameters` | `map(string)` | `{}` | 否 | Aurora cluster 參數；`rds` 時必須為空 |
 | `instance_parameters` | `map(string)` | `{}` | 否 | rds 併入唯一的參數群組；Aurora 非空才另建 instance 參數群組 |
+| `static_parameter_names` | `set(string)` | `[]` | 否 | 0.2.0 起。`cluster_parameters`、`instance_parameters` 裡屬於 static 的參數名稱（例如 `cron.database_name`），改用 `pending-reboot` 套用；跟內建的 `shared_preload_libraries` 取聯集 |
 | `performance_insights_retention_days` | `number` | `7` | 否 | 7、31 的倍數（最多 713）或 731 |
 | `monitoring` | `object({ interval, role_arn })` | `null` | 否 | Enhanced Monitoring；`interval` 預設 60；null 不開 |
 | `log_retention_days` | `number` | `30` | 否 | PostgreSQL 與 Proxy log group 保留天數 |
@@ -128,6 +131,7 @@ module "db" {
 | `alarm_arns` | `map(string)` | key 為 `cpu_high_writer`、`connections_high`、`proxy_pinned_high` 這類 |
 | `deployment` | `string` | 輸入的 `deployment` 原樣輸出：`rds`、`aurora` 或 `aurora_serverless` |
 | `database_name` | `string` | 輸入的 `database_name` 原樣輸出 |
+| `log_group_name` | `string` | module 建立的 PostgreSQL log group 名稱：rds 是 `/aws/rds/instance/<name>/postgresql`，Aurora 是 `/aws/rds/cluster/<name>/postgresql`（0.2.0 起） |
 
 ## 測試
 

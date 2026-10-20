@@ -144,6 +144,13 @@ variable "instance_parameters" {
   default     = {}
 }
 
+variable "static_parameter_names" {
+  description = "Names of static parameters (for example cron.database_name) among cluster_parameters and instance_parameters. They are applied with pending-reboot instead of immediate. shared_preload_libraries is always treated as static."
+  type        = set(string)
+  default     = []
+  nullable    = false
+}
+
 variable "performance_insights_retention_days" {
   description = "Performance Insights retention: 7, a multiple of 31 up to 713, or 731."
   type        = number
