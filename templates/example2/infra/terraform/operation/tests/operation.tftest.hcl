@@ -326,8 +326,13 @@ run "etl_counts_are_metrics_without_alarms" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.etl_metrics)) == toset(["import_load_rejected", "import_load_failed", "import_load_succeeded"])
+    condition     = toset(keys(local.etl_load_metrics)) == toset(["import_load_rejected", "import_load_failed", "import_load_succeeded"])
     error_message = "Rejected, failed and succeeded loads are counted"
+  }
+
+  assert {
+    condition     = toset(keys(local.etl_extract_metrics)) == toset(["import_extract_rejected"])
+    error_message = "The extract side counts the batches it rejects"
   }
 
   assert {
@@ -336,13 +341,23 @@ run "etl_counts_are_metrics_without_alarms" {
   }
 
   assert {
-    condition     = alltrue([for m in values(local.etl_metrics) : startswith(m.pattern, "{ $.event = ")])
+    condition     = alltrue([for m in concat(values(local.etl_load_metrics), values(local.etl_extract_metrics)) : startswith(m.pattern, "{ $.event = ")])
     error_message = "The filters read JSON lines the application writes, so the Lambda log format must stay Text"
   }
 
   assert {
-    condition     = toset(keys(module.etl_metrics.metric_names)) == toset(["import_load_rejected", "import_load_failed", "import_load_succeeded"])
-    error_message = "The module creates one filter per metric"
+    condition     = toset(keys(module.etl_load_metrics.metric_names)) == toset(["import_load_rejected", "import_load_failed", "import_load_succeeded"])
+    error_message = "The load module creates one filter per metric"
+  }
+
+  assert {
+    condition     = toset(keys(module.etl_extract_metrics.metric_names)) == toset(["import_extract_rejected"])
+    error_message = "The extract module creates its one filter on the extract log group"
+  }
+
+  assert {
+    condition     = length(setintersection(toset([for m in values(local.etl_load_metrics) : m.metric_name]), toset([for m in values(local.etl_extract_metrics) : m.metric_name]))) == 0
+    error_message = "Both sides share a namespace, so their metric names must differ"
   }
 }
 
