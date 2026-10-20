@@ -81,10 +81,14 @@ locals {
     Resource = "*"
   }
   guardrail_statement = {
-    Sid      = "ApplyGuardrail"
-    Effect   = "Allow"
-    Action   = ["bedrock:ApplyGuardrail"]
-    Resource = ["arn:aws:bedrock:${local.region}:${local.account_id}:guardrail/*"]
+    Sid    = "ApplyGuardrail"
+    Effect = "Allow"
+    Action = ["bedrock:ApplyGuardrail"]
+    Resource = [
+      "arn:aws:bedrock:${local.region}:${local.account_id}:guardrail/*",
+      # A STANDARD tier guardrail is evaluated through its cross-region profile. AWS picks the region, so it is a wildcard.
+      "arn:aws:bedrock:*:${local.account_id}:guardrail-profile/${var.guardrail_cross_region_profile_id}",
+    ]
   }
 
   statements = merge(

@@ -489,3 +489,53 @@ run "publishes_the_six_role_arns" {
     error_message = "ssm-publish must write the six role keys under the iam path"
   }
 }
+
+# ---- guardrails ----
+
+run "the_roles_that_apply_guardrails_also_get_the_guardrail_profile" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for r in ["api_task", "agent_runtime"] :
+      contains(flatten([for s in local.statements[r] : s.Resource if s.Sid == "ApplyGuardrail"]), "arn:aws:bedrock:*:111111111111:guardrail-profile/apac.guardrail.v1:0")
+    ])
+    error_message = "A STANDARD tier guardrail is evaluated through a cross-region profile, which needs its own resource in the ApplyGuardrail grant; the region is a wildcard because AWS picks it"
+  }
+
+  assert {
+    condition = alltrue([
+      for r in ["api_task", "agent_runtime"] :
+      contains(flatten([for s in local.statements[r] : s.Resource if s.Sid == "ApplyGuardrail"]), "arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/*")
+    ])
+    error_message = "The guardrails themselves stay granted"
+  }
+
+  assert {
+    condition     = !anytrue([for r in ["ecs_execution", "worker_task", "import_extract", "import_load"] : anytrue([for s in local.statements[r] : s.Sid == "ApplyGuardrail"])])
+    error_message = "Only the roles that call ApplyGuardrail get the grant"
+  }
+}
+
+run "the_profile_id_is_a_variable_with_a_validated_shape" {
+  command = plan
+
+  variables {
+    guardrail_cross_region_profile_id = "global.guardrail.v2:1"
+  }
+
+  assert {
+    condition     = contains(flatten([for s in local.statements["agent_runtime"] : s.Resource if s.Sid == "ApplyGuardrail"]), "arn:aws:bedrock:*:111111111111:guardrail-profile/global.guardrail.v2:1")
+    error_message = "Another profile id changes the resource"
+  }
+}
+
+run "rejects_a_malformed_profile_id" {
+  command = plan
+
+  variables {
+    guardrail_cross_region_profile_id = "not a profile"
+  }
+
+  expect_failures = [var.guardrail_cross_region_profile_id]
+}

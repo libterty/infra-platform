@@ -5,3 +5,6 @@ deploy_role_arn     = ""
 
 # Only used in dev, where the eval-batch role exists.
 eval_batch_model_id = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# Must equal the same value in the agent stack.
+guardrail_cross_region_profile_id = "apac.guardrail.v1:0"
