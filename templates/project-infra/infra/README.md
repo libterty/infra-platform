@@ -245,7 +245,7 @@ terraform plan -var-file=envs/dev.tfvars
 - 路由、internet gateway、NAT、gateway endpoint、default security group 一律不碰，`nat` 發布 `{"mode":"external","ids":[]}`。
 - `azs` 取自 `app` tier subnet 的 AZ；三個 tier 的 subnet 要用同一個 AZ 順序，這一點程式不檢查。
 
-模式 B 與其他 stack 交給客戶時，沒有檔案就無法 `init`，也就不會誤跑。建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter`。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
+`network` 用模式 B，或其他 stack 交給客戶時，該環境沒有 `envs/<env>.*` 檔案，就無法 `init`，也就不會誤跑。建議客戶在給我們的部署 role 上，對客戶擁有的路徑明確 Deny `ssm:PutParameter` 與 `ssm:DeleteParameter`。客戶的部署 role 不能改 IAM 時，`iam-base` 與 `iam-app` 一定要交給客戶（模式 B）。跨帳號部署用 `providers.tf` 的 `deploy_role_arn`，空字串代表用呼叫者自己的身分。
 
 ## RDS Proxy 第一次部署：兩段式步驟（未驗證）
 
