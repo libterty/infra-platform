@@ -15,7 +15,7 @@ module "alb" {
   sns_topic_arns     = [module.alarm_topic.topic_arn]
 
   access_logs = { bucket = local.alb_log_bucket, prefix = "alb" }
-  web_acl_arn = aws_wafv2_web_acl.this.arn
+  web_acl     = { arn = aws_wafv2_web_acl.this.arn }
 }
 ```
 
@@ -51,6 +51,7 @@ module "alb" {
 - **沒有憑證時只開 HTTP:80，ALB 的 security group 必須收窄**。SG 由 `network` stack 建，收窄規則也在那裡檢查；這個 module 不建 SG，也看不到 SG 的內容。
 - **access log 的 bucket 只能用 SSE-S3 加密**。ALB 的 log delivery 不支援 customer managed KMS，設了 KMS 之後 log 會無聲遺失。bucket 由 `foundation` stack 建，這裡只收名稱（不是 ARN）。
 - `additional_certificate_arns` 只掛在 HTTPS listener，所以必須同時給 `certificate_arn`。
+- **WAF 與 ALB 在同一個 configuration 建時，用 `web_acl`，不要用 `web_acl_arn`**。`web_acl_arn` 是 unknown 時，`count` 無法在 plan 決定，會報 `Invalid count argument`；`web_acl` 是物件，是否為 `null` 在 plan 時就知道，`arn` unknown 也沒關係。`web_acl` 與 `web_acl_arn` 同時給會被 validation 擋下。
 - `deletion_protection` 預設 `true`；測試或 PoC 要 destroy 時先設成 `false` 並 apply。
 - ELB 5xx 告警只有 `LoadBalancer` 維度，所以放在這裡，一個 ALB 一份；各服務的 target 告警在 `ecs-service-alarms`。
 
@@ -76,7 +77,8 @@ module "alb" {
 | `idle_timeout` | `number` | `60` | 否 | 1–4000 秒 |
 | `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
 | `access_logs` | `object({ bucket, prefix })` | `null` | 否 | `bucket` 為 SSE-S3 bucket 名稱；`prefix` 可省略 |
-| `web_acl_arn` | `string` | `null` | 否 | regional WAFv2 Web ACL ARN；只做關聯 |
+| `web_acl` | `object({ arn })` | `null` | 否 | regional WAFv2 Web ACL；只做關聯。ARN 在 plan 時還不知道（同一個 configuration 建 WAF）一定要用這個變數 |
+| `web_acl_arn` | `string` | `null` | 否 | regional WAFv2 Web ACL ARN；**只適合 plan 時已知的值**，日後移除。與 `web_acl` 不能同時給 |
 | `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |
 | `target_groups` | `map(object)` | `{}` | 否 | 見上方 target group 與 listener rule |
 | `listener_rules` | `map(object)` | `{}` | 否 | 見上方 target group 與 listener rule |
@@ -99,6 +101,7 @@ module "alb" {
 | `listener_arn` | `string` | 有憑證時是 HTTPS listener，否則是 HTTP listener |
 | `listener_protocol` | `string` | `"HTTPS"` 或 `"HTTP"` |
 | `alarm_arns` | `map(string)` | 告警 ARN，目前只有 `elb_5xx` |
+| `web_acl_association_ids` | `list(string)` | WAF 關聯 ID；沒關聯時是空 list |
 | `target_group_arns` | `map(string)` | target group ARN，key 同 `target_groups`；沒給時是空 map |
 | `target_group_arn_suffixes` | `map(string)` | `targetgroup/<name>/<id>`，key 同 `target_groups`，給 CloudWatch dimension 用 |
 

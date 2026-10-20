@@ -42,3 +42,8 @@ output "target_group_arn_suffixes" {
   description = "targetgroup/<name>/<id> keyed by the target_groups key, for CloudWatch dimensions."
   value       = { for k, t in aws_lb_target_group.this : k => t.arn_suffix }
 }
+
+output "web_acl_association_ids" {
+  description = "Web ACL association IDs; empty when no Web ACL is associated."
+  value       = aws_wafv2_web_acl_association.this[*].id
+}
