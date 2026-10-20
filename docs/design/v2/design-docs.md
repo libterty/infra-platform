@@ -219,7 +219,7 @@ templates/example2/infra/
 |---|---|---|---|
 | 1 | `containerimage` | 無 | 服務與 Runtime 清單、各 ECR URL／ARN |
 | 2 | `foundation` | 無 | 告警 topic、secret ARN |
-| 3 | `network` | containerimage | VPC、各層 subnet、各 SG、peering |
+| 3 | `network` | foundation | VPC、各層 subnet、各 SG、peering |
 | 4 | `database` | foundation、network | DB endpoint、Proxy endpoint、secret ARN、Redis endpoint |
 | 5 | `iam` | foundation、containerimage、database | 各 role ARN |
 | 6 | `bridge` | 前面所有 stack | 樹 B；`EXTERNAL_SHARED_ENVS` 裡的環境不跑 |
@@ -271,6 +271,55 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - **`stacks.sh`**：多一個 `--dry-run`（只印指令）；`validate` 用另一個 data directory `.terraform-<env>-validate` 並加 `-lockfile=readonly`，避免蓋掉 `init` 留下的 backend 設定、也不改 lock 檔。`ORDER=(...)` 必須寫在同一行，因為 `check-ssm-contract.sh` 用 grep 解析它。
 - **tests**：每個 stack 有 `tests/common.tftest.hcl`（帳號、env、`deploy_role_arn` 的 validation 正反各案例）與 `tests/tfvars/tfvars.tftest.hcl`；11 份內容相同。
 
+### 5.8 B3（前段 5 個 stack）的實作差異
+
+2026-10-20 完成 containerimage、foundation、network、database、iam。跟 §5.2、§5.3、§5.7 不同的地方：
+
+**合約**
+
+- 發布的 key 全部沿用 §5.7 的清單，沒有改名。新增一個：`network` 多發布 `db_proxy_sg_id`（RDS Proxy 用自己的 security group，資料庫只收 Proxy 的連線），只有 `database` 讀。
+- `network` 讀的 key 從 `containerimage/services` 改成 `foundation/alarm_topic_arn`：network 沒有任何東西要依服務清單決定（SG 是依層，不是依服務），NAT 告警卻需要告警 topic。
+- `bastion_sg_id` 永遠發布：SG 一律建立（沒有規則就沒有任何路徑），`bastion_enabled = true` 才加上連 Proxy 與 Redis 的規則。operation 的 `bastion.enabled` 要跟 network 的 `bastion_enabled` 一致，沒有東西檢查這點。
+- `app_secret_arn` 是 private key 的 secret、`signing_secret_arn` 是 public key 的 secret。名稱沿用 B2 的清單，所以對應是「app 用 private key 簽、用 public key 驗」。只有 api 的 task role 能讀 private key。
+- `lambda_role_arn` 只有一個，import-extract 與 import-load 共用同一個 role（權限是兩者的聯集：import bucket 讀寫、資料庫 secret、VPC ENI）。要拆成兩個 role 得改 bridge 與 operation 讀的 key，B3 不動後段。
+- `containerimage` 發布的 `ecr_repository_urls`、`ecr_repository_arns` 是 JSON（鍵是映像名稱，包含 Runtime），`agent_runtimes` 是 JSON 陣列；`peering_connections` 是 JSON 物件（沒有 peering 時是 `{}`）。Redis endpoint 是 `host:port`。
+- ECR repository 名稱是 `<project>-<image>`，不帶 env：兩個 env 共用同一個帳號時，一邊建、另一邊用 `adopt_existing = true` 沿用。
+
+**後段 stack 必須遵守的命名規則**（iam 先於它們 apply，讀不到資源，所以用命名規則組 ARN，沒有東西檢查兩邊一致）
+
+| 資源 | 名稱 | 建立的 stack |
+|---|---|---|
+| import bucket、eval-batch bucket | `<project>-<env>-import-<account>`、`<project>-<env>-eval-batch-<account>` | operation |
+| Lambda log group | `/aws/lambda/<project>-<env>-import-*` | operation |
+| ECS log group | `/ecs/<project>-<env>-*` | application |
+| AgentCore Runtime、Memory | `<project>_<env>_<runtime>`、`<project>_<env>_memory`（連字號換成底線） | agent |
+| 自訂 metric namespace | `<Project>/<env>`（`title(project)`，例如 `Example/dev`） | database、operation、postdeploy |
+
+**R2 沒有循環**：Proxy role 的 policy 用 `module.db.master_user_secret_arn`，`rds` 的 Proxy 用 `module.proxy_role.arn`。secret ARN 來自 cluster resource，role ARN 只被 Proxy 的 resource 用，而 Proxy 在 cluster 之後才建，所以圖上沒有環。Proxy role 與 monitoring role 各自一個 `iam-role` 呼叫（不用 for_each），避免 monitoring role 被拉進 secret 的相依鏈。`terraform validate` 與 `tests/graph.tftest.hcl`（不 override `module.db`，讓真實的 module 一起 plan）都通過。
+
+**安全收窄與例外**
+
+- 資料庫與 ALB 的 SG 沒有全開 egress：ALB 只能到 app SG 的 `app_port`；db、cache 完全沒有 egress；Proxy 只能到 db。app、agent、bastion 的 443 egress 在 NAT 關閉時改成 VPC CIDR 加 S3 prefix list（ECR 的 image layer 從 S3 下載）。
+- 沒有 `kms:Decrypt` 的萬用資源：database 與 iam 用 `data "aws_kms_alias"` 查 `alias/aws/secretsmanager` 的 key ARN，並限定 `kms:ViaService`。
+- IAM policy 的 `Resource = "*"` 只有 AWS 不支援 resource-level 的動作：`ecr:GetAuthorizationToken`、X-Ray、`ssmmessages`、Lambda 的 EC2 network interface、`cloudwatch:PutMetricData`（用 namespace 條件限制）。tests 列出完整清單，多一項就失敗。
+- `eval_batch` role 只在 `env == "dev"` 建立，`eval_batch_model_id` 在 dev 必填。
+- 加上 `aws:ResourceAccount` 條件的只有 eval-batch 的 S3 權限；其他 role 的 S3 權限是 bucket 命名規則組出來的具體 ARN。
+
+**tests 的寫法**
+
+- `tests/common.tftest.hcl` 的 `variables` 區塊加上該 stack 的必填變數（containerimage 的 `services`、database 的 `redis` 等），否則帳號檢查連 plan 都過不了；有 `module "in"` 的 stack 另外在 `common` 與 `tfvars` 兩份測試加 `override_module`，因為 mock 讀 SSM 會回傳隨機字串，過不了 module 的格式檢查。所以這兩份不再是 11 份一字不差。
+- network 有兩份測試：`network.tftest.hcl` 把 `module.vpc` 換成固定輸出，`layout.tftest.hcl` 讓真實的 `vpc` module 驗子網路配置有沒有重疊。database 的 `graph.tftest.hcl` 同理。
+- `database` 經 `rds` module 用到 `random`，lock 檔因此多一個 provider。
+
+**mock 驗不到、要真實環境才能確認的推論**
+
+- Proxy role 的 policy 在不指定 CMK 時，`kms:Decrypt` 限定 `alias/aws/secretsmanager` 的 key 加 `kms:ViaService` 是否足夠；`alias/aws/secretsmanager` 要在帳號裡有人用過預設 key 建過 secret 才存在（foundation 先 apply，所以成立）。
+- RDS Enhanced Monitoring role 收窄到 `RDSOSMetrics` log group 是否足夠（跟 project-infra 同一個未驗證的假設）。
+- AgentCore Runtime role 與 `aws:SourceArn` 的形狀（`arn:aws:bedrock-agentcore:<region>:<account>:*`）、`runtime/<name>-*` 與 `memory/<name>-*` 的 ARN 形狀。
+- pg_cron 的 log 告警靠 SQL 寫出 `partition_maintenance_failed`、`partition_maintenance_heartbeat`、`default_partition_not_empty` 三個字串；這是跟應用程式 SQL 的約定，沒有東西檢查。
+- 沒有 NAT 時 app、agent 還缺 ECR、CloudWatch Logs、Secrets Manager 的 interface endpoint（network 只建 Bedrock 的三個），tfvars 預設 `per_az`。
+- `connections_threshold` 是佔位值（dev 300、sit 1400），要依 instance class 的 `max_connections` 調整。
+
 ## 6. `validate.sh` 與 CI
 
 - `tf_stack_glob` 改成 `tf_stack_roots`（用 `templates/*/infra/terraform` 找）。目錄掃描、S8 範圍、token 檢查、`-lockfile=readonly` 都改成迭代這個陣列。
@@ -286,7 +335,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 | # | 風險 | 處理 |
 |---|---|---|
 | R1 | `elasticache-redis` 的 `ignore_changes = [num_node_groups]` 讓建好之後改 shard 數不生效，autoscaling 後 member 告警會過期 | 寫進 README |
-| R2 | database stack 裡 Proxy role 的 policy 要用 cluster 的 secret，`rds` 的 Proxy 又要這個 role，可能形成循環依賴 | B3 的 `terraform validate` 會抓到；有循環就改成用命名規則組 secret ARN |
+| R2 | database stack 裡 Proxy role 的 policy 要用 cluster 的 secret，`rds` 的 Proxy 又要這個 role，可能形成循環依賴 | B3 已驗證：沒有循環（見 §5.8），不需要改用命名規則 |
 | R3 | CloudFront prefix list 當 ALB 入口會大量佔用 SG 規則配額 | dev、sit 的 tfvars 預設不用 |
 | R4 | ElastiCache 沒有 AUTH token，只靠 TLS 與 SG | 已知取捨，寫進 README |
 | R5 | CI 時間會增加 11 個 stack 的 tests | B6 量測，必要時調 `timeout-minutes` |
