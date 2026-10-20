@@ -265,7 +265,7 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 - **發布的 key 先用註解列出**：骨架階段沒有資源可以接 `module "ssm_publish"`，硬寫只能放假值。所以 `ssm-outputs.tf` 只有 `# planned_strings: ...`、`# planned_lists: ...` 註解，`check-ssm-contract.sh` 把它們當成已發布；B3–B5 加上真的 `published_strings`、`published_lists` 時要同一個 PR 把註解換掉。讀的 key 不需要值，直接寫成真的 `ssm-inputs.tf`（`module "in"`、`module "shared"`）。
 - **沒有東西可讀或發布的 stack 不放對應的檔案**：`containerimage`、`foundation` 沒有 `ssm-inputs.tf`，`postdeploy` 沒有 `ssm-outputs.tf`。
-- **key 名稱**：§5.4 的 `bastion_sg` 寫成 `bastion_sg_id`，跟其他 security group 一致；`loadbalancer` 多發布 `api_target_group_arn`，因為 `application` 註冊 ECS 服務需要完整的 ARN，suffix 不夠。各 stack 的 key 是 B2 先定的清單，B3–B5 可以調整，`check-ssm-contract.sh` 會抓出對不上的地方。
+- **key 名稱**：§5.4 的 `bastion_sg` 寫成 `bastion_sg_id`，跟其他 security group 一致；`loadbalancer` 多發布 `api_target_group_arn`，因為 `application` 註冊 ECS 服務需要完整的 ARN，suffix 不夠。各 stack 的 key 是 B2 先定的清單，B3–B5 可以調整，`check-ssm-contract.sh` 會抓出對不上的地方。B3 之後又改了兩處：`app_secret_arn`、`signing_secret_arn` 改名為 `signing_private_key_secret_arn`、`signing_public_key_secret_arn`；`lambda_role_arn` 拆成 `import_extract_role_arn`、`import_load_role_arn`（見 §5.8）。
 - **`common.tf`**：三個前綴 local（`name_prefix`、`ssm_prefix`、`shared_ssm_prefix`）加 `tflint-ignore: terraform_unused_declarations`，因為 11 份一字不差，但不是每個 stack 都用得到每個前綴。
 - **`check-ssm-contract.sh` 多檢查兩個細節**：讀的型別（strings 或 lists）要跟發布的一致；tfvars 的 `env` 要等於檔名。兩者都屬於 §5.5 的第 1、2 項。
 - **`stacks.sh`**：多一個 `--dry-run`（只印指令）；`validate` 用另一個 data directory `.terraform-<env>-validate` 並加 `-lockfile=readonly`，避免蓋掉 `init` 留下的 backend 設定、也不改 lock 檔。`ORDER=(...)` 必須寫在同一行，因為 `check-ssm-contract.sh` 用 grep 解析它。
@@ -280,8 +280,8 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 - 發布的 key 全部沿用 §5.7 的清單，沒有改名。新增一個：`network` 多發布 `db_proxy_sg_id`（RDS Proxy 用自己的 security group，資料庫只收 Proxy 的連線），只有 `database` 讀。
 - `network` 讀的 key 從 `containerimage/services` 改成 `foundation/alarm_topic_arn`：network 沒有任何東西要依服務清單決定（SG 是依層，不是依服務），NAT 告警卻需要告警 topic。
 - `bastion_sg_id` 永遠發布：SG 一律建立（沒有規則就沒有任何路徑），`bastion_enabled = true` 才加上連 Proxy 與 Redis 的規則。operation 的 `bastion.enabled` 要跟 network 的 `bastion_enabled` 一致，沒有東西檢查這點。
-- `app_secret_arn` 是 private key 的 secret、`signing_secret_arn` 是 public key 的 secret。名稱沿用 B2 的清單，所以對應是「app 用 private key 簽、用 public key 驗」。只有 api 的 task role 能讀 private key。
-- `lambda_role_arn` 只有一個，import-extract 與 import-load 共用同一個 role（權限是兩者的聯集：import bucket 讀寫、資料庫 secret、VPC ENI）。要拆成兩個 role 得改 bridge 與 operation 讀的 key，B3 不動後段。
+- foundation 發布的 secret key 以內容命名：`signing_private_key_secret_arn`（private key，只有 api 的 task role 能讀）、`signing_public_key_secret_arn`（public key，api 與 worker 讀）。B2 的清單原本叫 `app_secret_arn`、`signing_secret_arn`，名稱跟內容對不上，B3 之後改名，並同步改 bridge、application 骨架的 key 清單。
+- 兩個 import Lambda 各有自己的 role，發布 `import_extract_role_arn`、`import_load_role_arn`（取代 B2 清單的 `lambda_role_arn`，bridge 與 operation 的 key 清單已同步）。import-extract 由上傳觸發：讀 `incoming/*`、寫 `extracted/*`、呼叫兩個 embedding 模型，不碰資料庫，所以沒有 secret 與 KMS 權限。import-load 讀 `extracted/*` 並讀資料庫 secret，不能寫 bucket、不能呼叫模型。兩者都有各自 log group 的寫入權與 VPC ENI 權限。
 - `containerimage` 發布的 `ecr_repository_urls`、`ecr_repository_arns` 是 JSON（鍵是映像名稱，包含 Runtime），`agent_runtimes` 是 JSON 陣列；`peering_connections` 是 JSON 物件（沒有 peering 時是 `{}`）。Redis endpoint 是 `host:port`。
 - ECR repository 名稱是 `<project>-<image>`，不帶 env：兩個 env 共用同一個帳號時，一邊建、另一邊用 `adopt_existing = true` 沿用。
 
@@ -289,8 +289,8 @@ destroy 反過來。後段 stack（7–11）只讀樹 B 與其他後段 stack �
 
 | 資源 | 名稱 | 建立的 stack |
 |---|---|---|
-| import bucket、eval-batch bucket | `<project>-<env>-import-<account>`、`<project>-<env>-eval-batch-<account>` | operation |
-| Lambda log group | `/aws/lambda/<project>-<env>-import-*` | operation |
+| import bucket、eval-batch bucket；import bucket 的 prefix：`incoming/`（上傳，觸發 import-extract）、`extracted/`（import-extract 的輸出，import-load 讀） | `<project>-<env>-import-<account>`、`<project>-<env>-eval-batch-<account>` | operation |
+| Lambda log group | `/aws/lambda/<project>-<env>-import-extract`、`/aws/lambda/<project>-<env>-import-load` | operation |
 | ECS log group | `/ecs/<project>-<env>-*` | application |
 | AgentCore Runtime、Memory | `<project>_<env>_<runtime>`、`<project>_<env>_memory`（連字號換成底線） | agent |
 | 自訂 metric namespace | `<Project>/<env>`（`title(project)`，例如 `Example/dev`） | database、operation、postdeploy |
