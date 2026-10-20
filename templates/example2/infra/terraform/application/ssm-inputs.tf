@@ -1,8 +1,9 @@
 locals {
   ssm_input_strings = {
     api_target_group_arn = "loadbalancer/api_target_group_arn"
+    alb_arn_suffix       = "loadbalancer/alb_arn_suffix"
     agent_runtime_arns   = "agent/agent_runtime_arns"
-    agent_memory_id      = "agent/agent_memory_id"
+    guardrail_ids        = "agent/guardrail_ids"
   }
 
   shared_input_strings = {
@@ -18,7 +19,6 @@ locals {
     rate_limit_redis_endpoint      = "infra/rate_limit_redis_endpoint"
     stream_redis_endpoint          = "infra/stream_redis_endpoint"
     ecr_repository_urls            = "infra/ecr_repository_urls"
-    alarm_topic_arn                = "infra/alarm_topic_arn"
   }
 
   shared_input_lists = {
