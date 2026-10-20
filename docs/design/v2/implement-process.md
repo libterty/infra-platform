@@ -1,7 +1,7 @@
 # infra-platform v2 實作流程：example2
 
 > 狀態：v2 完成（A1–A5、B1–B6 都已完成；PR-A 已合併發版，PR-B 待使用者決定合併）。設計以 [`design-docs.md`](./design-docs.md) 為準；這份只講「一步一步怎麼做、每步怎麼驗收」。兩份衝突時，以 design-docs.md 為準，回頭改這份。
-> 2026-10-20 改寫過 git 歷史，拿掉參考專案的細節（PR #15）：文中的 commit hash 都已換成改寫後的值；只改文件的 commit 在改寫後沒有內容差異而被併掉，表中標「已併入」。
+> 2026-10-20 改寫過 git 歷史，拿掉參考專案的細節（PR #15）：文中的 commit hash 都已換成改寫後的值；只改文件的 commit 改寫後沒有內容差異，已經併掉，表中標「已併入」。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
 ## 結論
@@ -79,7 +79,7 @@
 2. 從 manifest 讀出 12 個 tag，在合併後的 commit 打 annotated tag，只 push 這 12 個。
 3. `gh release create <tag> --notes-file modules/<m>/CHANGELOG.md`，不設 latest。
 4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 6 個新 module，等狀態變成 `setup_complete`。
-5. 已登記的 module 有沒有收到新 tag：一次推超過 3 個 tag 時 GitHub 不發 webhook，要照 `hcp-registry-setup.md`〈之後的維護〉補。
+5. 確認已登記的 module 有沒有收到新 tag：一次推超過 3 個 tag 時 GitHub 不發 webhook，要照 `hcp-registry-setup.md`〈之後的維護〉補。
 
 驗收：照 `hcp-registry-setup.md` §4 在暫存目錄 `terraform init -backend=false` 抓 32 個 module，版本跟 tag 一致。
 

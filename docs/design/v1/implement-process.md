@@ -160,7 +160,7 @@ export AWS_EC2_METADATA_DISABLED=true
 
 | subagent | module | 為什麼放一起 |
 |---|---|---|
-| A | `iam-role`、`iam-role-policy` | 兩者的「禁止萬用動作」validation 必須一字不差（design §4.15），同一個人寫才不會漂移 |
+| A | `iam-role`、`iam-role-policy` | 兩者的「禁止萬用動作」validation 必須一字不差（design §4.15），同一個人寫才不會越寫越不一樣 |
 | B | `kms-key`、`s3-bucket` | 都是 policy JSON 的組裝與斷言，都要 `override_data` 給 `data.aws_caller_identity`／`data.aws_elb_service_account` |
 | C | `ecr-repository`、`ssm-read` | 兩個都小 |
 | D | `security-group` | 規則展開與交叉 validation 最多，單獨一個 |
@@ -262,7 +262,7 @@ scripts/validate.sh                                                # 既有 21 �
 
 全量 `scripts/validate.sh`：35 個目錄通過。跟計畫的差異：`iam-role` 與 `iam-role-policy` 多了一條 validation，Allow statement 不准搭配 `NotAction`（`NotAction` 等於「除了這些以外全部允許」，會繞過禁止萬用動作的檢查）。兩個 module 這條的寫法也一字不差。
 
-以下是當時的計畫，保留作為對照。
+以下是當時的計畫，留著對照用。
 
 **目標**：照 design §4.10–§4.16 做出 7 個 module，run 表以 design §7.1 為基礎。每個 module 一個 commit。
 
@@ -420,7 +420,7 @@ scripts/validate.sh                                       # 全量
 - 順序是 chore 先、docs 後（計畫是 docs 先），結果相同。
 - `examples/adot-sidecar/` 的 collector 設成 `essential = false`：觀測工具掛掉，不應該讓 ECS 把整個 task 連應用程式一起重啟。`observability.md` 要照這個寫。
 
-以下是當時的計畫，保留作為對照。
+以下是當時的計畫，留著對照用。
 
 
 **目標**：照 design §4.17–§4.20、§7.1、決策 31–33，新增 `log-group`、`log-metric-alarm`、`xray`，並讓 `ecs-service` 支援 sidecar。module 總數從 15 變 18。
@@ -535,7 +535,7 @@ scripts/validate.sh                                                # 全量
 
 **完成定義**：design §7.1 表中 `log-group`、`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` 每一項都有對應的 run 且通過；`ecs-service` 既有 67 個 run 不改一行仍全部通過；`every_alarm_notifies_both_ways` 與 `no_sidecars_keeps_single_container` 經反向驗證確認有效。主 agent 每驗完一個 module 就 commit 一次。
 
-**不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。其中 ADOT sidecar 與 X-Ray 權限後來被 design 決策 36 推翻，範本已接好（預設關閉），見「Phase 9 補充」。
+**不在本次範圍**：把 `ecs-service`、`rds`、`ecs-service-alarms` 改成呼叫 `log-group` 或 `log-metric-alarm`（design 決策 33）；範本預設開追蹤或放 ADOT sidecar（design J43）；`iam-app` 的 X-Ray 權限與 `tracing_<service>`（寫在 `observability.md`，不進範本）；帳號層級的 X-Ray 設定。後來 design 決策 36 推翻了其中的 ADOT sidecar 與 X-Ray 權限，範本已接好（預設關閉），見「Phase 9 補充」。
 
 ### Phase 7F：拆出 `vpc-interface-endpoints`（已完成）
 
@@ -836,7 +836,7 @@ scripts/validate.sh
 | `docs/guides/consuming-modules.md` | 怎麼引用（`git::https://github.com/<org>/<repo>.git//modules/<name>?ref=<name>-v<semver>`）、私有 repo 的 git 認證、Git source 只能 `ref` 釘死、從範本複製出去時把相對路徑改成 git source（一個 module 一行的手改方式，加一次改完的指令）、升版、讀 CHANGELOG、升級到真 registry 時消費端改什麼 |
 | `docs/guides/project-infra-standard.md` | 8 個 stack 與 apply 順序、stack 只呼叫 module（例外清單）、iam 為什麼拆兩個、單一決定點、SSM 合約（含 tier 調整時 key 怎麼變）、流量規格對照表與 IP 規劃公式、環境切換四件事、客戶自管模式 A／B |
 | `docs/guides/releasing-modules.md` | 怎麼改 module、semver 規則、release-please 流程、一個 commit 只動一個 module、**第一次發版前在整體驗收通過的 commit 上手動打 19 個 `<module>-v0.1.0` tag 的步驟與指令**（design §3.5、決策 27）、module 的註解只用英文 |
-| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 的 `tracing` 當單一決定點（原規劃是 `tracing_<service>`，決策 36 之後改成範本已接好、單一個 `tracing` 清單）、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（guide 不會被 CI 驗證），collector 照 example 寫 `essential = false` 並說明理由；interface endpoint 的 `xray` 服務由 network 的 `interface_endpoints` 加 |
+| `docs/guides/observability.md` | 照 design §4.20 的表：ADOT collector 設定檔範例（OTLP receiver、batch、memory_limiter、濾掉 health check、`awsxray` exporter）、`iam-app` 給 task role 的 X-Ray 與 CloudWatch 權限（`Resource = "*"` 的四個 X-Ray 動作）、`iam-base` 給 execution role 拉 ADOT 映像的權限、`xray` module 的 sampling rule 怎麼配與 remote sampling 的前提、`iam-app` 的 `tracing` 當單一決定點（原規劃是 `tracing_<service>`，決策 36 之後改成範本已接好、單一個 `tracing` 清單）、`log-metric-alarm` 怎麼接應用程式的 JSON log。HCL 片段要跟 `modules/ecs-service/examples/adot-sidecar/` 逐行對照（CI 不會驗證 guide），collector 照 example 寫 `essential = false` 並說明理由；interface endpoint 的 `xray` 服務由 network 的 `interface_endpoints` 加 |
 | `docs/guides/delivering-to-customer.md` | FDE：`vendor-modules.sh`、`terraform providers mirror`（給客戶環境用，不是本 repo 的驗證流程）、客戶自管資源的 SSM 合約、客戶環境差異怎麼回報 |
 | `docs/guides/team-roles.md` | 四個團隊的責任與交接點，對到 CODEOWNERS |
 | `scripts/vendor-modules.sh` | 只做 `git::...?ref=<tag>` → vendored 相對路徑（design §8.7）。tag 的 module 名稱清單從 `modules/` 目錄讀 |
@@ -1039,7 +1039,7 @@ S9 的反向驗證在 scratchpad 的暫存複本做（同 Phase 6）：
 - 各 module 多了幾條 validation（gateway 的 `--`、S3 URI、Lambda ARN；KB 的 `role_arn`；inference profile 的名稱字元；runtime 的 SG 不重複），對應的 run 已補進 design §7.1。
 - 核對程式碼時另外發現、實作者沒有回報的：`bedrock-inference-profile` 的 profile 沒有加 `Name` tag（D31）。
 
-以下是當時的計畫，保留作為對照。
+以下是當時的計畫，留著對照用。
 
 
 每個 module 照〈每個 module／stack 的 TDD 節奏〉做，run 表以 design §7.1 的增補表為準；固定檔案照〈module 的固定檔案〉，**唯一差別是 `versions.tf` 的 aws 是 `>= 6.69, < 7.0`**（design 決策 43）。README 要有「容易出錯的地方」一節，內容照 design 各節。
@@ -1097,7 +1097,7 @@ run 區塊數是各 stack `tests/**/*.tftest.hcl` 裡 `run "` 區塊的數量，
 - 安全審查後的修正：`agent/agentcore_gateway` 多發布 `tool_schema_arns`，Gateway role 多 `ReadToolSchemas`（D42）；KB 的 `credentials_secret_arn` 必須是帶 6 字元後綴的完整 ARN，`iam-app` 在授權端再檢查一次（D43）；沒有 NAT 時連 DB 的 VPC Runtime 要 `secretsmanager` endpoint（D44，未實測）；範本 README 寫了已部署環境的升級順序（D45）。審查列出但這一輪不修的 M1、M4、L1–L5 記在 design §8.8（D46）。
 - 計畫裡的單一 run 多半拆成「被擋」與「通過」兩個 run，名稱照程式碼列在 design §7.1〈增補：範本 Phase 14 的測試〉（D41）。
 
-以下是當時的計畫，保留作為對照。
+以下是當時的計畫，留著對照用。
 
 照 design §5.3〈增補：`agent` stack〉與 §5.4 增補。新增 `templates/project-infra/infra/terraform/agent/`，檔案同其他 stack（`versions.tf`、`providers.tf`、一字不差的 `common.tf`、`variables.tf`、`ssm-inputs.tf`、`ssm-outputs.tf`、依主題拆的 `.tf`、`outputs.tf`、`guards.tf`、`envs/{dev,prod}.{tfvars,tfbackend}`、`envs/examples/{poc,standard,high}.tfvars`、`tests/`、`tests/tfvars/`、`tests/examples/`）。lock 檔照 Phase 8〈lock 檔的產生方式〉原文產生（硬性限制第 9 條的例外延伸到這一個 stack，design J65），產生後確認 aws 版本跟其他 8 個 stack 相同。
 
@@ -1169,7 +1169,7 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
      <(sed -n '/^```sql/,/^```/p' docs/design/v1/design-docs.md | head -40)   # KB 的 SQL 與 design 一致
 ```
 
-**完成定義**：guide 結論在最前面、指令可以照抄、未實測的地方都有標；主 agent 對照範本的真實變數名逐一核對 HCL 片段（guide 不會被 CI 驗）。
+**完成定義**：guide 結論在最前面、指令可以照抄、未實測的地方都有標；主 agent 對照範本的真實變數名逐一核對 HCL 片段（CI 不驗 guide）。
 
 #### Phase 16：整體驗收與打 tag
 
@@ -1177,7 +1177,7 @@ diff <(sed -n '/^```sql/,/^```/p' docs/guides/llm-agentcore.md | head -40) \
 
 - **乾淨狀態全綠**：刪掉 `.cache/tf-data` 後重跑 `scripts/validate.sh`，分三組並行（`modules`、stack 1–5、stack 6–9），68 個目錄全部通過；9 份 `common.tf` 一致。
 - **舊 tag**：19 個 `<module>-v0.1.0` 都還在 `38e5f79`。
-- **module 只用英文**：通過；唯一的非 ASCII 是 `bedrock-guardrail/examples/zh-tw-standard` 的中文資料值，它就是要示範擋中文。
+- **module 只用英文**：通過；唯一的非 ASCII 是 `bedrock-guardrail/examples/zh-tw-standard` 的中文資料值，這個 example 本來就是要示範擋中文。
 - **commit 歷史**：`28a8647..HEAD` 的 author 都是 `<author-email>`；每個 module 的 commit 只動該 module 目錄。repo 已有 remote，沒有推送。
 - **Phase 14 的安全審查**：沒有 BLOCKER；兩個 HIGH（Gateway 讀不到 S3 工具定義、KB secret ARN 可用萬用字元）與 M3 已修並補雙向測試、做過突變驗證，其餘記在 design §8.8（D42–D46）。
 - **manifest 與 tag**：`52f954e` 把 9 個 module 登記成 `0.1.1`，其餘 17 個是 `0.1.0`。在 zsh 原樣執行 `releasing-modules.md` 的指令，把 9 個 `<module>-v0.1.1` annotated tag 打在 `52f954e`；執行時發現 zsh 的 `modules` 是唯讀變數，指南改用 `mods`。
@@ -1261,7 +1261,7 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 | 1. 找目錄 | 沒給參數時：`modules/*`、`modules/*/examples/*`、`templates/project-infra/infra/terraform/*`；給參數時只跑那些路徑底下的（可以是 repo 外的路徑） | 不從 repo 根目錄掃：`docs/slides/` 有 `.tf`，本機存在、CI 不存在 |
 | 2. fmt | `terraform fmt -check -recursive` 對上一步的根目錄 | — |
 | 3. 靜態規則 | 下表 S1–S8，任一條失敗就整支失敗，不進到第 4 步之後 | — |
-| 4. init | 每個目錄 `TF_DATA_DIR=.cache/tf-data/<路徑>` 加 `init -backend=false -input=false`；範本 stack 加 `-lockfile=readonly` | 不在目錄裡留 `.terraform/`；lock 檔被改動就失敗 |
+| 4. init | 每個目錄 `TF_DATA_DIR=.cache/tf-data/<路徑>` 加 `init -backend=false -input=false`；範本 stack 加 `-lockfile=readonly` | 不在目錄裡留 `.terraform/`；lock 檔有改動就失敗 |
 | 5. validate | `terraform validate` | — |
 | 6. test | 有 `tests/` 才跑 `terraform test` | — |
 | 6a. tfvars test | 範本 stack：對 `envs/dev.tfvars`、`envs/prod.tfvars` 跑 `test -test-directory=tests/tfvars -var-file=...`；有 `envs/examples/` 的 stack 對每個範例跑 `test -test-directory=tests/examples -var-file=...` | 測的是 tfvars 檔本身，不在測試裡複製一份值 |
@@ -1333,7 +1333,7 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 | R4 | 用 `TF_CLI_CONFIG_FILE` 指到本機 mirror | `.cache/plugins` 留下 symlink，之後 init 失敗 | 禁止（硬性限制與派工 prompt 都寫）；出事時刪掉整個 `.cache/` |
 | R5 | 開了 `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE` 時產生範本 lock 檔 | lock 檔只有本機平台的雜湊，CI 的 `-lockfile=readonly` 失敗 | 照 Phase 8〈lock 檔的產生方式〉不用快取產生，驗收檢查每份都有 `zh:` |
 | R6 | 範本測試會 init 全部 19 個 module 與它們的 provider | 第一次跑很慢 | plugin cache 共用；CI 快取 `.cache/plugins` |
-| R7 | `-test-directory` 的子目錄會不會被一般 `terraform test` 掃到 | 會的話，`tests/tfvars/`、`tests/examples/` 在沒有 `-var-file` 時被跑到而失敗 | 未驗證，Phase 8 第一個 stack 先實測；會掃到就改目錄名（例如 `tests-tfvars/`）並同步改 `validate.sh` |
+| R7 | `-test-directory` 的子目錄會不會被一般 `terraform test` 掃到 | 會的話，沒有 `-var-file` 時也會跑到 `tests/tfvars/`、`tests/examples/` 而失敗 | 未驗證，Phase 8 第一個 stack 先實測；會掃到就改目錄名（例如 `tests-tfvars/`）並同步改 `validate.sh` |
 | R8 | `rds` 的 `master_user_secret` 是 nested list | 範本 data stack 取 `[0]` 失敗 | 沿用 `modules/rds/tests/` 的 `mock_resource` 寫法，或用 `override_module` 給 `module.db` 的輸出 |
 | R9 | RDS Proxy 建立時 role 還沒有讀 secret 的權限 | 未驗證：可能建立失敗，也可能建立成功但連不上 | 照 design §5.4 的兩種對策；dev 預設不開 Proxy、prod 開 |
 | R10 | `kms-key` 給各服務的條件 key 沒有在實環境驗證 | 實際 apply 時服務用不了這把 key | design §4.10 已標未驗證，列在 design §7.3 |
@@ -1358,7 +1358,7 @@ git tag -l 'iam-role-v*'           # iam-role-v0.1.0、iam-role-v0.1.1
 | J6 | 反向驗證只在暫存複本或工作目錄暫時做，不留痕跡 | 證明測試有效，又不污染 diff |
 | J7 | 7E 分 3 個 subagent：`log-group`＋`log-metric-alarm`、`xray`、`ecs-service` 的 `sidecars` | 動既有 module 的那份迴歸要求最嚴，單獨一個人；兩個 CloudWatch Logs 的 module 放一起 |
 | J8 | `sidecars` 的新斷言放在新檔 `tests/sidecars.tftest.hcl` | 「既有測試檔一行都不改」用 `git diff --stat` 就驗得到 |
-| J9 | 範本 iam 兩個 stack 的 `wildcard_resource_allowlist` 先把 4 個 X-Ray 動作放進允許清單，範本本身不給 X-Ray 權限 | design §5.4 的允許清單已含 X-Ray；範本預設不開追蹤，專案照 `observability.md` 加權限時才不會被自己的測試擋 |
+| J9 | 範本 iam 兩個 stack 的 `wildcard_resource_allowlist` 先把 4 個 X-Ray 動作放進允許清單，範本本身不給 X-Ray 權限 | design §5.4 的允許清單已含 X-Ray；範本預設不開追蹤，專案照 `observability.md` 加權限時，自己的測試才不會擋下來 |
 
 ### 已拍板決策（本文件特有；其餘以 design §9.2 為準）
 

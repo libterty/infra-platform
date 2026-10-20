@@ -74,7 +74,7 @@
 
 **lock 檔**。新 provider 的 `.terraform.lock.hcl` 段落，不要在 macOS 上用 `init -backend=false` 產生：那樣只會寫進 darwin 的 `h1:`，CI（linux，從 plugin cache 安裝）會因此失敗，本機卻看不出來。要從 repo 裡已經有兩個 `h1:`（darwin 與 linux）的段落複製。`scripts/validate.sh` 的 S10 會擋掉只有一個 `h1:` 的 provider 段落。
 
-**module 的 count**。module 不能用「某個輸入是不是 null」決定 `count`，而那個輸入的值在 plan 時可能還不知道，例如同一份 configuration 裡另一個資源的 ARN，plan 會報 `Invalid count argument`。改成收一個物件（例如 `web_acl = { arn = ... }`）：物件是不是 null 在 plan 時就知道，裡面的值可以之後才有。`alb` 的 `web_acl` 就是這樣改的（0.3.0）。
+**module 的 count**。如果某個輸入的值在 plan 時可能還不知道（例如同一份 configuration 裡另一個資源的 ARN），module 不能用「這個輸入是不是 null」決定 `count`，否則 plan 會報 `Invalid count argument`。改成收一個物件（例如 `web_acl = { arn = ... }`）：物件是不是 null 在 plan 時就知道，裡面的值可以之後才有。`alb` 的 `web_acl` 就是這樣改的（0.3.0）。
 
 **stacked PR**。每個 Phase 一個 PR，一層疊一層。下層要修正時，用 `git worktree` 在下層的 branch 上修，上面各層再 rebase；不要在上層的 working tree 切過去改，不然很容易把修正混進錯的 commit。
 
