@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/libterty/infra-platform/compare/alb-v0.4.0...alb-v0.5.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **alb:** the access_logs input is removed. Use log-delivery with module.alb.alb_arn as the source, and give the S3 bucket vended_logs instead of alb_access_logs.
+
+### Features
+
+* **alb:** drop the classic access_logs block ([f497009](https://github.com/libterty/infra-platform/commit/f49700945e490c56c8679db54fca7b7ab634de04))
+
 ## [0.4.0](https://github.com/libterty/infra-platform/compare/alb-v0.3.0...alb-v0.4.0) (2026-10-21)
 
 
