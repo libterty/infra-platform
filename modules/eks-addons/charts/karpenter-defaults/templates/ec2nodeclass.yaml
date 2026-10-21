@@ -1,0 +1,28 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  role: {{ .Values.nodeClass.role | quote }}
+  amiSelectorTerms:
+    - alias: {{ .Values.nodeClass.amiAlias | quote }}
+  subnetSelectorTerms:
+    - tags:
+        {{- toYaml .Values.nodeClass.subnetTags | nindent 8 }}
+  securityGroupSelectorTerms:
+    - tags:
+        {{- toYaml .Values.nodeClass.securityGroupTags | nindent 8 }}
+  # Fixed, not configurable: IMDSv2 only, and a hop limit of 1 keeps Pods away from the node role.
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  # Fixed: the AL2023 root volume is encrypted.
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      rootVolume: true
+      ebs:
+        volumeSize: {{ .Values.nodeClass.volumeSize | quote }}
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true

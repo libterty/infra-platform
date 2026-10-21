@@ -1,0 +1,5 @@
+# Map of namespace name to its settings. The eks-addons module passes this; empty renders nothing.
+namespaces: {}
+#  payments:
+#    labels:
+#      team: payments
