@@ -3,9 +3,6 @@ mock_provider "aws" {
     defaults = { account_id = "111111111111" }
   }
 
-  mock_data "aws_elb_service_account" {
-    defaults = { arn = "arn:aws:iam::111122223333:root" }
-  }
 }
 
 override_resource {
@@ -127,12 +124,12 @@ run "never_expire_rejects_flow_log_delivery" {
   expect_failures = [var.never_expire]
 }
 
-run "never_expire_rejects_alb_log_delivery" {
+run "never_expire_rejects_log_delivery" {
   command = plan
 
   variables {
     never_expire = true
-    log_delivery = ["alb_access_logs"]
+    log_delivery = ["vended_logs"]
   }
 
   expect_failures = [var.never_expire]

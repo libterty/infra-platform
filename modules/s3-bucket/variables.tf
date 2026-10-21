@@ -11,12 +11,7 @@ variable "name" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "null uses SSE-S3 (AES256). ALB access log buckets must stay on SSE-S3."
-
-  validation {
-    condition     = var.kms_key_arn == null || !contains(var.log_delivery, "alb_access_logs")
-    error_message = "ALB access log delivery does not support SSE-KMS; logs would be dropped silently. Leave kms_key_arn null for buckets that receive alb_access_logs."
-  }
+  description = "null uses SSE-S3 (AES256). With vended_logs or vpc_flow_logs the key must be customer managed and its key policy must let delivery.logs.amazonaws.com use it."
 }
 
 variable "expiration_days" {
@@ -50,11 +45,11 @@ variable "never_expire" {
 variable "log_delivery" {
   type        = set(string)
   default     = []
-  description = "Log sources allowed to write: alb_access_logs, vpc_flow_logs."
+  description = "Log sources allowed to write: vended_logs (CloudWatch Logs vended delivery from this account, e.g. ALB, NLB or S3 access logs set up with log-delivery) and vpc_flow_logs."
 
   validation {
-    condition     = alltrue([for v in var.log_delivery : contains(["alb_access_logs", "vpc_flow_logs"], v)])
-    error_message = "log_delivery accepts alb_access_logs and vpc_flow_logs."
+    condition     = alltrue([for v in var.log_delivery : contains(["vended_logs", "vpc_flow_logs"], v)])
+    error_message = "log_delivery accepts vended_logs and vpc_flow_logs."
   }
 }
 

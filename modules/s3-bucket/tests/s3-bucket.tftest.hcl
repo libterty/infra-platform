@@ -2,10 +2,6 @@ mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = { account_id = "111111111111" }
   }
-
-  mock_data "aws_elb_service_account" {
-    defaults = { arn = "arn:aws:iam::111122223333:root" }
-  }
 }
 
 override_resource {
@@ -86,7 +82,7 @@ run "tls_only_deny_kept_with_log_delivery" {
   command = plan
 
   variables {
-    log_delivery = ["alb_access_logs", "vpc_flow_logs"]
+    log_delivery = ["vended_logs", "vpc_flow_logs"]
   }
 
   assert {
@@ -100,46 +96,57 @@ run "tls_only_deny_kept_with_log_delivery" {
   }
 }
 
-run "alb_access_logs_statements" {
+run "vended_logs_statements" {
   command = plan
 
   variables {
-    log_delivery = ["alb_access_logs"]
+    log_delivery = ["vended_logs"]
   }
 
   assert {
     condition     = length(jsondecode(aws_s3_bucket_policy.this.policy).Statement) == 3
-    error_message = "alb_access_logs must add two statements"
+    error_message = "vended_logs must add two statements"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Principal.AWS == "arn:aws:iam::111122223333:root"
-    error_message = "First statement must grant the regional ELB service account"
+    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Principal.Service == "delivery.logs.amazonaws.com"
+    error_message = "Write statement must grant delivery.logs.amazonaws.com"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Resource == "arn:aws:s3:::alpha-dev-flow-logs/*AWSLogs/111111111111/*"
-    error_message = "ELB account statement must be scoped to AWSLogs/<account>"
+    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Action == "s3:PutObject"
+    error_message = "Write statement must only be s3:PutObject"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Principal.Service == "logdelivery.elasticloadbalancing.amazonaws.com"
-    error_message = "Second statement must grant the ELB log delivery service principal"
+    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Resource == "arn:aws:s3:::alpha-dev-flow-logs/AWSLogs/111111111111/*"
+    error_message = "Write statement must be scoped to AWSLogs/<account>"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Action == "s3:PutObject"
-    error_message = "Service principal must only get s3:PutObject"
+    condition = jsonencode(jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Condition) == jsonencode({
+      StringEquals = { "aws:SourceAccount" = "111111111111", "s3:x-amz-acl" = "bucket-owner-full-control" }
+      ArnLike      = { "aws:SourceArn" = "arn:aws:logs:*:111111111111:delivery-source:*" }
+    })
+    error_message = "Write statement must carry aws:SourceAccount, the ACL condition and an own-account delivery-source aws:SourceArn"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Resource == "arn:aws:s3:::alpha-dev-flow-logs/*AWSLogs/111111111111/*"
-    error_message = "Service principal statement must be scoped to AWSLogs/<account>"
+    condition     = jsonencode(jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Action) == jsonencode(["s3:GetBucketAcl", "s3:ListBucket"])
+    error_message = "Second statement must be s3:GetBucketAcl and s3:ListBucket"
   }
 
   assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Condition.StringEquals["aws:SourceAccount"] == "111111111111"
-    error_message = "Service principal statement must carry aws:SourceAccount"
+    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Resource == "arn:aws:s3:::alpha-dev-flow-logs"
+    error_message = "The ACL check must apply to the bucket itself"
+  }
+
+  assert {
+    condition = jsonencode(jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Condition) == jsonencode({
+      StringEquals = { "aws:SourceAccount" = "111111111111" }
+      ArnLike      = { "aws:SourceArn" = "arn:aws:logs:*:111111111111:delivery-source:*" }
+    })
+    error_message = "The ACL check must carry aws:SourceAccount and aws:SourceArn"
   }
 }
 
@@ -191,20 +198,11 @@ run "vpc_flow_logs_statements" {
   }
 }
 
-run "elb_account_only_read_for_alb" {
-  command = plan
-
-  assert {
-    condition     = length(data.aws_elb_service_account.this) == 0
-    error_message = "The ELB service account must not be read without alb_access_logs"
-  }
-}
-
 run "no_wildcard_allow_principal" {
   command = plan
 
   variables {
-    log_delivery = ["alb_access_logs", "vpc_flow_logs"]
+    log_delivery = ["vended_logs", "vpc_flow_logs"]
   }
 
   assert {
@@ -374,15 +372,24 @@ run "log_delivery_rejects_unknown" {
   expect_failures = [var.log_delivery]
 }
 
-run "alb_logs_reject_kms" {
+run "log_delivery_rejects_alb_access_logs" {
+  command = plan
+  variables { log_delivery = ["alb_access_logs"] }
+  expect_failures = [var.log_delivery]
+}
+
+run "vended_logs_accept_kms" {
   command = plan
 
   variables {
-    log_delivery = ["alb_access_logs"]
+    log_delivery = ["vended_logs"]
     kms_key_arn  = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"
   }
 
-  expect_failures = [var.kms_key_arn]
+  assert {
+    condition     = one(one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms"
+    error_message = "vended_logs with a customer managed KMS key must be accepted"
+  }
 }
 
 run "flow_logs_accept_kms" {
@@ -396,18 +403,5 @@ run "flow_logs_accept_kms" {
   assert {
     condition     = one(one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms"
     error_message = "vpc_flow_logs with a KMS key must be accepted"
-  }
-}
-
-run "alb_logs_accept_sse_s3" {
-  command = plan
-
-  variables {
-    log_delivery = ["alb_access_logs"]
-  }
-
-  assert {
-    condition     = one(one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default).sse_algorithm == "AES256"
-    error_message = "alb_access_logs without a KMS key must be accepted"
   }
 }

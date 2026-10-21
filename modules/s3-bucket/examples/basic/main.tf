@@ -13,11 +13,11 @@ provider "aws" {
   region = "ap-northeast-1"
 }
 
-module "alb_logs" {
+module "access_logs" {
   source = "../.."
 
-  name            = "alpha-dev-alb-logs"
-  log_delivery    = ["alb_access_logs"]
+  name            = "alpha-dev-access-logs"
+  log_delivery    = ["vended_logs"]
   expiration_days = 14
 
   tags = {
@@ -33,6 +33,6 @@ module "flow_logs" {
   kms_key_arn  = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 }
 
-output "alb_logs_bucket" {
-  value = module.alb_logs.bucket_name
+output "access_logs_bucket" {
+  value = module.access_logs.bucket_name
 }
