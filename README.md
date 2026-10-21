@@ -87,7 +87,7 @@ scripts/validate.sh                      # 全部
 scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 ```
 
-這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（測試一律用 `mock_provider "aws"`）、`tflint`。它一開頭就清掉所有 `AWS_*` 環境變數，並把設定檔指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session。CI（`.github/workflows/ci.yml`）跑同一支腳本。
+這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（`required_providers` 裡的每個 provider 都要有 `mock_provider`）、`tflint`。它一開頭就清掉所有 `AWS_*`、`KUBE*`、`HELM*` 環境變數，並把 AWS 設定檔與 `KUBECONFIG` 指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session 或叢集。module 裡如果有本地 Helm chart（`charts/`）或 Lambda 程式碼的測試（`lambda/test_*.py`），裝了 `helm`、`python3` 時也會一起檢查。CI（`.github/workflows/ci.yml`）跑同一支腳本。
 
 這個 repo 禁止跑 `terraform plan`、`apply`、帶 backend 的 `init`，以及任何 `aws` 指令。
 
