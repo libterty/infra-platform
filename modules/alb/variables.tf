@@ -66,15 +66,6 @@ variable "deletion_protection" {
   default = true
 }
 
-variable "access_logs" {
-  type = object({
-    bucket = string           # SSE-S3 encrypted bucket name (not an ARN)
-    prefix = optional(string) # null writes at the bucket root
-  })
-  default     = null
-  description = "null disables access logs. The bucket must use SSE-S3: ALB log delivery does not support customer managed KMS."
-}
-
 variable "web_acl" {
   type = object({
     arn = string

@@ -3,9 +3,6 @@ mock_provider "aws" {
     defaults = { account_id = "111111111111" }
   }
 
-  mock_data "aws_elb_service_account" {
-    defaults = { arn = "arn:aws:iam::111122223333:root" }
-  }
 }
 
 override_resource {

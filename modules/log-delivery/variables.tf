@@ -9,14 +9,14 @@ variable "sources" {
     log_type     = string
   }))
   default     = {}
-  description = "Delivery sources keyed by a short name. resource_arn is the ARN of the resource that emits the logs (for example an AgentCore Runtime); it must carry an account ID, and that account must be the current one or listed in allowed_account_ids."
+  description = "Delivery sources keyed by a short name. resource_arn is the ARN of any resource that supports vended log delivery (for example an ALB, an EKS cluster, a CloudFront distribution or an AgentCore Runtime). It must carry an account ID that is the current one or listed in allowed_account_ids; an S3 bucket ARN is the only exception because it carries no account. log_type is the value the service defines, such as ALB_ACCESS_LOGS or S3_SERVER_ACCESS_LOGS."
   validation {
-    condition     = alltrue([for s in values(var.sources) : can(regex("^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$", s.resource_arn))])
-    error_message = "Each source resource_arn must be an ARN that includes a 12-digit account ID."
+    condition     = alltrue([for s in values(var.sources) : can(regex("^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$", s.resource_arn)) || can(regex(local.destination_arn_patterns.S3, s.resource_arn))])
+    error_message = "Each source resource_arn must be an ARN that includes a 12-digit account ID, or an S3 bucket ARN."
   }
   validation {
-    condition     = alltrue([for s in values(var.sources) : contains(["APPLICATION_LOGS", "TRACES", "USAGE_LOGS"], s.log_type)])
-    error_message = "log_type must be APPLICATION_LOGS, TRACES or USAGE_LOGS."
+    condition     = alltrue([for s in values(var.sources) : can(regex("^[A-Za-z0-9_]{1,255}$", s.log_type))])
+    error_message = "log_type must be 1-255 letters, digits or underscores, as defined by the source service (for example ALB_ACCESS_LOGS)."
   }
   validation {
     condition     = alltrue([for k in keys(var.sources) : length("${var.name_prefix}-${k}") <= 60])
@@ -30,19 +30,16 @@ variable "destinations" {
     resource_arn = optional(string)
   }))
   default     = {}
-  description = "Delivery destinations keyed by a short name. type is CWL, XRAY or S3; resource_arn is the log group ARN for CWL, the bucket ARN for S3, and must be null for XRAY. A CWL log group must be in the current account or in allowed_account_ids; S3 bucket ARNs carry no account and are not checked."
+  description = "Delivery destinations keyed by a short name. type is CWL, S3, FH or XRAY; resource_arn is the log group ARN for CWL, the bucket ARN for S3, the delivery stream ARN for FH, and must be null for XRAY. CWL and FH destinations must be in the current account or in allowed_account_ids; S3 bucket ARNs carry no account and are not checked."
   validation {
-    condition     = alltrue([for d in values(var.destinations) : contains(["CWL", "XRAY", "S3"], d.type)])
-    error_message = "Destination type must be CWL, XRAY or S3."
+    condition     = alltrue([for d in values(var.destinations) : contains(["CWL", "S3", "FH", "XRAY"], d.type)])
+    error_message = "Destination type must be CWL, S3, FH or XRAY."
   }
   validation {
     condition = alltrue([for d in values(var.destinations) : d.type == "XRAY" ? d.resource_arn == null : (
-      d.resource_arn == null ? false : can(regex(
-        d.type == "CWL" ? "^arn:aws[a-z-]*:logs:[a-z0-9-]+:[0-9]{12}:log-group:[^:*]+(:[*])?$" : "^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$",
-        d.resource_arn
-      ))
+      d.resource_arn == null ? false : can(regex(lookup(local.destination_arn_patterns, d.type, "^$"), d.resource_arn))
     )])
-    error_message = "XRAY destinations must not set resource_arn; CWL needs a log group ARN and S3 needs a bucket ARN."
+    error_message = "XRAY destinations must not set resource_arn; CWL needs a log group ARN, S3 a bucket ARN and FH a Firehose delivery stream ARN."
   }
   validation {
     condition     = alltrue([for k in keys(var.destinations) : length("${var.name_prefix}-${k}") <= 60])

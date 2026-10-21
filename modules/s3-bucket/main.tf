@@ -1,10 +1,5 @@
 data "aws_caller_identity" "current" {}
 
-# Only ALB access logs need the regional ELB service account.
-data "aws_elb_service_account" "this" {
-  count = contains(var.log_delivery, "alb_access_logs") ? 1 : 0
-}
-
 locals {
   account_id = data.aws_caller_identity.current.account_id
   bucket_arn = aws_s3_bucket.this.arn
@@ -20,28 +15,37 @@ locals {
 
   # The for expressions run once when the source is selected and zero times otherwise. This avoids a conditional
   # between a list of objects and [], which Terraform cannot unify.
-  alb_selected      = setintersection(var.log_delivery, ["alb_access_logs"])
+  vended_selected   = setintersection(var.log_delivery, ["vended_logs"])
   flow_log_selected = setintersection(var.log_delivery, ["vpc_flow_logs"])
 
   expiration_days = var.never_expire ? null : coalesce(var.expiration_days, 90)
 
-  # Regions opened before 2022-08 (e.g. ap-northeast-1) write through a regional ELB account; newer ones use the
-  # service principal. Granting both avoids Access Denied in either case.
-  alb_statements = concat(
-    [for _ in local.alb_selected : {
-      Sid       = "AllowELBServiceAccountLogDelivery"
+  # CloudWatch Logs adds these statements itself when a delivery is created, but this module owns the whole policy
+  # and the next apply would drop them. Delivery sources may live in any region but must belong
+  # to this account.
+  vended_source_conditions = {
+    StringEquals = { "aws:SourceAccount" = local.account_id }
+    ArnLike      = { "aws:SourceArn" = "arn:${split(":", local.bucket_arn)[1]}:logs:*:${local.account_id}:delivery-source:*" }
+  }
+
+  vended_statements = concat(
+    [for _ in local.vended_selected : {
+      Sid       = "AllowVendedLogsWrite"
       Effect    = "Allow"
-      Principal = { AWS = data.aws_elb_service_account.this[0].arn }
+      Principal = { Service = "delivery.logs.amazonaws.com" }
       Action    = "s3:PutObject"
-      Resource  = "${local.bucket_arn}/*AWSLogs/${local.account_id}/*"
+      Resource  = "${local.bucket_arn}/AWSLogs/${local.account_id}/*"
+      Condition = merge(local.vended_source_conditions, {
+        StringEquals = merge(local.vended_source_conditions.StringEquals, { "s3:x-amz-acl" = "bucket-owner-full-control" })
+      })
     }],
-    [for _ in local.alb_selected : {
-      Sid       = "AllowELBLogDeliveryServicePrincipal"
+    [for _ in local.vended_selected : {
+      Sid       = "AllowVendedLogsAclCheck"
       Effect    = "Allow"
-      Principal = { Service = "logdelivery.elasticloadbalancing.amazonaws.com" }
-      Action    = "s3:PutObject"
-      Resource  = "${local.bucket_arn}/*AWSLogs/${local.account_id}/*"
-      Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+      Principal = { Service = "delivery.logs.amazonaws.com" }
+      Action    = ["s3:GetBucketAcl", "s3:ListBucket"]
+      Resource  = local.bucket_arn
+      Condition = local.vended_source_conditions
     }],
   )
 
@@ -190,7 +194,7 @@ resource "aws_s3_bucket_policy" "this" {
     Version = "2012-10-17"
     Statement = concat(
       local.tls_only_statement,
-      local.alb_statements,
+      local.vended_statements,
       local.flow_log_statements,
     )
   })

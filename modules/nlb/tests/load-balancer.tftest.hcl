@@ -72,32 +72,6 @@ run "options_are_passed_through" {
   }
 }
 
-run "access_logs_enabled" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "alpha-dev-nlb-logs", prefix = "nlb" }
-  }
-
-  assert {
-    condition     = aws_lb.this.access_logs[0].enabled == true && aws_lb.this.access_logs[0].bucket == "alpha-dev-nlb-logs" && aws_lb.this.access_logs[0].prefix == "nlb"
-    error_message = "access_logs must be enabled with the given bucket and prefix"
-  }
-}
-
-run "access_logs_prefix_optional" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "alpha-dev-nlb-logs" }
-  }
-
-  assert {
-    condition     = aws_lb.this.access_logs[0].bucket == "alpha-dev-nlb-logs"
-    error_message = "prefix may be omitted"
-  }
-}
-
 run "outputs_of_load_balancer" {
   command = apply
 

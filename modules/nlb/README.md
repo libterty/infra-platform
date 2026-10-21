@@ -1,6 +1,6 @@
 # nlb
 
-建一個 Network Load Balancer、target group、listener，每個 target group 一條 `UnHealthyHostCount` 告警，可選 access log。listener 的 default action 一律是 `forward`，可以把流量按權重分給最多 5 個 target group，用在新舊系統並存的逐步切換。
+建一個 Network Load Balancer、target group、listener，每個 target group 一條 `UnHealthyHostCount` 告警。access log 用 `log-delivery` 開（見〈access log〉）。listener 的 default action 一律是 `forward`，可以把流量按權重分給最多 5 個 target group，用在新舊系統並存的逐步切換。
 
 ## 用法
 
@@ -94,11 +94,29 @@ NLB 的 DNS failover 跟 ALB 相反。listener 掛了多個 target group 時，�
 - `treat_missing_data = "notBreaching"`：沒有資料代表這個 target group 沒有任何已註冊的 target（例如 TargetGroupBinding 還沒註冊），沒有 target 就沒有「不健康」可說。代價是 target group 一個 target 都沒有時，這條告警不會響；要抓這種情況需要另外看 `HealthyHostCount`。這是依指標行為推論的選擇，沒有實測。
 - 外部 ARN 的 target group 沒有告警，因為 module 拿不到它的 arn_suffix。
 
+## access log
+
+0.2.0 起這個 module 不再開 access log（移除了 `access_logs`），改由 `log-delivery` 送，log type 是 `NLB_ACCESS_LOGS`，目的地可以是 CloudWatch Logs、S3 或 Firehose：
+
+```hcl
+module "nlb_access_logs" {
+  source  = "app.terraform.io/<org>/log-delivery/aws"
+  version = "~> 0.2.0"
+
+  name_prefix = "alpha-dev-nlb"
+
+  sources      = { access = { resource_arn = module.nlb.nlb_arn, log_type = "NLB_ACCESS_LOGS" } }
+  destinations = { archive = { type = "S3", resource_arn = module.access_log_bucket.arn } }
+  deliveries   = { access = { source = "access", destination = "archive" } }
+}
+```
+
+送 S3 時 bucket 用 `s3-bucket` 建並給 `log_delivery = ["vended_logs"]`。依 AWS 文件，NLB 的 access log 只記 TLS listener 的連線，沒有實測。
+
 ## 注意
 
 - **security group 只能在建立 NLB 時加**（未確認）。所以 `security_group_ids` 至少要一個，不給會被擋下。SG 由 `network` stack 建，這個 module 不建 SG，也看不到內容。已經建好、沒有 SG 的 NLB，之後能不能補上 SG 沒有驗證，補不上就要重建。
 - NLB 的 SG 預設不會對 target 放行，target 的 SG 要允許來自 NLB SG（或 client IP，視 `preserve_client_ip`）的流量。這部分在 `network` stack。
-- **access log 只對 TLS listener 有作用**，bucket 只能用 SSE-S3 加密，要自己準備 bucket policy。`access_logs.bucket` 是 bucket 名稱，不是 ARN。這兩點是依 AWS 文件，沒有實測。
 - TLS listener 必須給 `certificate_arn`，而且不能用開了 `stickiness` 的 target group（TLS listener 不支援 target group stickiness）；沒有 TLS 的 listener 不能給 `certificate_arn` 與 `alpn_policy`。
 - `stickiness = true` 是 `source_ip`。provider 在 NLB 的 stickiness 是否需要 `cookie_duration` 沒有驗證，module 沒有送。
 - `target_type = "alb"` 的 target group 必須是 `TCP`，健康檢查要用 `HTTP` 或 `HTTPS`（依 AWS 文件，沒有用 apply 驗證）。
@@ -110,7 +128,7 @@ NLB 的 DNS failover 跟 ALB 相反。listener 掛了多個 target group 時，�
 
 ## 刻意不做
 
-- 不建 security group、IAM、access log bucket、憑證。
+- 不建 security group、IAM、access log（用 `log-delivery`）、憑證。
 - 不建 5xx 告警（NLB 沒有這個指標），不提供 `alarm_config`。
 - 不加 `ignore_changes` 保護權重。
 - 不支援 listener 的 SNI 多憑證、mutual TLS、`unhealthy_state_routing`、`target_failover`、`proxy_protocol_v2`、`slow_start`、IPv6。
@@ -128,7 +146,6 @@ NLB 的 DNS failover 跟 ALB 相反。listener 掛了多個 target group 時，�
 | `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 SG，只能在建立時加（未確認） |
 | `cross_zone` | `bool` | `true` | 否 | `enable_cross_zone_load_balancing` |
 | `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
-| `access_logs` | `object({ bucket, prefix })` | `null` | 否 | `bucket` 為 SSE-S3 bucket 名稱；`prefix` 可省略；只對 TLS listener 有作用 |
 | `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |
 | `target_groups` | `map(object)` | `{}` | 否 | 見下表 |
 | `listeners` | `map(object)` | `{}` | 否 | 見下表 |

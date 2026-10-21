@@ -49,33 +49,7 @@ run "no_access_logs_by_default" {
 
   assert {
     condition     = length(aws_lb.this.access_logs) == 0
-    error_message = "No access_logs block without input"
-  }
-}
-
-run "access_logs_when_given" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "alpha-logs", prefix = "alb" }
-  }
-
-  assert {
-    condition     = aws_lb.this.access_logs[0].enabled == true && aws_lb.this.access_logs[0].bucket == "alpha-logs" && aws_lb.this.access_logs[0].prefix == "alb"
-    error_message = "access_logs must be enabled with the given bucket and prefix"
-  }
-}
-
-run "access_logs_bucket_only" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "alpha-logs" }
-  }
-
-  assert {
-    condition     = aws_lb.this.access_logs[0].enabled == true && aws_lb.this.access_logs[0].prefix == null
-    error_message = "Without prefix it must be null"
+    error_message = "The classic access_logs block is gone; access logs go through log-delivery"
   }
 }
 

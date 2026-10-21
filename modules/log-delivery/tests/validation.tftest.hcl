@@ -33,19 +33,143 @@ variables {
   }
 }
 
-run "log_type_access_logs_rejected" {
+run "log_type_of_other_services_passes" {
+  command = plan
+
+  variables {
+    sources = {
+      alb = {
+        resource_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/alpha-dev-web/50dc6c495c0c9188"
+        log_type     = "ALB_ACCESS_LOGS"
+      }
+      eks = {
+        resource_arn = "arn:aws:eks:ap-northeast-1:111111111111:cluster/alpha-dev"
+        log_type     = "AUTO_MODE_COMPUTE_LOGS"
+      }
+      cdn = {
+        resource_arn = "arn:aws:cloudfront::111111111111:distribution/E2EXAMPLE12345"
+        log_type     = "ACCESS_LOGS"
+      }
+    }
+    deliveries = {}
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_source.this["alb"].log_type == "ALB_ACCESS_LOGS" && aws_cloudwatch_log_delivery_source.this["eks"].log_type == "AUTO_MODE_COMPUTE_LOGS" && aws_cloudwatch_log_delivery_source.this["cdn"].log_type == "ACCESS_LOGS"
+    error_message = "log_type must not be limited to AgentCore values"
+  }
+}
+
+run "log_type_with_hyphen_rejected" {
   command = plan
 
   variables {
     sources = {
       chat-logs = {
         resource_arn = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_chat-AbCdEf1234"
-        log_type     = "ACCESS_LOGS"
+        log_type     = "ALB-ACCESS-LOGS"
       }
     }
   }
 
   expect_failures = [var.sources]
+}
+
+run "log_type_empty_rejected" {
+  command = plan
+
+  variables {
+    sources = {
+      chat-logs = {
+        resource_arn = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/alpha_dev_chat-AbCdEf1234"
+        log_type     = ""
+      }
+    }
+  }
+
+  expect_failures = [var.sources]
+}
+
+run "s3_bucket_source_passes" {
+  command = plan
+
+  variables {
+    sources = {
+      bucket = {
+        resource_arn = "arn:aws:s3:::alpha-dev-assets"
+        log_type     = "S3_SERVER_ACCESS_LOGS"
+      }
+    }
+    deliveries = {}
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_source.this["bucket"].resource_arn == "arn:aws:s3:::alpha-dev-assets"
+    error_message = "An S3 bucket ARN carries no account and must be accepted as a source"
+  }
+}
+
+run "s3_object_arn_source_rejected" {
+  command = plan
+
+  variables {
+    sources = {
+      bucket = {
+        resource_arn = "arn:aws:s3:::alpha-dev-assets/logs/*"
+        log_type     = "S3_SERVER_ACCESS_LOGS"
+      }
+    }
+    deliveries = {}
+  }
+
+  expect_failures = [var.sources]
+}
+
+run "destination_type_fh_passes" {
+  command = plan
+
+  variables {
+    destinations = {
+      chat = {
+        type         = "FH"
+        resource_arn = "arn:aws:firehose:ap-northeast-1:111111111111:deliverystream/alpha-dev-logs"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_destination.this["chat"].delivery_destination_configuration[0].destination_resource_arn == "arn:aws:firehose:ap-northeast-1:111111111111:deliverystream/alpha-dev-logs"
+    error_message = "FH must send the delivery stream ARN as destination_resource_arn"
+  }
+}
+
+run "fh_without_resource_arn_rejected" {
+  command = plan
+
+  variables {
+    destinations = {
+      chat = {
+        type = "FH"
+      }
+    }
+  }
+
+  expect_failures = [var.destinations]
+}
+
+run "fh_with_log_group_arn_rejected" {
+  command = plan
+
+  variables {
+    destinations = {
+      chat = {
+        type         = "FH"
+        resource_arn = "arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/vendedlogs/bedrock-agentcore/alpha-dev-chat"
+      }
+    }
+  }
+
+  expect_failures = [var.destinations]
 }
 
 run "log_type_usage_logs_passes" {

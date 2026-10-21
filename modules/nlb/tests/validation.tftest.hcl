@@ -151,29 +151,6 @@ run "vpc_id_given_pass" {
   }
 }
 
-run "access_logs_empty_bucket" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "" }
-  }
-
-  expect_failures = [var.access_logs]
-}
-
-run "access_logs_bucket_pass" {
-  command = plan
-
-  variables {
-    access_logs = { bucket = "alpha-dev-nlb-logs" }
-  }
-
-  assert {
-    condition     = aws_lb.this.name != ""
-    error_message = "Valid input must pass"
-  }
-}
-
 run "tg_name_too_long" {
   command = plan
 

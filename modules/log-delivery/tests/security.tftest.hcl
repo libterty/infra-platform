@@ -72,6 +72,49 @@ run "source_other_account_rejected" {
   expect_failures = [aws_cloudwatch_log_delivery_source.this]
 }
 
+run "s3_bucket_source_not_account_checked" {
+  command = plan
+
+  variables {
+    sources = {
+      bucket = { resource_arn = "arn:aws:s3:::alpha-dev-assets", log_type = "S3_SERVER_ACCESS_LOGS" }
+    }
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_source.this["bucket"].log_type == "S3_SERVER_ACCESS_LOGS"
+    error_message = "An S3 bucket source has no account in its ARN and must not hit the account precondition"
+  }
+}
+
+run "fh_destination_other_account_rejected" {
+  command = plan
+
+  variables {
+    destinations = {
+      chat = { type = "FH", resource_arn = "arn:aws:firehose:ap-northeast-1:222222222222:deliverystream/alpha-dev-logs" }
+    }
+  }
+
+  expect_failures = [aws_cloudwatch_log_delivery_destination.this]
+}
+
+run "fh_destination_listed_account_accepted" {
+  command = plan
+
+  variables {
+    allowed_account_ids = ["222222222222"]
+    destinations = {
+      chat = { type = "FH", resource_arn = "arn:aws:firehose:ap-northeast-1:222222222222:deliverystream/alpha-dev-logs" }
+    }
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_destination.this["chat"].name == "alpha-dev-chat"
+    error_message = "A Firehose stream in a listed account must pass"
+  }
+}
+
 run "source_listed_account_accepted" {
   command = plan
 

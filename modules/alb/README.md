@@ -1,6 +1,6 @@
 # alb
 
-建一個 Application Load Balancer、HTTP／HTTPS listener、ALB 整體的 ELB 5xx 告警，可選 access log 與 WAF 關聯。target group 與 listener rule 可以由 `ecs-service` 建；0.2.0 起也可以在這個 module 建，見〈target group 與 listener rule〉。
+建一個 Application Load Balancer、HTTP／HTTPS listener、ALB 整體的 ELB 5xx 告警，可選 WAF 關聯。target group 與 listener rule 可以由 `ecs-service` 建；0.2.0 起也可以在這個 module 建，見〈target group 與 listener rule〉。
 
 ## 用法
 
@@ -14,8 +14,7 @@ module "alb" {
   certificate_arn    = local.certificate_arn
   sns_topic_arns     = [module.alarm_topic.topic_arn]
 
-  access_logs = { bucket = local.alb_log_bucket, prefix = "alb" }
-  web_acl     = { arn = aws_wafv2_web_acl.this.arn }
+  web_acl = { arn = aws_wafv2_web_acl.this.arn }
 }
 ```
 
@@ -25,6 +24,26 @@ module "alb" {
 
 - `listener_arn` 接到 `ecs-service` 的 `load_balancer.listener_arn`。
 - `alb_arn_suffix` 接到 `ecs-service` 與 `ecs-service-alarms` 的 `load_balancer.alb_arn_suffix`。
+- access log 用 `log-delivery` 開：`alb_arn` 當 source 的 `resource_arn`，見下一節。
+
+## access log
+
+0.5.0 起這個 module 不再開 access log（移除了 `access_logs`），改由 `log-delivery` 用 CloudWatch Logs 的 vended delivery 送。可以送 CloudWatch Logs、S3 或 Firehose，log type 有 `ALB_ACCESS_LOGS`、`ALB_CONNECTION_LOGS`、`ALB_HEALTH_CHECK_LOGS`。
+
+```hcl
+module "alb_access_logs" {
+  source  = "app.terraform.io/<org>/log-delivery/aws"
+  version = "~> 0.2.0"
+
+  name_prefix = "alpha-prod-alb"
+
+  sources      = { access = { resource_arn = module.alb.alb_arn, log_type = "ALB_ACCESS_LOGS" } }
+  destinations = { archive = { type = "S3", resource_arn = module.access_log_bucket.arn } }
+  deliveries   = { access = { source = "access", destination = "archive" } }
+}
+```
+
+送 S3 時，bucket 用 `s3-bucket` 建並給 `log_delivery = ["vended_logs"]`。從 0.4.x 升級：拿掉 `access_logs`，加上面這段；bucket 的 `alb_access_logs` 改成 `vended_logs`。vended delivery 寫進 S3 的路徑是 `AWSLogs/<account>/elasticloadbalancing/<region>/<yyyy>/<MM>/<dd>/`（AWS 文件〈Logs sent to Amazon S3〉），前面不會有舊寫法的 `prefix`；查 log 的 Athena 表或 lifecycle 規則如果依賴 prefix，要跟著改。
 
 ## Listener 行為
 
@@ -92,7 +111,6 @@ listener_rules = {
 ## 注意
 
 - **沒有憑證時只開 HTTP:80，ALB 的 security group 必須收窄**。SG 由 `network` stack 建，收窄規則也在那裡檢查；這個 module 不建 SG，也看不到 SG 的內容。
-- **access log 的 bucket 只能用 SSE-S3 加密**。ALB 的 log delivery 不支援 customer managed KMS，設了 KMS 之後 log 會默默遺失。bucket 由 `foundation` stack 建，這裡只收名稱（不是 ARN）。
 - `additional_certificate_arns` 只掛在 HTTPS listener，所以必須同時給 `certificate_arn`。
 - **WAF 與 ALB 在同一個 configuration 建時，用 `web_acl`，不要用 `web_acl_arn`**。`web_acl_arn` 是 unknown 時，`count` 無法在 plan 決定，會報 `Invalid count argument`；`web_acl` 是物件，是否為 `null` 在 plan 時就知道，`arn` unknown 也沒關係。`web_acl` 與 `web_acl_arn` 同時給會被 validation 擋下。
 - `deletion_protection` 預設 `true`；測試或 PoC 要 destroy 時先設成 `false` 並 apply。
@@ -100,7 +118,7 @@ listener_rules = {
 
 ## 刻意不做
 
-- 不建 security group、Web ACL（只做關聯）、access log bucket。
+- 不建 security group、Web ACL（只做關聯）、access log（用 `log-delivery`）。
 - target group 只有 `ip` 與 `instance` 兩種類型、HTTP；不建 `lambda`、`alb` 類型。listener rule 只有 forward 一種 action。
 - 不加 `ignore_changes` 保護權重（見上方 R1 說明）。
 - 不建 IAM。
@@ -120,7 +138,6 @@ listener_rules = {
 | `additional_certificate_arns` | `set(string)` | `[]` | 否 | SNI 憑證；非空時必須給 `certificate_arn` |
 | `idle_timeout` | `number` | `60` | 否 | 1–4000 秒 |
 | `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
-| `access_logs` | `object({ bucket, prefix })` | `null` | 否 | `bucket` 為 SSE-S3 bucket 名稱；`prefix` 可省略 |
 | `web_acl` | `object({ arn })` | `null` | 否 | regional WAFv2 Web ACL；只做關聯。ARN 在 plan 時還不知道時（同一個 configuration 建 WAF），一定要用這個變數 |
 | `web_acl_arn` | `string` | `null` | 否 | regional WAFv2 Web ACL ARN；**只適合 plan 時已知的值**，日後移除。與 `web_acl` 不能同時給 |
 | `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |

@@ -43,19 +43,6 @@ variable "deletion_protection" {
   description = "enable_deletion_protection."
 }
 
-variable "access_logs" {
-  type = object({
-    bucket = string
-    prefix = optional(string)
-  })
-  default     = null
-  description = "Access logs (TLS listeners only). The bucket must use SSE-S3; it is a bucket name, not an ARN."
-  validation {
-    condition     = var.access_logs == null ? true : length(var.access_logs.bucket) > 0
-    error_message = "access_logs.bucket must not be empty."
-  }
-}
-
 variable "vpc_id" {
   type        = string
   default     = null
