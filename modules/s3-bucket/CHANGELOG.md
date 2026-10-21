@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.2.0...s3-bucket-v0.3.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **s3-bucket:** alb_access_logs is removed together with the ELB service account statements, and the SSE-KMS restriction that came with it. ALB access logs now go through log-delivery; give the bucket vended_logs.
+
+### Features
+
+* **s3-bucket:** replace alb_access_logs with vended_logs ([e153241](https://github.com/libterty/infra-platform/commit/e153241d51b1746d52d7c9d70eaaaa54ea8aec5c))
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
