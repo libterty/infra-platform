@@ -30,5 +30,6 @@
   "modules/vpc-interface-endpoints": "0.1.0",
   "modules/vpc-peering": "0.1.0",
   "modules/waf-web-acl": "0.1.0",
-  "modules/xray": "0.1.0"
+  "modules/xray": "0.1.0",
+  "modules/nlb": "0.1.0"
 }
