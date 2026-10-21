@@ -28,10 +28,10 @@
 | A1 | 擴充既有 module：`iam-role` 0.3.0、`alb` 0.4.0、`vpc` 0.2.0；`lambda-function` 補測試 | 未開始 | — |
 | A2 | 新 module：`ec2-instance`、`ec2-asg` | 未開始 | — |
 | A3 | 新 module：`nlb`、`lb-traffic-breaker`（含 Lambda 程式碼與 Dockerfile） | 未開始 | — |
-| A4 | 新 module：`iam-oidc-provider`、`eks-cluster` | 未開始 | — |
+| A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 未開始 | — |
 | A5 | 新 module：`eks-addons`（helm provider、本地 chart） | 未開始 | — |
 | A6 | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG、guides | 未開始 | — |
-| A7 | （使用者確認後）合併、打 7 個新 module 的 tag、補 GitHub Release、HCP 登記；擴充的 3 個走 release-please | 未開始 | — |
+| A7 | （使用者確認後）合併、打 8 個新 module 的 tag、補 GitHub Release、HCP 登記；擴充的 3 個走 release-please | 未開始 | — |
 
 ## 每個 Phase 的做法與驗收
 
@@ -121,7 +121,7 @@
 - `python3 -m unittest` 全過。
 - README 有 ALB 與 NLB 的差異表、build 映像的指令、design §5 的 runbook。
 
-### A4：`iam-oidc-provider`、`eks-cluster`
+### A4：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster`
 
 介面見 design §4.2。`eks-cluster` 的 tests 依主題拆檔，每個檔在 800 行內：
 
@@ -134,7 +134,8 @@
 必寫：
 
 - 固定值三項（J3）與 secrets 加密。
-- J2 的每條互斥規則正反各一。
+- J2 的每條互斥規則正反各一；Auto Mode 加 Fargate 要能通過（D17）。
+- `eks-iam-policies`：輸出是合法 JSON，Karpenter 的 `iam:PassRole` 只限 node role，不支援的版本被拒。
 - 沒有 cluster admin 的 access entry 被拒。
 - public endpoint 給 `0.0.0.0/0` 被拒。
 - launch template 的 IMDSv2 與 EBS 加密。
@@ -164,7 +165,7 @@
 ### A6：共用設定
 
 - `release-please-config.json` 加 7 個 package；`.release-please-manifest.json` 加 7 個 `"0.1.0"`。擴充的 3 個不手改 manifest，交給 release-please。
-- `README.md` 的 module 表加 7 列與「EKS」分類，`共 32 個 module` 改成 39。
+- `README.md` 的 module 表加 8 列與「EKS」分類，`共 32 個 module` 改成 40。
 - `docs/guides/releasing-modules.md` 補上 helm provider 的 module 怎麼測；`docs/guides/consuming-modules.md` 補上 `eks-addons` 的 provider 設定。
 
 驗收：
@@ -177,9 +178,9 @@
 每一步做之前先問使用者：
 
 1. 依序合併 stack 的每一層。擴充的 3 個 module 的 `feat` commit 進 `main` 後，release-please 會開 release PR。看過 diff（release PR 不會觸發 CI）再合併，tag 由 release-please 打。
-2. 7 個新 module：先在 PR 裡把 CHANGELOG 的「（未發布）」改成發版日期，合併後打 annotated tag，**一次最多 push 3 個**，分 3 批。
+2. 8 個新 module：先在 PR 裡把 CHANGELOG 的「（未發布）」改成發版日期，合併後打 annotated tag，**一次最多 push 3 個**，分 3 批。
 3. `gh release create <tag> --notes-file modules/<m>/CHANGELOG.md`，不設 latest。
-4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 7 個新 module，等狀態變成 `setup_complete`。
+4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 8 個新 module，等狀態變成 `setup_complete`。
 5. 確認擴充的 3 個 module 在 HCP 上有新版本。沒有就照〈之後的維護〉補。
 
-驗收：照 `hcp-registry-setup.md` §4 在暫存目錄 `terraform init -backend=false` 抓 39 個 module，版本跟 tag 一致。
+驗收：照 `hcp-registry-setup.md` §4 在暫存目錄 `terraform init -backend=false` 抓 40 個 module，版本跟 tag 一致。

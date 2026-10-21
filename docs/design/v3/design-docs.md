@@ -7,9 +7,9 @@
 
 ## 1. 結論
 
-新增 7 個 module、擴充 3 個，再補一組 `lambda-function` 的測試：
+新增 8 個 module、擴充 3 個，再補一組 `lambda-function` 的測試：
 
-- 新 module（各發 `0.1.0`）：`ec2-instance`、`ec2-asg`、`nlb`、`lb-traffic-breaker`、`iam-oidc-provider`、`eks-cluster`、`eks-addons`。registry 從 32 個 module 變 39 個。
+- 新 module（各發 `0.1.0`）：`ec2-instance`、`ec2-asg`、`nlb`、`lb-traffic-breaker`、`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster`、`eks-addons`。registry 從 32 個 module 變 40 個。
 - 擴充（MINOR）：`iam-role` 0.2.0 → 0.3.0（managed policy 白名單、Pod Identity 與 IRSA 的 trust）、`alb` 0.3.0 → 0.4.0（加權 forward、外部 target group、stickiness、`instance` target）、`vpc` 0.1.0 → 0.2.0（每個 tier 的 subnet 可以加 tag）。預設值維持原本行為，既有 tests 不改就要全過。
 - `lambda-function` 只補測試：principal `lambda.alarms.cloudwatch.amazonaws.com` 目前沒有測試涵蓋（§4.1）。
 
@@ -85,13 +85,17 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 | D11 | 斷路器的 Lambda 用 container image：repo 提供程式碼與 Dockerfile，使用者自己 build 並推到 ECR，再把 image URI 傳給 `lambda-function` | `lambda-function` 只支援 container image，不新增 provider |
 | D12 | NLB 的斷路器預設看新系統 target group 的 `HealthyHostCount`，另外可以傳入應用程式自己發的 CloudWatch 指標當觸發條件；README 寫明跟 ALB 的差異 | NLB 沒有 HTTP 5xx（§2 第 6 點） |
 | D13 | Karpenter 的預設 NodePool 與 EC2NodeClass 由 `eks-addons` 提供一組，可以關掉自己管 | 開箱就能用，又不綁死 |
+| D14 | `nlb` 的 listener 放了多個 target group 時，每個 target group 都必須把 `dns_failover` 設成 `"off"`，validation 擋；單一 target group 時維持 AWS 預設 | 避免新系統的 target group 在某個 AZ 沒有健康 target 時，整個 zone 被移出 DNS、拖累舊系統（§2 第 7 點） |
+| D15 | LB Controller、Karpenter controller、Argo Rollouts 的官方 IAM policy 由 module 當輸出提供，版本跟 chart 綁在一起 | 不用範本的人也拿得到正確版本的 policy；做法見 J14 |
+| D16 | `ec2-instance` 的 `StatusCheckFailed_System` 告警可以不建：`sns_topic_arns` 預設 `[]`，空的就不建告警 | 使用者決定。這是 repo「會建告警的 module，`sns_topic_arns` 必填」慣例（v1 §4.1）的例外，README 要寫明 |
+| D17 | Auto Mode 與 Fargate 可以同時用，不用 validation 擋；README 寫明官方沒有說能長期共存 | 使用者決定，風險由使用者自負（R13） |
 
 ### 3.2 planner 判斷、使用者未反對
 
 | # | 決策 |
 |---|---|
-| J1 | 新 module 命名：`ec2-instance`、`ec2-asg`、`nlb`、`lb-traffic-breaker`、`iam-oidc-provider`、`eks-cluster`、`eks-addons`，跟既有的 `alb`、`ec2-bastion`、`iam-role` 一致 |
-| J2 | EKS 的節點模式由輸入決定，不用 `enable_xxx`（v1 §4.1）：`managed_node_groups`、`fargate_profiles` 是 map，空的就不建；`auto_mode`、`karpenter` 是物件，null 就不建。互斥規則用 validation 擋：`auto_mode` 與 `karpenter` 互斥（CRD 衝突）；`auto_mode` 與 `fargate_profiles` 互斥（長期共存未確認）；`karpenter` 需要至少一個 managed node group 跑 controller；四種至少要有一種 |
+| J1 | 新 module 命名：`ec2-instance`、`ec2-asg`、`nlb`、`lb-traffic-breaker`、`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster`、`eks-addons`，跟既有的 `alb`、`ec2-bastion`、`iam-role` 一致 |
+| J2 | EKS 的節點模式由輸入決定，不用 `enable_xxx`（v1 §4.1）：`managed_node_groups`、`fargate_profiles` 是 map，空的就不建；`auto_mode`、`karpenter` 是物件，null 就不建。互斥規則用 validation 擋：`auto_mode` 與 `karpenter` 互斥（CRD 衝突）；`karpenter` 需要至少一個 managed node group 跑 controller；四種至少要有一種 |
 | J3 | `eks-cluster` 固定 `bootstrap_self_managed_addons = false`、`authentication_mode = "API"`、`bootstrap_cluster_creator_admin_permissions = false`，不提供開關（三個都是 ForceNew，§2 第 13 點）。所以 `access_entries` 至少要有一個 cluster scope 的 `AmazonEKSClusterAdminPolicy`，給跑 apply 的 role，validation 擋 |
 | J4 | 叢集與叢集內元件分兩個 stack、兩次 apply：`eks-cluster` 在前，`eks-addons` 在後 |
 | J5 | `eks-addons` 只用 helm provider。Karpenter 的預設 NodePool、EC2NodeClass 與應用程式的 namespace，用 module 內附的本地 chart 經 `helm_release` 安裝，不用 `kubernetes_manifest`（它在 plan 時就要連叢集讀 CRD） |
@@ -101,9 +105,9 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 | J9 | 斷路器的 alarm 由 `lb-traffic-breaker` 自己建（`aws_cloudwatch_metric_alarm`），不呼叫 `metric-alarm`：module 不互相呼叫，而且 `metric-alarm` 的 action 只接 SNS |
 | J10 | `vpc` 擴充每個 tier 的 subnet tag，用來加 `kubernetes.io/role/elb`、`kubernetes.io/role/internal-elb` 與 Karpenter 的 discovery tag。security group 的 discovery tag 用 `security-group` 既有的 `tags`（另外呼叫一次給節點用的 SG），不用擴充 |
 | J11 | `ec2-instance` 跟 `ec2-bastion` 一樣：固定 IMDSv2、不給 public IP、沒有 `key_name`，只走 SSM Session Manager；對外流量經 ALB 或 NLB |
-| J12 | `nlb` 的 listener 放了多個 target group 時，每個 target group 都必須把 `dns_failover` 設成 `"off"`，validation 擋，避免新系統的 target group 拖垮整個 zone（§2 第 7 點）。單一 target group 時維持 AWS 預設 |
+| J12 | （改由使用者拍板，見 D14） |
 | J13 | Helm chart 版本固定預設值，由使用者覆寫：AWS Load Balancer Controller `3.6.0`、Karpenter `1.15.0`、Argo Rollouts `2.43.8`。EKS add-on 的版本由使用者給，不設預設（版本跟 Kubernetes 版本綁在一起） |
-| J14 | AWS Load Balancer Controller、Karpenter controller、Argo Rollouts 的 IAM policy 內容由呼叫端（之後的範本）用 `iam-role` 的 inline policy 建；module 只收 role ARN。LB Controller 的 policy 照官方 `iam_policy.json` 的固定版本（chart 3.6.0 對應 v3.6.0） |
+| J14 | D15 的做法：新增 `eks-iam-policies`，不建任何資源、只有輸出，依 chart 版本輸出 LB Controller、Karpenter controller、Argo Rollouts（CloudWatch analysis 用）的 policy JSON。IAM stack 在 `eks-cluster` 之前，呼叫 `eks-addons` 又要先設好 helm provider，所以 policy 不能放在 `eks-addons` 的輸出。role 仍由呼叫端用 `iam-role` 建，`eks-cluster`、`eks-addons` 只收 role ARN。LB Controller 的 policy 照官方 `iam_policy.json` 的 v3.6.0 版 |
 | J15 | 斷路器 Lambda 的程式碼分成兩層：計算新 action 的純函式（只用 Python 標準函式庫，CI 用 `python3 -m unittest` 測）與呼叫 AWS API 的薄殼。CI 不 build Docker 映像 |
 
 ## 4. Module
@@ -113,7 +117,7 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 - 檔案：`main.tf`、`variables.tf`、`outputs.tf`、`versions.tf`、`README.md`、`CHANGELOG.md`、`examples/basic/`、`tests/*.tftest.hcl`。
 - `versions.tf` 寫 `required_version = ">= 1.10"`、`aws >= 6.0, < 7.0`；用到較新的屬性時提高下限，並寫英文註解說明原因。不寫 provider、backend、lock 檔。
 - module 不互相呼叫、不用 `enable_xxx` 開關、只收完整的 `name`；`tags` merge 上 `Name`。
-- 只要建告警，`sns_topic_arns` 就是必填，`alarm_actions` 與 `ok_actions` 都接。
+- 只要建告警，`sns_topic_arns` 就是必填，`alarm_actions` 與 `ok_actions` 都接。例外是 `ec2-instance`（D16）。
 - IAM 只在 `iam-role`、`iam-role-policy`、`iam-oidc-provider`（§4.3）；security group 只在 `security-group`。其他 module 只收 ARN 或 ID。
 - `.tf` 的註解、description、error_message 用英文；README、CHANGELOG 用台灣繁體中文。
 - 一個 commit 只動一個 module 目錄。每條 validation 都要有正反兩個 run，安全相關的負向測試不能省。
@@ -168,10 +172,11 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 
 | module | 主要輸入 | 主要輸出 | 必寫的 tests |
 |---|---|---|---|
-| `ec2-instance` | `name`、`subnet_id`、`security_group_ids`（至少 1 個）、`instance_profile_name`、`instance_type`、`architecture = "arm64"`、`ami_id`（預設 null，null 時找最新 AL2023）、`root_volume = { size = 20, kms_key_arn = null }`、`ebs_volumes = map(object({ device_name, size, type = "gp3", kms_key_arn = null }))`、`user_data`（預設 null）、`disable_api_termination = true`、`sns_topic_arns`（必填）、`tags` | `instance_id`、`private_ip`、`ami_id`、`alarm_arns` | IMDSv2 required、hop limit 1、不配 public IP、root 與資料碟都加密；`instance_type` 與 `architecture` 不搭被拒；`user_data` 出現像 secret 的字樣被拒（照 `lambda-function` 的規則）；`StatusCheckFailed_System` 告警的 action 有 recover 與 SNS |
+| `ec2-instance` | `name`、`subnet_id`、`security_group_ids`（至少 1 個）、`instance_profile_name`、`instance_type`、`architecture = "arm64"`、`ami_id`（預設 null，null 時找最新 AL2023）、`root_volume = { size = 20, kms_key_arn = null }`、`ebs_volumes = map(object({ device_name, size, type = "gp3", kms_key_arn = null }))`、`user_data`（預設 null）、`disable_api_termination = true`、`sns_topic_arns`（預設 `[]`，空的就不建告警，D16）、`tags` | `instance_id`、`private_ip`、`ami_id`、`alarm_arns`（沒建時是空 map） | IMDSv2 required、hop limit 1、不配 public IP、root 與資料碟都加密；`instance_type` 與 `architecture` 不搭被拒；`user_data` 出現像 secret 的字樣被拒（照 `lambda-function` 的規則）；給了 `sns_topic_arns` 時 `StatusCheckFailed_System` 告警的 action 有 recover 與 SNS；沒給時沒有告警 |
 | `ec2-asg` | `name`、`subnet_ids`、`security_group_ids`、`instance_profile_name`、`instance_types`（list，第一個是主要型號）、`architecture`、`ami_id`（同上）、`root_volume`、`user_data`、`min_size`、`max_size`、`desired_capacity`、`spot`（物件，null 就全 on-demand：`on_demand_base_capacity = 1`、`on_demand_percentage_above_base = 100`、`allocation_strategy = "price-capacity-optimized"`）、`target_group_arns`（預設 `[]`）、`health_check_grace_period = 300`、`instance_refresh = { min_healthy_percentage = 90 }`、`cpu_target`（預設 null，有值才建 target tracking）、`tags` | `asg_name`、`asg_arn`、`launch_template_id`、`launch_template_latest_version` | launch template 固定 IMDSv2、不配 public IP、EBS 加密；`target_group_arns` 非空時 `health_check_type = "ELB"`；`min <= desired <= max`；`spot` 為 null 時沒有 mixed instances policy；`desired_capacity` 用 `ignore_changes`，讓 scaling policy 管；`tags` 帶到 instance（`propagate_at_launch`） |
 | `nlb` | `name`、`internal = true`、`subnet_ids`（至少 2 個）、`security_group_ids`（至少 1 個）、`cross_zone = true`、`deletion_protection = true`、`access_logs`（可選：`bucket`、`prefix`）、`vpc_id`、`target_groups = map(object({ port, protocol = "TCP", target_type = "ip", deregistration_delay = 300, preserve_client_ip = null, health_check = optional(...), stickiness = optional(bool, false), dns_failover = optional(string, "1") }))`、`listeners = map(object({ port, protocol = "TCP", certificate_arn = null, ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06", alpn_policy = null, targets = map(object({ target_group = optional(string), target_group_arn = optional(string), weight })) }))`、`sns_topic_arns`（必填）、`tags` | `nlb_arn`、`nlb_arn_suffix`、`dns_name`、`zone_id`、`listener_arns`、`target_group_arns`、`target_group_arn_suffixes`、`alarm_arns` | 多個 target group 的 listener 每個 target group 都要 `dns_failover = "off"`（J12）；同一個 listener 的 target group protocol 一致；TLS listener 必須給憑證，而且不能有開 stickiness 的 target group；`targets` 1–5 個、權重 0–999、至少一個大於 0；不准沒有 security group（NLB 的 SG 只能在建立時加，未確認）；每個 target group 一條 `UnHealthyHostCount` 告警 |
 | `lb-traffic-breaker` | `name`、`load_balancer_type`（`application` 或 `network`）、`load_balancer_arn_suffix`、`breakers = map(object({ listener_arn = optional(string), rule_arn = optional(string), stable_target_group_arn, canary_target_group_arn_suffix, error_rate_percent = 5, min_requests = 50, min_healthy_hosts = 1, period = 60, evaluation_periods = 3, datapoints_to_alarm = 2, custom_metric = optional(object({ namespace, metric_name, dimensions, statistic, threshold, comparison_operator })) }))`、`lambda_function_arn`、`sns_topic_arns`（必填）、`tags` | `alarm_arns`、`alarm_names`、`lambda_config_json`（給 Lambda 的環境變數）、`lambda_permissions`（給 `lambda-function` 的 `permissions` 的 map） | ALB 有 5xx 錯誤率與健康主機數兩條；NLB 只有健康主機數與可選的自訂指標，給 5xx 參數被拒；`listener_arn` 與 `rule_arn` 擇一（NLB 只能 `listener_arn`）；alarm 的 `alarm_actions` 同時有 Lambda 與 SNS；5xx 錯誤率用 metric math 而且 `treat_missing_data = "notBreaching"`，健康主機數用 `"breaching"`；`lambda_permissions` 的 `source_arn` 是對應 alarm 的 ARN |
+| `eks-iam-policies` | `cluster_name`、`region`、`account_id`、`partition = "aws"`、`karpenter = object({ node_role_arn, interruption_queue_name })`（預設 null）、`load_balancer_controller_version = "3.6.0"`、`karpenter_version = "1.15.0"` | `load_balancer_controller_policy_json`、`karpenter_controller_policy_json`（`karpenter` 為 null 時是 null）、`argo_rollouts_cloudwatch_policy_json` | 沒有任何 resource、也不需要 provider；輸出是合法 JSON；Karpenter 的 `iam:PassRole` 只限 `node_role_arn`；版本不在支援清單內被拒（module 只附它查證過的版本）；policy 長度記錄在 README（R5） |
 | `iam-oidc-provider` | `issuer_url`（`eks-cluster` 的輸出）、`client_ids = ["sts.amazonaws.com"]`、`tags` | `arn`、`issuer`（去掉 `https://`） | 只接受 `https://oidc.eks.<region>.amazonaws.com/id/<id>` 格式；`client_ids` 預設值。只建 `aws_iam_openid_connect_provider`，只在有 Fargate 工作負載要 AWS 權限時才需要（D7） |
 | `eks-cluster` | 見下方 | 見下方 | 見下方 |
 | `eks-addons` | 見下方 | 見下方 | 見下方 |
@@ -192,7 +197,7 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 4. Lambda 讀 `BREAKER_CONFIG`（module 的 `lambda_config_json` 輸出，alarm 名稱對應到 listener 或 rule 與 stable target group），呼叫 `DescribeListeners` 或 `DescribeRules` 取得目前的 action，把 forward 裡 stable target group 的權重設成大於 0、其他設成 0，保留 stickiness 設定，再用 `ModifyListener` 或 `ModifyRule` 帶完整的 action 清單寫回（API 要求完整清單，§8）。
 5. 冪等：目前已經是「只有 stable 有權重」就直接結束。成功後在 listener 或 rule 加 tag `traffic-breaker/tripped = <alarm name>`，方便從 console 與 runbook 辨識。
 
-Lambda 的 IAM（由呼叫端用 `iam-role` 建，J14 同一套做法）：
+Lambda 的 IAM（由呼叫端用 `iam-role` 建；這份 policy 依 `breakers` 的 ARN 而定，所以不放進 `eks-iam-policies`）：
 
 - `elasticloadbalancing:ModifyListener`、`ModifyRule`、`AddTags`：resource 限定到 `breakers` 裡的 listener 與 rule ARN。
 - `elasticloadbalancing:DescribeListeners`、`DescribeRules`：只能 `*`。
@@ -270,12 +275,12 @@ tests：
 
 ### 4.4 發版與 HCP 登記
 
-- `release-please-config.json` 的 `packages` 加 7 個新 module；`.release-please-manifest.json` 加 7 個 `"0.1.0"`。
+- `release-please-config.json` 的 `packages` 加 8 個新 module；`.release-please-manifest.json` 加 8 個 `"0.1.0"`。
 - 新 module 照 v0.1.1 的先例：manifest 登記 `0.1.0`，第一個 tag 手動打，之後才交給 release-please。打 tag 前先把 CHANGELOG 的「（未發布）」改成日期。
 - 擴充的 3 個 module 走 release-please：2026-10-21 起 push 到 `main` 就會跑，`feat(<module>)` 的 commit 合併後會開 release PR。release PR 用 `GITHUB_TOKEN` 開，不會觸發 CI，合併前要人看 diff。
-- 一次最多 push 3 個 tag（GitHub 超過 3 個不發 webhook，HCP 收不到）。7 個新 tag 分 3 批推。
-- 照 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md) §3 登記 7 個新 module，§4 的暫存目錄確認 39 個都抓得到。
-- `README.md` 的 module 表加 7 列，新增「EKS」分類，`共 32 個 module` 改成 39。
+- 一次最多 push 3 個 tag（GitHub 超過 3 個不發 webhook，HCP 收不到）。8 個新 tag 分 3 批推。
+- 照 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md) §3 登記 8 個新 module，§4 的暫存目錄確認 40 個都抓得到。
+- `README.md` 的 module 表加 8 列，新增「EKS」分類，`共 32 個 module` 改成 40。
 - 打 tag、push、建 Release、HCP 登記之前先問使用者。
 
 ## 5. 範本整合（這次不做）
@@ -283,7 +288,7 @@ tests：
 之後要做 EKS 範本時，建議的 stack 拆法與 apply 順序：
 
 1. `network`：VPC（subnet 依 tier 加 §4.1 的 tag）、security group、VPC endpoint。private cluster 沒有 NAT 時要有 `ecr.api`、`ecr.dkr`、`s3`（gateway）、`ec2`、`sts`、`eks`、`eks-auth`、`elasticloadbalancing`、`logs`，用 Karpenter 再加 `sqs`、`ssm`（§8）。
-2. `iam`：cluster role、node role、Fargate pod execution role、各 controller 的 Pod Identity role、斷路器 Lambda 的 role，全部用 `iam-role`。
+2. `iam`：cluster role、node role、Fargate pod execution role、各 controller 的 Pod Identity role、斷路器 Lambda 的 role，全部用 `iam-role`；controller 的 policy 內容取自 `eks-iam-policies` 的輸出。
 3. `eks-cluster`：叢集、節點、add-on、access entry、Pod Identity association、Karpenter 的 SQS 與 EventBridge。要 IRSA 時同一個 stack 再呼叫 `iam-oidc-provider`，IRSA 的 role 放在下一個 stack（要等 OIDC provider 的 ARN）。
 4. `eks-addons`：獨立的 state 與 helm provider 設定。
 5. `loadbalancer`：模式 T 的 `alb` 或 `nlb`（含加權規則）、`lambda-function`（斷路器）、`lb-traffic-breaker`。target group ARN 經 SSM 發布，給應用程式 chart 裡的 TargetGroupBinding 用。
@@ -324,7 +329,7 @@ tests：
 | R2 | 模式 K 的規則被人接上 A'，Lambda 改的權重會被 LB Controller 改回去，斷路器形同無效 | `lb-traffic-breaker` 的 README 寫明只能用在 Terraform 擁有的 listener 與 rule；Lambda 只碰 `breakers` 列出的 ARN |
 | R3 | Fargate 用 IRSA，跟其他地方的 Pod Identity 並存，權限審查要看兩套 | IRSA 只限 Fargate；`iam-role` 的 `federated` 要求 `subject` 指到單一 service account |
 | R4 | `support_type = "EXTENDED"` 過了 standard 期會另外計費，使用者可能沒注意 | `eks-cluster` 的 README 與 variable description 寫明；範本 tfvars 加註解 |
-| R5 | LB Controller 的官方 IAM policy 很長，放進 `iam-role` 的 inline policy 可能超過單一 role 的 inline policy 總長度上限（未確認實際長度） | 實作時量測；超過就拆成 `iam-role-policy` 的多份 policy |
+| R5 | LB Controller 的官方 IAM policy 很長，放進 `iam-role` 的 inline policy 可能超過單一 role 的 inline policy 總長度上限（未確認實際長度） | `eks-iam-policies` 實作時量測並寫進 README；超過就拆成 `iam-role-policy` 的多份 policy |
 | R6 | NLB 的新系統 target group 在某個 AZ 沒有健康 target，整個 zone 被移出 DNS，舊系統流量也受影響 | J12 的 validation；README 寫明每個 AZ 都要有新系統的 target |
 | R7 | NLB 切回舊系統只影響新連線，長連線會一直留在新系統 | README 寫明；需要即時切斷時在 NLB 後面接 ALB 做 L7 權重（target type `alb`），列為已知限制 |
 | R8 | `bootstrap_cluster_creator_admin_permissions = false` 但沒有 admin access entry，apply 完就沒有人能操作叢集 | J3 的 validation |
@@ -332,7 +337,7 @@ tests：
 | R10 | helm provider 是 repo 第一個非 aws 的主要 provider，S1、mock、lock 檔的規則都要改 | §4.3；A0 先改 `validate.sh` 再寫 module |
 | R11 | Lambda 失敗時權重沒改到，alarm 仍是 ALARM 不會再觸發 | alarm 同時送 SNS 給人；Lambda 寫自己的錯誤 log，`lambda-function` 的 log group 照常保留 |
 | R12 | 斷路器 Lambda 的映像由使用者自己 build，版本可能跟 module 不一致 | README 寫明映像 tag 要跟 module 版本對齊；`BREAKER_CONFIG` 帶 schema 版本，Lambda 遇到不認得的版本就失敗並記 log |
-| R13 | Auto Mode 與 Fargate 能不能長期共存未確認，J2 先擋 | 有實證後再放寬（MINOR） |
+| R13 | Auto Mode 與 Fargate 能不能長期共存未確認，module 不擋（D17） | `eks-cluster` 的 README 寫明官方沒有說能長期共存；真實環境遇到問題再補 validation（MINOR） |
 
 ## 8. 來源
 
