@@ -12,7 +12,7 @@
   "modules/ecs-service": "0.2.0",
   "modules/ecs-service-alarms": "0.1.0",
   "modules/elasticache-redis": "0.1.0",
-  "modules/iam-role": "0.2.0",
+  "modules/iam-role": "0.3.0",
   "modules/iam-role-policy": "0.1.0",
   "modules/kms-key": "0.1.0",
   "modules/lambda-function": "0.1.0",
