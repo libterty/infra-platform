@@ -434,3 +434,27 @@ run "rejects_action_of_another_service" {
 
   expect_failures = [var.permissions]
 }
+
+# CloudWatch alarm actions invoke Lambda through this dedicated principal (lb-traffic-breaker).
+run "accepts_principal_cloudwatch_alarms" {
+  command = plan
+
+  variables {
+    permissions = {
+      breaker = {
+        principal      = "lambda.alarms.cloudwatch.amazonaws.com"
+        source_arn     = "arn:aws:cloudwatch:ap-northeast-1:111111111111:alarm:example-breaker"
+        source_account = "111111111111"
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      aws_lambda_permission.this["breaker"].principal == "lambda.alarms.cloudwatch.amazonaws.com" &&
+      aws_lambda_permission.this["breaker"].source_arn == "arn:aws:cloudwatch:ap-northeast-1:111111111111:alarm:example-breaker" &&
+      aws_lambda_permission.this["breaker"].source_account == "111111111111"
+    )
+    error_message = "The CloudWatch alarms principal must be accepted with its alarm ARN and source_account"
+  }
+}
