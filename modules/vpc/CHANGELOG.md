@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/libterty/infra-platform/compare/vpc-v0.1.0...vpc-v0.2.0) (2026-10-21)
+
+
+### Features
+
+* **vpc:** accept per-tier subnet tags ([281f0a3](https://github.com/libterty/infra-platform/commit/281f0a3ab1082421d0627f458bc93504d37b1535))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。

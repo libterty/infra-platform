@@ -26,7 +26,7 @@
   "modules/sns-alarm-topic": "0.1.0",
   "modules/ssm-publish": "0.1.0",
   "modules/ssm-read": "0.1.0",
-  "modules/vpc": "0.1.0",
+  "modules/vpc": "0.2.0",
   "modules/vpc-interface-endpoints": "0.1.0",
   "modules/vpc-peering": "0.1.0",
   "modules/waf-web-acl": "0.1.0",
