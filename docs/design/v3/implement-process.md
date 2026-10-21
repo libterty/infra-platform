@@ -30,7 +30,7 @@
 | A3 | 新 module：`nlb`、`lb-traffic-breaker`（含 Lambda 程式碼與 Dockerfile） | 完成：nlb 114、lb-traffic-breaker 46 個 run 與 45 個 Python 測試全過；Lambda base image `python:3.14` 釘 digest | `bbcaf2d..5507d1a` |
 | A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 完成：21、44、120 個 run 全過；eks-cluster 53 條 validation 突變測試全抓到 | `db57ae8..224499b` |
 | A5 | 新 module：`eks-addons`（helm provider、本地 chart） | 完成：46 個 run 全過；本地 chart 經 helm v4.3.1 lint 與 template；CI 裝 helm | `356f9c2..95c0861` |
-| A6 | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG、guides | 未開始 | — |
+| A6 | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG、guides | 完成：dry-run 只開 11 個 release PR；全量 110 個目錄通過 | `7bcc9e8` |
 | A7 | （使用者確認後）合併、打 8 個新 module 的 tag、補 GitHub Release、HCP 登記；擴充的 3 個走 release-please | 未開始 | — |
 
 ## 每個 Phase 的做法與驗收
