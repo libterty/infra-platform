@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.2.0...iam-role-v0.3.0) (2026-10-21)
+
+
+### Features
+
+* **iam-role:** allow allowlisted managed policies and Pod Identity and IRSA trust ([a8d45ee](https://github.com/libterty/infra-platform/commit/a8d45ee623970380bea994f1a127db3fa956b64d))
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
