@@ -2,7 +2,7 @@
 
 結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 10 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
-2026-10-21 起，push 到 `main` 就會跑 release-please；在這之前只做過 dry-run，還沒有真的透過它發過版。設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。release PR 是用 `GITHUB_TOKEN` 開的，GitHub 不會替它觸發 CI，所以合併前要自己看過 diff。
+2026-10-21 起，push 到 `main` 就會跑 release-please；同一天第一次透過它發了 11 個版本（v3）。設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。release PR 是用 `GITHUB_TOKEN` 開的，GitHub 不會替它觸發 CI，所以合併前要自己看過 diff。
 
 ## 改一個 module
 
@@ -70,9 +70,31 @@ feat(ecs-service): ... 合併到 main
 | `release-type` | `terraform-module` | 每個 package 一個，`component` 等於目錄名 |
 | `last-release-sha` | `86f438d…` | release-please 往回找 commit 時停在這裡，見下面說明 |
 
-`last-release-sha` 是 release-please 接手前 `main` 的最後一個 commit。現有的 42 個 tag 都是手動打的，而且 2026-10-20 改寫過歷史，tag 所在的 commit 對不到原本的 PR。release-please 依路徑分 commit 時對不上這些 tag，會把已發布的 commit 也算進下一版：沒設這個值時，dry-run 顯示它會一次開 20 個錯的 release PR（例如 `kms-key 0.2.0`）。設了之後，它往回找到這個 commit 就停，只看之後的變更；找得到的 release 仍然照常當成上一版的邊界。依原始碼，這個值留著不影響之後由 release-please 自己發的版本，第一次真的發版後再確認一次。
+`last-release-sha` 是 release-please 接手前 `main` 的最後一個 commit。現有的 42 個 tag 都是手動打的，而且 2026-10-20 改寫過歷史，tag 所在的 commit 對不到原本的 PR。release-please 依路徑分 commit 時對不上這些 tag，會把已發布的 commit 也算進下一版：沒設這個值時，dry-run 顯示它會一次開 20 個錯的 release PR（例如 `kms-key 0.2.0`）。設了之後，它往回找到這個 commit 就停，只看之後的變更；找得到的 release 仍然照常當成上一版的邊界。這個值留著不影響之後由 release-please 自己發的版本：2026-10-21 發完 11 個版本後，它沒有替已發的 module 再開 release PR。
 
-新增 module 時，`release-please-config.json` 的 `packages` 加一行並設 `"initial-version": "0.1.0"`，`.release-please-manifest.json` 不要加；`CHANGELOG.md` 只放 `# Changelog` 這一行標題。合併到 `main` 後 release-please 會開這個 module 的第一個 release PR，合併就打出 `<module>-v0.1.0` 並寫好 CHANGELOG。`README.md` 的 module 表也要加。新 module 的第一個 tag 出來後，照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) §3 到 HCP 登記一次。v3 的 8 個 module 是第一批這樣發的；下面兩節手動打 tag 的做法只是當時的紀錄。
+新增 module 時，`release-please-config.json` 的 `packages` 加一行並設 `"initial-version": "0.1.0"`，`.release-please-manifest.json` 不要加；`CHANGELOG.md` 只放 `# Changelog` 這一行標題。合併到 `main` 後 release-please 會開這個 module 的第一個 release PR，合併就打出 `<module>-v0.1.0` 並寫好 CHANGELOG。release-please 會把原本那行 `# Changelog` 降成 `## Changelog` 留在檔尾，第一次發版後開個 `chore` commit 刪掉（v3 的 8 個 module 就是這樣）。`README.md` 的 module 表也要加。新 module 的第一個 tag 出來後，照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) §3 到 HCP 登記一次。v3 的 8 個 module 是第一批這樣發的；下面兩節手動打 tag 的做法只是當時的紀錄。
+
+### 同時有多個 release PR
+
+每個 release PR 都改 `.release-please-manifest.json`，合併一個之後其他的會衝突，release-please 不會自己重建。一次處理一個：
+
+```bash
+p=35                                           # 要合併的 release PR
+title="$(gh pr view "$p" --json title --jq .title)"   # chore(main): release <module> <version>
+comp="$(awk '{print $(NF-1)}' <<<"$title")"; ver="$(awk '{print $NF}' <<<"$title")"
+br="release-please--branches--main--components--${comp}"
+git fetch origin main "$br"
+git checkout -B "rp-${comp}" origin/main
+git checkout "origin/${br}" -- "modules/${comp}/CHANGELOG.md"
+jq --arg k "modules/${comp}" --arg v "$ver" '.[$k] = $v' .release-please-manifest.json >.m.tmp && mv .m.tmp .release-please-manifest.json
+git add .release-please-manifest.json "modules/${comp}/CHANGELOG.md"
+git diff --cached --stat                       # 只能有這兩個檔
+git commit -m "chore(main): release ${comp} ${ver}"
+git push -f origin "rp-${comp}:${br}"
+gh pr merge "$p" --squash
+```
+
+合併後等 `main` 上的 Release run 跑完、`gh release view <module>-v<version>` 查得到，再做下一個。Release run 偶爾在建完 release 之後遇到 GitHub GraphQL 的暫時錯誤而變紅；tag 與 Release 都在、PR 標成 `autorelease: tagged` 就不用重跑。
 
 tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發下一個 PATCH 版，不要改舊 tag。
 
