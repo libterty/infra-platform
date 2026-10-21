@@ -256,7 +256,7 @@ tests：
 - 主要輸入（物件為 null 就不裝，不用 `install_xxx` 開關，J2 同一條原則）：
   - `cluster_name`、`region`、`vpc_id`（LB Controller 在 hop limit 1 時拿不到 IMDS，要明確給，§8）。
   - `load_balancer_controller = object({ chart_version = "3.6.0", service_account = "aws-load-balancer-controller", replica_count = 2, values = {} })`，預設 null。Auto Mode 已經內建 ALB 與 NLB 的處理，兩者同時用時要用 IngressClass 的 controller 區分（README）。
-  - `karpenter = object({ chart_version = "1.15.0", interruption_queue_name, default_node_class = optional(object({ node_role_name, subnet_discovery_tag, security_group_discovery_tag, ami_alias = "al2023@latest" }), {}), default_node_pool = optional(object({ cpu_limit = 100, capacity_types = ["on-demand"] }), {}) })`，預設 null。`default_node_class` 或 `default_node_pool` 設成 null 就不裝（D13）。EC2NodeClass 固定 IMDSv2 hop limit 1 與 EBS 加密。`ami_alias` 的寫法實作時核對（未確認）。
+  - `karpenter = object({ chart_version = "1.15.0", interruption_queue_name, values = {}, default_node_class = optional(object({ node_role_name, subnet_discovery_tag, security_group_discovery_tag, ami_alias = "al2023@latest" })), default_node_pool = optional(object({ cpu_limit = 100, capacity_types = ["on-demand"] })) })`，預設 null。`default_node_class` 或 `default_node_pool` 設成 null 就不裝（D13）。EC2NodeClass 固定 IMDSv2 hop limit 1 與 EBS 加密。A5 實作：`default_node_class` 有必填欄位，不能用 `{}` 當預設，所以兩個預設物件都是 null，兩個都給才裝本地 chart；`ami_alias` 只收 `al2023@…`（依 v1.15.0 CRD 的格式與 30 字元上限）；`values` 讓 private cluster 能改 controller image 的來源；chart `1.15.0` 已用 public ECR registry API 確認存在。
   - `argo_rollouts = object({ chart_version = "2.43.8", values = {} })`，預設 null。用 CloudWatch analysis 時需要 `cloudwatch:GetMetricData`，role 與 Pod Identity association 在 `eks-cluster`。
   - `app_namespaces = map(object({ labels = {} }))`，預設 `{}`。CI 的 Edit 權限不能建 namespace，所以由這裡先建。
   - `chart_repository_overrides = map(string)`：private cluster 指向 ECR 的 mirror。
@@ -269,7 +269,7 @@ tests：
 - S4-a 的允許清單加上 `modules/iam-oidc-provider/`，只准 `aws_iam_openid_connect_provider`。
 - S1 改成：每個 `*.tftest.hcl` 要為 module `required_providers` 裡的每個 provider 宣告 `mock_provider`。`eks-addons` 只有 helm，所以只需要 `mock_provider "helm"`；不用 aws 的 module 宣告 `mock_provider "aws"` 會不會報錯，實作時確認（未確認）。
 - 清環境變數的地方加上 `KUBECONFIG`、`KUBE_*`、`HELM_*`，跟目前清 `AWS_*` 同一個理由：漏寫 mock 的測試要失敗，不能連到本機的叢集。
-- 本地 chart：有裝 `helm` 時加跑 `helm lint` 與 `helm template`，沒裝就跳過（跟 `shellcheck` 同一套做法）。CI 不另外裝 helm。
+- 本地 chart：有裝 `helm` 時加跑 `helm lint` 與 `helm template`，沒裝就跳過（跟 `shellcheck` 同一套做法）。A5 時使用者決定 CI 要裝 helm：`ci.yml` 用 `azure/setup-helm`（釘 commit SHA）裝 v4.3.1，chart 的錯誤在 PR 就會擋下。
 - `lb-traffic-breaker/lambda/`：有 `python3` 就跑 `python3 -m unittest`（只用標準函式庫，J15）。
 - CI 的 plugin cache key 用 `versions.tf` 的雜湊，新增 helm provider 會自然換 key，不用改。
 - 範本以後引用 helm provider 時，lock 檔一樣要有 darwin 與 linux 兩個 `h1:`（S10），從已經有兩個 `h1:` 的 lock 複製。
