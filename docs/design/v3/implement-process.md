@@ -28,7 +28,7 @@
 | A1 | 擴充既有 module：`iam-role` 0.3.0、`alb` 0.4.0、`vpc` 0.2.0；`lambda-function` 補測試 | 完成：既有 tests 不改全過；iam-role 67、alb 109、vpc 74、lambda-function 100 個 run 全過 | `8e8458f..0a4e84a` |
 | A2 | 新 module：`ec2-instance`、`ec2-asg` | 完成：ec2-instance 59、ec2-asg 67 個 run 全過；spot 預設與 user_data 規則照實作修正設計 | `cd8198e..bdcab8d` |
 | A3 | 新 module：`nlb`、`lb-traffic-breaker`（含 Lambda 程式碼與 Dockerfile） | 完成：nlb 114、lb-traffic-breaker 46 個 run 與 45 個 Python 測試全過；Lambda base image `python:3.14` 釘 digest | `bbcaf2d..5507d1a` |
-| A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 未開始 | — |
+| A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 完成：21、44、120 個 run 全過；eks-cluster 53 條 validation 突變測試全抓到 | `db57ae8..224499b` |
 | A5 | 新 module：`eks-addons`（helm provider、本地 chart） | 未開始 | — |
 | A6 | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG、guides | 未開始 | — |
 | A7 | （使用者確認後）合併、打 8 個新 module 的 tag、補 GitHub Release、HCP 登記；擴充的 3 個走 release-please | 未開始 | — |
