@@ -32,5 +32,6 @@
   "modules/waf-web-acl": "0.1.0",
   "modules/xray": "0.1.0",
   "modules/nlb": "0.1.0",
-  "modules/eks-addons": "0.1.0"
+  "modules/eks-addons": "0.1.0",
+  "modules/ec2-asg": "0.1.0"
 }
