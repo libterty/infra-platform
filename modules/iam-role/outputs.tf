@@ -1,7 +1,7 @@
 output "arn" {
-  description = "Role ARN. Resolves only after all inline policies are attached."
+  description = "Role ARN. Resolves only after all inline policies and managed policy attachments are done."
   value       = aws_iam_role.this.arn
-  depends_on  = [aws_iam_role_policy.this]
+  depends_on  = [aws_iam_role_policy.this, aws_iam_role_policy_attachment.this]
 }
 
 output "name" {
