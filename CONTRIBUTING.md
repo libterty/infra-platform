@@ -35,7 +35,7 @@ scripts/validate.sh modules/<module>     # 只跑指定目錄
 完整流程與 semver 判斷見 [`releasing-modules.md`](./docs/guides/releasing-modules.md)，重點如下：
 
 1. 一個 commit 只動一個 module 目錄。release-please 靠路徑判斷變更要記進哪個 module 的 CHANGELOG，一個 commit 動到兩個 module 就會寫進兩邊。
-2. 先寫 `tests/` 再改實作。每條 validation 正反兩個方向各一個 run，測試一律用 `mock_provider "aws"`。
+2. 先寫 `tests/` 再改實作。每條 validation 正反兩個方向各一個 run，`required_providers` 裡的每個 provider 都要有 `mock_provider`（只用 aws 的 module 就是 `mock_provider "aws"`，`validate.sh` 的 S1 會檢查）。
 3. 擴充既有 module 時，新變數的預設值要維持原本的行為，既有 tests 不改也要全部通過。
 4. 介面有變，就同步改該 module 的 `README.md` 輸入輸出表與 `examples/`。
 5. 不要手改 `CHANGELOG.md` 的版本段落。合併到 `main` 後 release-please 會開 release PR，合併 release PR 才打 tag 並更新 CHANGELOG。

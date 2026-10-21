@@ -18,6 +18,9 @@ for v in $(env | sed -n 's/^\(AWS_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 export AWS_EC2_METADATA_DISABLED=true
+# Same for Kubernetes and Helm: a test missing mock_provider "helm" must not reach a local cluster.
+for v in $(env | sed -nE 's/^((KUBE|HELM)[A-Za-z0-9_]*)=.*/\1/p'); do unset "$v"; done
+export KUBECONFIG=/dev/null
 
 # Stack roots of every template (repo-relative), one per templates/<name>/infra/terraform.
 tf_stack_roots=()
@@ -167,12 +170,34 @@ scan_stack_resources() {
     }' "$1")
 }
 
-# S1: every test file declares mock_provider "aws"
+# Print the local names in the required_providers blocks of the .tf files directly in directory $1.
+required_providers_of() {
+  local f
+  for f in "$1"/*.tf; do
+    [ -f "$f" ] || continue
+    awk '/^[[:space:]]*(#|\/\/)/ { next }
+      /required_providers[[:space:]]*\{/ { inblk = 1; depth = 0 }
+      inblk {
+        if (depth == 1 && match($0, /^[[:space:]]*[A-Za-z0-9_-]+[[:space:]]*=/)) {
+          n = substr($0, RSTART, RLENGTH); gsub(/[[:space:]=]/, "", n); print n
+        }
+        depth += gsub(/\{/, "{"); depth -= gsub(/\}/, "}")
+        if (depth <= 0) inblk = 0
+      }' "$f"
+  done | sort -u
+}
+
+# S1: every test file declares a mock_provider for each provider in the required_providers of the directory it
+# tests (the directory above tests/). Without required_providers the directory is assumed to use aws only.
 for f in ${files_tftest[@]+"${files_tftest[@]}"}; do
-  if ! grep -Eq '^[[:space:]]*mock_provider[[:space:]]+"aws"' "$f"; then
-    echo "S1 $(rel "$f"): 測試檔缺 mock_provider \"aws\"" >&2
-    fail_static=1
-  fi
+  providers="$(required_providers_of "${f%/tests/*}")"
+  [ -n "$providers" ] || providers=aws
+  for p in $providers; do
+    if ! grep -Eq "^[[:space:]]*mock_provider[[:space:]]+\"${p}\"" "$f"; then
+      echo "S1 $(rel "$f"): 測試檔缺 mock_provider \"${p}\"（required_providers 有 ${p}）" >&2
+      fail_static=1
+    fi
+  done
 done
 
 for f in ${files_tf[@]+"${files_tf[@]}"}; do
@@ -190,11 +215,13 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
   esac
   case "$r" in
     modules/* | templates/*)
-      # S4: IAM only in iam-role (all types) and iam-role-policy (aws_iam_role_policy only)
+      # S4: IAM only in iam-role (all types), iam-role-policy (aws_iam_role_policy only)
+      # and iam-oidc-provider (aws_iam_openid_connect_provider only)
       case "$r" in
         modules/iam-role/*) ;;
         modules/iam-role-policy/*) scan_pattern S4 'modules/iam-role-policy 只允許 aws_iam_role_policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_role_policy"' ;;
-        *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role 與 modules/iam-role-policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
+        modules/iam-oidc-provider/*) scan_pattern S4 'modules/iam-oidc-provider 只允許 aws_iam_openid_connect_provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_openid_connect_provider"' ;;
+        *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role、modules/iam-role-policy 與 modules/iam-oidc-provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
       esac
       # S4: security groups and their rules only in security-group and vpc-interface-endpoints
       case "$r" in
@@ -318,6 +345,42 @@ for root in ${tf_stack_roots[@]+"${tf_stack_roots[@]}"}; do
     fi
   done < <(find "${repo_root}/${tpl}" -name '*.sh' -not -path '*/.terraform*' | sort)
 done
+
+# Local Helm charts shipped inside modules (modules/<name>/charts/<chart>): helm lint and helm template when helm is installed.
+charts=()
+for r in ${scan_roots[@]+"${scan_roots[@]}"}; do
+  while IFS= read -r f; do charts+=("$(dirname "$f")"); done < <(find "$r" -path '*/charts/*' -name Chart.yaml -not -path '*/.terraform*' | sort)
+done
+if [ "${#charts[@]}" -gt 0 ]; then
+  if command -v helm >/dev/null; then
+    for c in "${charts[@]}"; do
+      if ! helm lint "$c" >/dev/null || ! helm template "$c" >/dev/null; then
+        echo "FAIL $(rel "$c"): helm lint 或 helm template 失敗" >&2
+        fail_static=1
+      fi
+    done
+  else
+    echo "略過 helm lint：未安裝 helm（${#charts[@]} 個本地 chart）" >&2
+  fi
+fi
+
+# Python code shipped inside modules (modules/<name>/lambda/): standard-library unittest when python3 is installed.
+py_dirs=()
+for r in ${scan_roots[@]+"${scan_roots[@]}"}; do
+  while IFS= read -r d; do py_dirs+=("$d"); done < <(find "$r" -path '*/lambda/*' -name 'test_*.py' -not -path '*/.terraform*' -exec dirname {} \; | sort -u)
+done
+if [ "${#py_dirs[@]}" -gt 0 ]; then
+  if command -v python3 >/dev/null; then
+    for d in "${py_dirs[@]}"; do
+      if ! python3 -I -m unittest discover -s "$d" -t "$d" -q; then
+        echo "FAIL $(rel "$d"): python3 unittest 失敗" >&2
+        fail_static=1
+      fi
+    done
+  else
+    echo "略過 python3 unittest：未安裝 python3" >&2
+  fi
+fi
 
 if [ "$fail_static" -ne 0 ]; then
   echo "FAIL fmt 或靜態規則未過，不進入後面的驗證步驟" >&2

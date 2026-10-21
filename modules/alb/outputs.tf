@@ -23,6 +23,19 @@ output "listener_arn" {
   value       = local.has_certificate ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
 }
 
+output "listener_arns" {
+  description = "Listener ARNs by protocol: http is always set, https is null without a certificate."
+  value = {
+    http  = aws_lb_listener.http.arn
+    https = local.has_certificate ? aws_lb_listener.https[0].arn : null
+  }
+}
+
+output "listener_rule_arns" {
+  description = "Listener rule ARNs keyed by the listener_rules key."
+  value       = { for k, r in aws_lb_listener_rule.this : k => r.arn }
+}
+
 output "listener_protocol" {
   description = "HTTPS or HTTP, the protocol of listener_arn."
   value       = local.has_certificate ? "HTTPS" : "HTTP"

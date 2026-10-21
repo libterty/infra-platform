@@ -29,6 +29,12 @@ fix(iam-role): reject allow statements with NotResource
 
 `modules/` 底下不放 `provider`、`backend`、`.terraform.lock.hcl`；module 之間不互相呼叫；不用 `enable_xxx` 開關，資源要不要建由相依的輸入有沒有給決定。
 
+module 用到 aws 以外的 provider（例如 `eks-addons` 的 helm）時：
+
+- 測試檔要為 `required_providers` 裡的每個 provider 宣告 `mock_provider`，`validate.sh` 的 S1 會檢查。只用 helm 的 module 只需要 `mock_provider "helm"`。
+- module 附的本地 Helm chart 放在 `charts/<chart>/`。`validate.sh` 在有 `helm` 時跑 `helm lint` 與 `helm template`；CI 會裝 helm，本機沒裝就印一行提示後略過，所以改 chart 時最好本機也裝。
+- module 附的程式碼（例如 `lb-traffic-breaker/lambda/`）的測試寫成 `test_*.py`，只用標準函式庫；`validate.sh` 在有 `python3` 時跑 unittest。
+
 ## semver：看消費端換版後 plan 會看到什麼
 
 判斷標準是：既有消費端把 `ref` 換成新版、不改自己的程式碼，`terraform plan` 會看到什麼。
@@ -66,7 +72,7 @@ feat(ecs-service): ... 合併到 main
 
 `last-release-sha` 是 release-please 接手前 `main` 的最後一個 commit。現有的 42 個 tag 都是手動打的，而且 2026-10-20 改寫過歷史，tag 所在的 commit 對不到原本的 PR。release-please 依路徑分 commit 時對不上這些 tag，會把已發布的 commit 也算進下一版：沒設這個值時，dry-run 顯示它會一次開 20 個錯的 release PR（例如 `kms-key 0.2.0`）。設了之後，它往回找到這個 commit 就停，只看之後的變更；找得到的 release 仍然照常當成上一版的邊界。依原始碼，這個值留著不影響之後由 release-please 自己發的版本，第一次真的發版後再確認一次。
 
-新增 module 時，`release-please-config.json` 的 `packages` 與 `.release-please-manifest.json` 各加一行，`README.md` 的 module 表也要加。
+新增 module 時，`release-please-config.json` 的 `packages` 加一行並設 `"initial-version": "0.1.0"`，`.release-please-manifest.json` 不要加；`CHANGELOG.md` 只放 `# Changelog` 這一行標題。合併到 `main` 後 release-please 會開這個 module 的第一個 release PR，合併就打出 `<module>-v0.1.0` 並寫好 CHANGELOG。`README.md` 的 module 表也要加。新 module 的第一個 tag 出來後，照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) §3 到 HCP 登記一次。v3 的 8 個 module 是第一批這樣發的；下面兩節手動打 tag 的做法只是當時的紀錄。
 
 tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發下一個 PATCH 版，不要改舊 tag。
 

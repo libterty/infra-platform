@@ -1,0 +1,18 @@
+# The eks-addons module always passes nodeClass and nodePool. The placeholders below only let helm lint and
+# helm template render the chart on its own.
+nodeClass:
+  # IAM role name (not ARN) of the Karpenter node role.
+  role: KarpenterNodeRole-example
+  # Tags that select the subnets and the security groups. Every tag must match.
+  subnetTags:
+    karpenter.sh/discovery: example
+  securityGroupTags:
+    karpenter.sh/discovery: example
+  # Only AL2023 aliases: blockDeviceMappings below uses /dev/xvda.
+  amiAlias: al2023@latest
+  volumeSize: 50Gi
+
+nodePool:
+  cpuLimit: 100
+  capacityTypes:
+    - on-demand

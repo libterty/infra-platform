@@ -1,0 +1,5 @@
+apiVersion: v2
+name: karpenter-defaults
+description: Default Karpenter NodePool and EC2NodeClass for the eks-addons module.
+type: application
+version: 0.1.0

@@ -156,6 +156,29 @@ done
 - in-place 變更：會列出 plan 會看到哪幾個資源、哪個屬性變了。
 - 「會觸發一次部署」：ECS task definition 會產生新 revision。
 
+## 用到 helm provider 的 module
+
+`eks-addons` 只宣告 helm provider，provider 要在呼叫它的 root 設定。它跟 `eks-cluster` 要放在不同的 stack、分兩次 apply：同一次 apply 建叢集又連叢集，kubernetes 與 helm provider 都不支援（見 `eks-addons` 的 README〈為什麼跟 eks-cluster 分成兩個 stack〉）。
+
+```hcl
+provider "helm" {
+  kubernetes = {
+    host                   = local.cluster_endpoint
+    cluster_ca_certificate = base64decode(local.cluster_ca_data)
+
+    exec = {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", local.cluster_name, "--region", local.region]
+    }
+  }
+}
+```
+
+- `host`、`cluster_ca_certificate` 從 `eks-cluster` 的輸出來，經 SSM 傳到這個 stack。
+- 用 `exec` 跑 `aws eks get-token`，跑 apply 的機器要有 aws CLI。不要改用 `aws_eks_cluster_auth` 的 token：它 15 分鐘就過期，apply 久一點就會失敗。也不要 `exec` 與 `token` 一起設。
+- 跑 apply 的 role 要有 `eks-cluster` 的 access entry，否則連得上也沒有權限。
+
 ## 備案：沒有 HCP token 時用 git source
 
 registry 上的版本跟 GitHub 上的 tag 是同一批，內容相同。拿不到 HCP token（例如公開讀者、HCP 暫時抓不到）時，改用 git source：

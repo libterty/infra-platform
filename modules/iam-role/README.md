@@ -1,6 +1,6 @@
 # iam-role
 
-建立一個 IAM role：trust policy 加 inline policy。
+建立一個 IAM role：trust policy、inline policy，以及白名單內的 AWS managed policy。
 
 整個 repo 只有這個 module 與 [`iam-role-policy`](../iam-role-policy/README.md) 可以宣告 `aws_iam_*` 資源（由 `scripts/validate.sh` 的 S4 規則強制檢查）。
 
@@ -30,7 +30,24 @@ module "ecs_execution" {
 }
 ```
 
-完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
+EKS Pod Identity 用的 role（0.3.0 起）：
+
+```hcl
+module "ebs_csi" {
+  source = "git::https://github.com/<org>/<repo>.git//modules/iam-role?ref=iam-role-v0.3.0"
+
+  name = "alpha-dev-ebs-csi"
+
+  trust = {
+    service_principals = ["pods.eks.amazonaws.com"]
+    tag_session        = true
+  }
+
+  managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2"]
+}
+```
+
+完整範例見 [`examples/basic/`](./examples/basic/main.tf) 與 [`examples/pod-identity/`](./examples/pod-identity/main.tf)。
 
 ## 行為
 
@@ -41,10 +58,22 @@ module "ecs_execution" {
 - Allow statement 不可使用 `NotAction`（等於授權「列出的動作以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotAction` 不受限。
 - Allow statement 不可使用 `NotResource`（等於授權「列出的資源以外全部」）；沒寫 `Effect` 視為 Allow。Deny 搭配 `NotResource` 不受限。
 
+- `managed_policy_arns` 內的每個 ARN 建一個 `aws_iam_role_policy_attachment`（0.3.0 起）。
+- `trust.tag_session = true` 時 Action 是 `["sts:AssumeRole", "sts:TagSession"]`；預設 `false`，trust policy 的 JSON 跟 0.2.0 完全一樣。
+- `trust.federated` 有值時（IRSA），statement 改成 `Federated` principal 加 `sts:AssumeRoleWithWebIdentity`，`StringEquals` 條件為 `<issuer>:sub = subject` 與 `<issuer>:aud = sts.amazonaws.com`。`<issuer>` 是 `oidc_provider_arn` 去掉 `arn:aws:iam::<帳號>:oidc-provider/` 前綴的部分。
+
+## 注意
+
+- AWS managed policy 的白名單寫在 `locals.tf`，ARN 路徑還沒在真實環境核對（設計文件 §6），第一次用之前要先核對。
+- 設計文件寫的 `AmazonEKSBlockStoragePolicyV2` 未確認是否真的存在，白名單暫時同時放 `AmazonEKSBlockStoragePolicy` 與 `AmazonEKSBlockStoragePolicyV2`，核對後只留一個。
+- `AmazonEBSCSIDriverPolicyV2` 的 ARN 帶 `service-role/` 路徑；不帶路徑的寫法會被拒絕。
+- IRSA（`federated`）只建議用在 Fargate，因為 Fargate 不支援 Pod Identity；其他 workload 用 Pod Identity（`pods.eks.amazonaws.com` 加 `tag_session`）。兩套並存會讓權限審查要看兩個地方，所以 `subject` 一定要指到單一 service account，不收萬用字元。
+- `federated` 不能跟 `service_principals`、`tag_session`、`source_account`、`source_arn` 同時給；`federated` 的條件由 module 固定產生。
+
 ## 限制
 
-- 不收 AWS managed policy 與 customer managed policy。instance profile 只能用 `instance_profile_name` 建一個，綁在這個 role 上（0.2.0 起）。
-- trust 只收 AWS 服務主體，不收 AWS 帳號、OIDC 或 `*`。
+- 只掛白名單內的 AWS managed policy，不收其他 AWS managed policy 與 customer managed policy。理由：EKS 的 cluster role、node role、Auto Mode、EBS CSI 以 AWS managed policy 為標準，內容由 AWS 更新，改寫成 inline 容易漏權限；白名單以外一律拒絕，避免有人掛 `AdministratorAccess` 之類的 policy。instance profile 只能用 `instance_profile_name` 建一個，綁在這個 role 上（0.2.0 起）。
+- trust 只收 AWS 服務主體與單一 service account 的 OIDC（`federated`），不收 AWS 帳號或 `*`。
 - `source_arn` 只檢查 `arn:` 開頭，不檢查 service、region、帳號是否與服務主體相符；萬用字元要放多寬由呼叫端決定。
 - 不用任何獨佔管理 inline policy 的資源（例如 provider 的 role policies exclusive 類型），因為用了會刪掉 `iam-role-policy` 附加的 policy。
 - 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`；`Resource = "*"` 合不合理由呼叫端的測試負責。
@@ -58,7 +87,8 @@ module "ecs_execution" {
 |---|---|---|---|---|
 | `name` | `string` | 無 | 是 | role 名稱，1–64 字元，限字母、數字與 `+=,.@_-` |
 | `description` | `string` | `null` | 否 | role 說明 |
-| `trust` | `object({ service_principals = set(string), source_account = optional(string), source_arn = optional(string) })` | 無 | 是 | 至少一個 `*.amazonaws.com` 服務主體；`source_account` 為 12 位數字；`source_arn` 以 `arn:` 開頭、可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`），用 `ArnLike` 比對 |
+| `trust` | `object({ service_principals = optional(set(string), []), tag_session = optional(bool, false), source_account = optional(string), source_arn = optional(string), federated = optional(object({ oidc_provider_arn = string, subject = string })) })` | 無 | 是 | `service_principals`（至少一個 `*.amazonaws.com` 服務主體）與 `federated` 二選一；`tag_session` 加 `sts:TagSession`；`federated.subject` 格式為 `system:serviceaccount:<namespace>:<serviceaccount>`，`oidc_provider_arn` 格式為 `arn:aws:iam::<12 位帳號>:oidc-provider/<issuer>`；`source_account` 為 12 位數字；`source_arn` 以 `arn:` 開頭、可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`），用 `ArnLike` 比對 |
+| `managed_policy_arns` | `set(string)` | `[]` | 否 | 要掛的 AWS managed policy ARN，只收 `locals.tf` 白名單內的 |
 | `inline_policies` | `map(string)` | `{}` | 否 | policy 名稱對 policy JSON 字串 |
 | `permissions_boundary` | `string` | `null` | 否 | permissions boundary 的 policy ARN |
 | `instance_profile_name` | `string` | `null` | 否 | 有給就建一個 instance profile 綁這個 role；1–128 字元，限字母、數字與 `_+=,.@-` |
@@ -70,7 +100,7 @@ module "ecs_execution" {
 
 | 名稱 | 型別 | 說明 |
 |---|---|---|
-| `arn` | `string` | role ARN；所有 inline policy 附加之後才有值 |
+| `arn` | `string` | role ARN；所有 inline policy 與 managed policy 附加之後才有值 |
 | `name` | `string` | role 名稱 |
 | `id` | `string` | role ID |
 | `instance_profile_name` | `string` | instance profile 名稱；沒給 `instance_profile_name` 時為 `null` |
