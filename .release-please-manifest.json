@@ -2,7 +2,7 @@
   "modules/agentcore-gateway": "0.1.1",
   "modules/agentcore-memory": "0.1.1",
   "modules/agentcore-runtime": "0.1.1",
-  "modules/alb": "0.3.0",
+  "modules/alb": "0.4.0",
   "modules/bedrock-guardrail": "0.1.1",
   "modules/bedrock-inference-profile": "0.1.1",
   "modules/bedrock-knowledge-base": "0.1.1",
