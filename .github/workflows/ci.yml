@@ -37,6 +37,11 @@ jobs:
         with:
           tflint_version: ${{ env.TFLINT_VERSION }}
 
+      # Lints the local Helm charts shipped in modules (scripts/validate.sh skips them when helm is missing).
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/plugins
