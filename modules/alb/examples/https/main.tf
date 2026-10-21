@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 6.0, < 7.0"
+      version = ">= 6.69, < 7.0"
     }
   }
 }
@@ -23,14 +23,29 @@ module "alb" {
   additional_certificate_arns = ["arn:aws:acm:ap-northeast-1:111111111111:certificate/66666666-7777-8888-9999-000000000000"]
   sns_topic_arns              = ["arn:aws:sns:ap-northeast-1:111111111111:alpha-prod-alarms"]
 
-  access_logs = {
-    bucket = "alpha-prod-alb-logs"
-    prefix = "alb"
-  }
   web_acl_arn = "arn:aws:wafv2:ap-northeast-1:111111111111:regional/webacl/alpha-prod/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
   tags = {
     Project = "alpha"
+  }
+}
+
+# Access logs go through log-delivery; the bucket comes from s3-bucket with log_delivery = ["vended_logs"].
+module "alb_access_logs" {
+  source = "../../../log-delivery"
+
+  name_prefix = "alpha-prod-alb"
+
+  sources = {
+    access = { resource_arn = module.alb.alb_arn, log_type = "ALB_ACCESS_LOGS" }
+  }
+
+  destinations = {
+    archive = { type = "S3", resource_arn = "arn:aws:s3:::alpha-prod-access-logs" }
+  }
+
+  deliveries = {
+    access = { source = "access", destination = "archive" }
   }
 }
 

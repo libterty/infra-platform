@@ -15,14 +15,6 @@ resource "aws_lb" "this" {
   enable_deletion_protection = var.deletion_protection
   drop_invalid_header_fields = true
 
-  dynamic "access_logs" {
-    for_each = var.access_logs == null ? [] : [var.access_logs]
-    content {
-      enabled = true
-      bucket  = access_logs.value.bucket
-      prefix  = access_logs.value.prefix
-    }
-  }
 
   tags = merge(var.tags, { Name = var.name })
 }
