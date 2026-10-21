@@ -24,6 +24,39 @@ module "vpc" {
 
 範例：[`examples/basic/`](./examples/basic/main.tf)（自動切）、[`examples/explicit-cidrs/`](./examples/explicit-cidrs/main.tf)（明確指定 CIDR、`per_az` NAT、gateway endpoint、flow log）。
 
+## subnet tag
+
+每個 tier 可以用 `tags` 加自己的 tag，只套在那個 tier 的 subnet。合併順序是 `var.tags`、tier 的 `tags`、`Name`：同名的 key 以後面為準，`Name` 一律由 module 最後蓋上。
+
+為了避免 `Name` 被悄悄蓋掉而不自知，tier 的 `tags` 不可以有 `Name` key，給了會在 plan 階段被 validation 擋下。沒給 `tags` 時，subnet 的 tag 與 0.1.0 完全相同。
+
+EKS 用的例子：AWS Load Balancer Controller 與 Karpenter 都靠 subnet tag 找 subnet，不看 route table。
+
+```hcl
+subnets = {
+  public = {
+    type        = "public"
+    newbits     = 4
+    netnum_base = 0
+    tags        = { "kubernetes.io/role/elb" = "1" }
+  }
+  app = {
+    type        = "private"
+    newbits     = 4
+    netnum_base = 4
+    tags = {
+      "kubernetes.io/role/internal-elb" = "1"
+      "karpenter.sh/discovery"          = "<cluster 名稱>"
+    }
+  }
+  data = { type = "isolated", newbits = 4, netnum_base = 8 }
+}
+```
+
+- `public` tier 加 `kubernetes.io/role/elb = "1"`：internet-facing 的 LB 會選這些 subnet。
+- `private` tier 加 `kubernetes.io/role/internal-elb = "1"`：internal 的 LB 會選這些 subnet。
+- `karpenter.sh/discovery = <cluster 名稱>`：Karpenter 的 EC2NodeClass 用它挑節點要放的 subnet，放在放節點的 tier。
+
 ## tier 命名合約
 
 範本固定三個 tier 名稱，並寫進 SSM 合約，不可更改：
@@ -75,7 +108,7 @@ IPv6、private NAT、Transit Gateway 與 VPC peering 的路由、NACL、送 Clou
 | `name` | `string` | 無 | 是 | VPC 名稱，2–48 字元小寫英數與連字號；各資源 `Name` tag 的前綴 |
 | `cidr` | `string` | 無 | 是 | VPC 的 IPv4 網路位址，`/16` 到 `/24` |
 | `azs` | `list(string)` | 無 | 是 | 2–4 個不重複的 AZ；順序決定輸出 list 的順序與 single NAT 的位置 |
-| `subnets` | `map(object)` | 無 | 是 | tier 名稱 => `{ type, newbits, netnum_base, cidrs }`；`newbits` + `netnum_base` 與 `cidrs` 二選一 |
+| `subnets` | `map(object)` | 無 | 是 | tier 名稱 => `{ type, newbits, netnum_base, cidrs, tags }`；`newbits` + `netnum_base` 與 `cidrs` 二選一；`tags` 預設 `{}`，只套在該 tier 的 subnet，不可含 `Name` |
 | `nat_mode` | `string` | `"single"` | 否 | `none`、`single`、`per_az` |
 | `gateway_endpoints` | `set(string)` | `["s3"]` | 否 | `s3`、`dynamodb` |
 | `flow_log` | `object` | `null` | 否 | `{ destination_arn, traffic_type }`，S3 only；`traffic_type` 預設 `ALL` |

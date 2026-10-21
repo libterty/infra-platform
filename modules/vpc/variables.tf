@@ -31,12 +31,13 @@ variable "azs" {
 }
 
 variable "subnets" {
-  description = "Tier name => layout. Give either newbits + netnum_base (auto split) or cidrs (az => cidr), never both."
+  description = "Tier name => layout. Give either newbits + netnum_base (auto split) or cidrs (az => cidr), never both. Optional tags are applied to that tier's subnets only."
   type = map(object({
     type        = string # public | private | isolated
     newbits     = optional(number)
     netnum_base = optional(number)
-    cidrs       = optional(map(string)) # keys must cover every AZ
+    cidrs       = optional(map(string))     # keys must cover every AZ
+    tags        = optional(map(string), {}) # extra tags for this tier's subnets only
   }))
   validation {
     condition     = alltrue([for k, v in var.subnets : can(regex("^[a-z][a-z0-9_]*$", k)) && contains(["public", "private", "isolated"], v.type)])
@@ -47,6 +48,10 @@ variable "subnets" {
       v.cidrs != null ? (v.newbits == null && v.netnum_base == null) : (v.newbits != null && v.netnum_base != null)
     ])
     error_message = "Each tier needs exactly one of: newbits + netnum_base, or cidrs."
+  }
+  validation {
+    condition     = alltrue([for v in values(var.subnets) : !contains(keys(v.tags), "Name")])
+    error_message = "Tier tags must not contain the Name key; the module always sets Name on subnets."
   }
   validation {
     condition     = length([for v in values(var.subnets) : v if v.type == "public"]) <= 1

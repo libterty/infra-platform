@@ -19,6 +19,7 @@ locals {
         type = t.type
         az   = az
         cidr = local.subnet_cidr[tier][az]
+        tags = t.tags
       }
     }
   ]...)

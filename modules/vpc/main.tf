@@ -47,7 +47,7 @@ resource "aws_subnet" "this" {
   availability_zone = each.value.az
   cidr_block        = each.value.cidr
 
-  tags = merge(var.tags, { Name = "${var.name}-${each.value.tier}-${each.value.az}" })
+  tags = merge(var.tags, each.value.tags, { Name = "${var.name}-${each.value.tier}-${each.value.az}" })
 }
 
 resource "aws_internet_gateway" "this" {
