@@ -164,7 +164,8 @@
 
 ### A6：共用設定
 
-- `release-please-config.json` 加 7 個 package；`.release-please-manifest.json` 加 7 個 `"0.1.0"`。擴充的 3 個不手改 manifest，交給 release-please。
+- `release-please-config.json` 加 8 個 package，各設 `"initial-version": "0.1.0"`；`.release-please-manifest.json` 不加（D18）。8 個新 module 的 `CHANGELOG.md` 只留 `# Changelog`。擴充的 3 個也不手改 manifest。
+- 用 `release-please release-pr --dry-run --target-branch <A6 branch>` 確認只會開 11 個 release PR。
 - `README.md` 的 module 表加 8 列與「EKS」分類，`共 32 個 module` 改成 40。
 - `docs/guides/releasing-modules.md` 補上 helm provider 的 module 怎麼測；`docs/guides/consuming-modules.md` 補上 `eks-addons` 的 provider 設定。
 
@@ -178,8 +179,8 @@
 每一步做之前先問使用者：
 
 1. 依序合併 stack 的每一層。擴充的 3 個 module 的 `feat` commit 進 `main` 後，release-please 會開 release PR。看過 diff（release PR 不會觸發 CI）再合併，tag 由 release-please 打。
-2. 8 個新 module：先在 PR 裡把 CHANGELOG 的「（未發布）」改成發版日期，合併後打 annotated tag，**一次最多 push 3 個**，分 3 批。
-3. `gh release create <tag> --notes-file modules/<m>/CHANGELOG.md`，不設 latest。
+2. 8 個新 module 的 release PR 也由 release-please 開（D18）。看過 diff 再合併，tag 與 GitHub Release 由 release-please 建。
+3. （原本的手動 tag 與 `gh release create` 步驟取消。）
 4. 照 `docs/guides/hcp-registry-setup.md` §3 登記 8 個新 module，等狀態變成 `setup_complete`。
 5. 確認擴充的 3 個 module 在 HCP 上有新版本。沒有就照〈之後的維護〉補。
 

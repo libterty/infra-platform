@@ -89,6 +89,7 @@ EKS 拆成兩個 module、兩個 stack、兩次 apply：`eks-cluster` 只建 AWS
 | D15 | LB Controller、Karpenter controller、Argo Rollouts 的官方 IAM policy 由 module 當輸出提供，版本跟 chart 綁在一起 | 不用範本的人也拿得到正確版本的 policy；做法見 J14 |
 | D16 | `ec2-instance` 的 `StatusCheckFailed_System` 告警可以不建：`sns_topic_arns` 預設 `[]`，空的就不建告警 | 使用者決定。這是 repo「會建告警的 module，`sns_topic_arns` 必填」慣例（v1 §4.1）的例外，README 要寫明 |
 | D17 | Auto Mode 與 Fargate 可以同時用，不用 validation 擋；README 寫明官方沒有說能長期共存 | 使用者決定，風險由使用者自負（R13） |
+| D18 | 8 個新 module 的 0.1.0 交給 release-please 發：config 設 `initial-version: "0.1.0"`、manifest 不寫、CHANGELOG 只留標題（2026-10-21，A6） | 不用手動打 tag，也避開「tag 打在沒改到 module 目錄的 commit，release-please 找不到上一版」的問題；A6 用 dry-run 確認只會開 11 個 release PR（8 個 0.1.0 加 3 個擴充） |
 
 ### 3.2 planner 判斷、使用者未反對
 
@@ -277,9 +278,9 @@ tests：
 ### 4.4 發版與 HCP 登記
 
 - `release-please-config.json` 的 `packages` 加 8 個新 module；`.release-please-manifest.json` 加 8 個 `"0.1.0"`。
-- 新 module 照 v0.1.1 的先例：manifest 登記 `0.1.0`，第一個 tag 手動打，之後才交給 release-please。打 tag 前先把 CHANGELOG 的「（未發布）」改成日期。
+- 新 module 的 0.1.0 交給 release-please（D18）：config 設 `initial-version`、manifest 不寫，CHANGELOG 只留 `# Changelog`。
 - 擴充的 3 個 module 走 release-please：2026-10-21 起 push 到 `main` 就會跑，`feat(<module>)` 的 commit 合併後會開 release PR。release PR 用 `GITHUB_TOKEN` 開，不會觸發 CI，合併前要人看 diff。
-- 一次最多 push 3 個 tag（GitHub 超過 3 個不發 webhook，HCP 收不到）。8 個新 tag 分 3 批推。
+- release-please 用 API 一個一個建 tag，不受「一次 push 超過 3 個 tag 就不發 webhook」影響；發版後仍要在 HCP 確認每個版本都有出現。
 - 照 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md) §3 登記 8 個新 module，§4 的暫存目錄確認 40 個都抓得到。
 - `README.md` 的 module 表加 8 列，新增「EKS」分類，`共 32 個 module` 改成 40。
 - 打 tag、push、建 Release、HCP 登記之前先問使用者。
