@@ -3,6 +3,7 @@
   "include-component-in-tag": true,
   "bump-minor-pre-major": true,
   "separate-pull-requests": true,
+  "last-release-sha": "86f438df01e5fc71f0f3bb7a734ba6309e3f232e",
   "packages": {
     "modules/agentcore-gateway": { "release-type": "terraform-module", "component": "agentcore-gateway" },
     "modules/agentcore-memory": { "release-type": "terraform-module", "component": "agentcore-memory" },
