@@ -7,14 +7,6 @@ resource "aws_lb" "this" {
   enable_cross_zone_load_balancing = var.cross_zone
   enable_deletion_protection       = var.deletion_protection
 
-  dynamic "access_logs" {
-    for_each = var.access_logs == null ? [] : [var.access_logs]
-    content {
-      enabled = true
-      bucket  = access_logs.value.bucket
-      prefix  = access_logs.value.prefix
-    }
-  }
 
   tags = merge(var.tags, { Name = var.name })
 }
