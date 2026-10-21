@@ -3,7 +3,7 @@ data "aws_caller_identity" "current" {}
 locals {
   trusted_account_ids = setunion([data.aws_caller_identity.current.account_id], var.allowed_account_ids)
 
-  # Also read by the destinations validation in variables.tf.
+  # Also read by the sources and destinations validations in variables.tf and the source account check below.
   destination_arn_patterns = {
     CWL = "^arn:aws[a-z-]*:logs:[a-z0-9-]+:[0-9]{12}:log-group:[^:*]+(:[*])?$"
     S3  = "^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
@@ -21,9 +21,10 @@ resource "aws_cloudwatch_log_delivery_source" "this" {
   tags = merge(var.tags, { Name = "${var.name_prefix}-${each.key}" })
 
   lifecycle {
-    # Variable validation cannot read data sources, so the account check lives here. S3 bucket ARNs carry no account and are skipped.
+    # Variable validation cannot read data sources, so the account check lives here. Only S3 bucket ARNs, which carry
+    # no account, are skipped; the match is explicit so a looser validation regex cannot widen the exemption.
     precondition {
-      condition     = split(":", each.value.resource_arn)[4] == "" || contains(local.trusted_account_ids, split(":", each.value.resource_arn)[4])
+      condition     = can(regex(local.destination_arn_patterns.S3, each.value.resource_arn)) || contains(local.trusted_account_ids, split(":", each.value.resource_arn)[4])
       error_message = "Source ${each.key} is in account ${split(":", each.value.resource_arn)[4]}, which is neither the current account nor listed in allowed_account_ids."
     }
   }

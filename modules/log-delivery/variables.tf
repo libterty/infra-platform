@@ -11,7 +11,7 @@ variable "sources" {
   default     = {}
   description = "Delivery sources keyed by a short name. resource_arn is the ARN of any resource that supports vended log delivery (for example an ALB, an EKS cluster, a CloudFront distribution or an AgentCore Runtime). It must carry an account ID that is the current one or listed in allowed_account_ids; an S3 bucket ARN is the only exception because it carries no account. log_type is the value the service defines, such as ALB_ACCESS_LOGS or S3_SERVER_ACCESS_LOGS."
   validation {
-    condition     = alltrue([for s in values(var.sources) : can(regex("^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$", s.resource_arn)) || can(regex("^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", s.resource_arn))])
+    condition     = alltrue([for s in values(var.sources) : can(regex("^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$", s.resource_arn)) || can(regex(local.destination_arn_patterns.S3, s.resource_arn))])
     error_message = "Each source resource_arn must be an ARN that includes a 12-digit account ID, or an S3 bucket ARN."
   }
   validation {
