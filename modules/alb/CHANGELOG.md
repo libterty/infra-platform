@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/libterty/infra-platform/compare/alb-v0.3.0...alb-v0.4.0) (2026-10-21)
+
+
+### Features
+
+* **alb:** add weighted forward rules, instance targets and stickiness ([5177f59](https://github.com/libterty/infra-platform/commit/5177f59b8c1179590440065fd6480b02fe41338a))
+
 ## 0.3.0（2026-10-20）
 
 修 bug 並新增變數，升 MINOR。tag 在驗收後由人手動打。
