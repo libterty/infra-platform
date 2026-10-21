@@ -1,0 +1,63 @@
+name: Bug 回報
+description: module 或範本的行為不對、validation 擋錯或漏擋、文件跟程式碼對不上
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        不要貼 secret、token、真實帳號 ID、state 或含真實資源 ID 的 plan 輸出，請換成佔位值。
+        安全問題不要開 issue，照 [SECURITY.md](https://github.com/libterty/infra-platform/blob/main/SECURITY.md) 私下回報。
+  - type: input
+    id: module
+    attributes:
+      label: module 與版本
+      description: module 名稱與版本，或範本的檔案路徑
+      placeholder: "ecs-service 0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: terraform-version
+    attributes:
+      label: Terraform 版本
+      description: "`terraform version` 的第一行"
+      placeholder: "1.15.8"
+    validations:
+      required: true
+  - type: input
+    id: aws-provider-version
+    attributes:
+      label: aws provider 版本
+      description: "`terraform version` 或 `.terraform.lock.hcl` 裡的 hashicorp/aws 版本"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: 最小的 module 呼叫方式與輸入值，以及執行了什麼
+      placeholder: |
+        module "api" {
+          source  = "app.terraform.io/<org>/ecs-service/aws"
+          version = "~> 0.2.0"
+          ...
+        }
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 預期結果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 實際結果
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: 輸出
+      description: "`scripts/validate.sh` 或 `terraform plan` 的相關輸出，貼之前先拿掉機密與真實 ID"
+      render: shell

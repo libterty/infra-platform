@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 回報安全問題
+    url: https://github.com/libterty/infra-platform/blob/main/SECURITY.md
+    about: 安全問題不要開公開 issue，照 SECURITY.md 用 Security 分頁私下回報。

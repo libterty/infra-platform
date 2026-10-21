@@ -1,0 +1,44 @@
+name: module 需求
+description: 新增 module，或擴充既有 module
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        不要貼 secret、token、真實帳號 ID 或 state，範例請用佔位值。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 需求類型
+      options:
+        - 新 module
+        - 擴充既有 module
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: 需求
+      description: 要解決什麼問題、哪個專案或範本會用到
+    validations:
+      required: true
+  - type: textarea
+    id: resources
+    attributes:
+      label: 要管的 AWS resource
+      description: 列出 resource 類型，例如 `aws_sqs_queue`、`aws_sqs_queue_policy`
+    validations:
+      required: true
+  - type: textarea
+    id: existing-module
+    attributes:
+      label: 有沒有既有 module 可以擴充
+      description: 對照 README 的 module 表。可以擴充的話寫 module 名稱與缺的輸入；不行的話說明原因
+    validations:
+      required: true
+  - type: textarea
+    id: usage
+    attributes:
+      label: 期望的呼叫方式
+      description: 消費端想怎麼寫 module 呼叫，以及期望的行為
+      render: hcl
