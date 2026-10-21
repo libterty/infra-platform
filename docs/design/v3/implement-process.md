@@ -1,6 +1,6 @@
 # infra-platform v3 實作流程：EC2、EKS、權重分流與斷路器
 
-> 狀態：草案，等 [`design-docs.md`](./design-docs.md) 審過才開始。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：A0–A7 完成（2026-10-21）。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x.y」指 design-docs.md 的章節。
 
 ## 結論
@@ -23,7 +23,7 @@
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
-| 0 | v3 設計文件與實作流程 | 草案，等審閱 | — |
+| 0 | v3 設計文件與實作流程 | 完成：審過後隨 stack 合併 | — |
 | A0 | `validate.sh`：S4-a 允許 `iam-oidc-provider`、S1 改成依 `required_providers` 檢查 mock、清 Kubernetes 與 Helm 的環境變數、有 `helm` 時 lint 本地 chart、有 `python3` 時跑 Lambda 的 unittest | 完成：fixture 8 個情境 RED→GREEN；全量 91 個目錄通過 | `f274f3f` |
 | A1 | 擴充既有 module：`iam-role` 0.3.0、`alb` 0.4.0、`vpc` 0.2.0；`lambda-function` 補測試 | 完成：既有 tests 不改全過；iam-role 67、alb 109、vpc 74、lambda-function 100 個 run 全過 | `8e8458f..0a4e84a` |
 | A2 | 新 module：`ec2-instance`、`ec2-asg` | 完成：ec2-instance 59、ec2-asg 67 個 run 全過；spot 預設與 user_data 規則照實作修正設計 | `cd8198e..bdcab8d` |
@@ -31,7 +31,7 @@
 | A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 完成：21、44、120 個 run 全過；eks-cluster 53 條 validation 突變測試全抓到 | `db57ae8..224499b` |
 | A5 | 新 module：`eks-addons`（helm provider、本地 chart） | 完成：46 個 run 全過；本地 chart 經 helm v4.3.1 lint 與 template；CI 裝 helm | `356f9c2..95c0861` |
 | A6 | 共用設定：release-please config 與 manifest、README module 表與徽章、CHANGELOG、guides | 完成：dry-run 只開 11 個 release PR；全量 110 個目錄通過 | `7bcc9e8` |
-| A7 | （使用者確認後）合併、打 8 個新 module 的 tag、補 GitHub Release、HCP 登記；擴充的 3 個走 release-please | 未開始 | — |
+| A7 | （使用者確認後）合併 stack、合併 11 個 release PR、HCP 登記 8 個新 module | 完成：11 個 tag 與 GitHub Release 都建好；HCP 上 40 個 module 用 manifest 版本 `terraform get` 全抓到，11 個新版內容跟 tag 相同 | `ac27102..47d1d46` |
 
 ## 每個 Phase 的做法與驗收
 
@@ -185,3 +185,12 @@
 5. 確認擴充的 3 個 module 在 HCP 上有新版本。沒有就照〈之後的維護〉補。
 
 驗收：照 `hcp-registry-setup.md` §4 在暫存目錄 `terraform init -backend=false` 抓 40 個 module，版本跟 tag 一致。
+
+結果（2026-10-21）：
+
+- stack 用 `gh stack merge 25 --merge` 一次合進 `main`（`ac27102`），CI 與 Release 都綠。release-please 開了 11 個 release PR，跟 A6 的 dry-run 一致，diff 都只動 manifest 與該 module 的 CHANGELOG。
+- 11 個 release PR 都改 `.release-please-manifest.json`，合併一個之後其他的就衝突，release-please 不會自己重建。做法：一次處理一個，從最新的 `main` 重建那個 PR 的 branch（帶回它的 CHANGELOG、manifest 只改它那一行），force-push 後合併，等 Release run 跑完再做下一個。步驟寫進 `releasing-modules.md`。
+- `vpc` 那次的 Release run 在建完 release 之後查 commit 時遇到 GitHub GraphQL 的暫時錯誤，標成失敗；tag、Release、PR 的 `autorelease: tagged` 都已完成，下一次 run 正常。
+- 合併完沒有再開新的 release PR，`last-release-sha` 沒有讓已發的版本重複提版。
+- 8 個新 module 的 CHANGELOG 結尾多了一行 `## Changelog`：原本只有 `# Changelog` 的檔案，被 release-please 降一級留在新段落後面。這次手動刪掉，`releasing-modules.md` 改成提醒這件事。
+- HCP 用 §3 的 API 登記 8 個新 module，都到 `setup_complete`、各有 `0.1.0`；`iam-role` 0.3.0、`alb` 0.4.0、`vpc` 0.2.0 由 webhook 收到。§4 原本的範例寫死 `~> 0.1.0`，改成讀 manifest 的版本。

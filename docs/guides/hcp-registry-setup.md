@@ -93,7 +93,8 @@ ORG="<org>"
 tmp="$(mktemp -d)"
 for d in modules/*/; do
   m="$(basename "$d")"
-  printf 'module "%s" {\n  source  = "app.terraform.io/%s/%s/aws"\n  version = "~> 0.1.0"\n}\n\n' "${m//-/_}" "$ORG" "$m"
+  v="$(jq -r --arg k "modules/$m" '.[$k]' .release-please-manifest.json)"   # 釘 manifest 上的版本
+  printf 'module "%s" {\n  source  = "app.terraform.io/%s/%s/aws"\n  version = "%s"\n}\n\n' "${m//-/_}" "$ORG" "$m" "$v"
 done >"${tmp}/main.tf"
 env -u AWS_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN \
   AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null \
@@ -106,7 +107,7 @@ diff -r "${tmp}/tag/modules/s3-bucket" "${tmp}/.terraform/modules/s3_bucket" && 
 rm -rf "$tmp"
 ```
 
-`terraform get` 不會檢查 module 的必填變數，所以不必填任何輸入。`jq` 那行印出每個 module 解析到的版本，應該是各自最新的 `0.1.x`。
+`terraform get` 不會檢查 module 的必填變數，所以不必填任何輸入。`jq` 那行印出每個 module 解析到的版本，應該跟 `.release-please-manifest.json` 一致；版本沒發佈到 HCP 的 module 會讓 `terraform get` 直接失敗。
 
 ## 5. 消費端與 CI 的 token
 
