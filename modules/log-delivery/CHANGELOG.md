@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/libterty/infra-platform/compare/log-delivery-v0.1.1...log-delivery-v0.2.0) (2026-10-21)
+
+
+### Features
+
+* **log-delivery:** accept any vended log source and Firehose destinations ([bfb9396](https://github.com/libterty/infra-platform/commit/bfb9396b3c5cb9aaa20e86a0ecd6078737599456))
+
+
+### Bug Fixes
+
+* **log-delivery:** skip the source account check only for S3 bucket ARNs ([0ee4d3e](https://github.com/libterty/infra-platform/commit/0ee4d3e9b30ec4e77eb7c1d7e94e50673187c1f6))
+
 ## 0.1.1（2026-10-16）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
