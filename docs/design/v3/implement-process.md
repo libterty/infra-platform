@@ -26,7 +26,7 @@
 | 0 | v3 設計文件與實作流程 | 草案，等審閱 | — |
 | A0 | `validate.sh`：S4-a 允許 `iam-oidc-provider`、S1 改成依 `required_providers` 檢查 mock、清 Kubernetes 與 Helm 的環境變數、有 `helm` 時 lint 本地 chart、有 `python3` 時跑 Lambda 的 unittest | 完成：fixture 8 個情境 RED→GREEN；全量 91 個目錄通過 | `f274f3f` |
 | A1 | 擴充既有 module：`iam-role` 0.3.0、`alb` 0.4.0、`vpc` 0.2.0；`lambda-function` 補測試 | 完成：既有 tests 不改全過；iam-role 67、alb 109、vpc 74、lambda-function 100 個 run 全過 | `8e8458f..0a4e84a` |
-| A2 | 新 module：`ec2-instance`、`ec2-asg` | 未開始 | — |
+| A2 | 新 module：`ec2-instance`、`ec2-asg` | 完成：ec2-instance 59、ec2-asg 67 個 run 全過；spot 預設與 user_data 規則照實作修正設計 | `cd8198e..bdcab8d` |
 | A3 | 新 module：`nlb`、`lb-traffic-breaker`（含 Lambda 程式碼與 Dockerfile） | 未開始 | — |
 | A4 | 新 module：`iam-oidc-provider`、`eks-iam-policies`、`eks-cluster` | 未開始 | — |
 | A5 | 新 module：`eks-addons`（helm provider、本地 chart） | 未開始 | — |
