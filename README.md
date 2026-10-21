@@ -93,6 +93,8 @@ scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 
 commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 寫 module 名稱或 `repo`。一個 commit 只動一個 module 目錄，因為 release-please 靠路徑判斷變更要記進哪個 module 的 CHANGELOG。
 
+參與方式見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)，安全問題照 [`SECURITY.md`](./SECURITY.md) 私下回報，授權是 Apache-2.0（[`LICENSE`](./LICENSE)）。
+
 ## 文件地圖
 
 | 想知道什麼                                                                                           | 去哪裡                                                                                                                                                                                                                                                        |
