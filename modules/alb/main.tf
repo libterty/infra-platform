@@ -101,7 +101,7 @@ resource "aws_lb_target_group" "this" {
   port                 = each.value.port
   protocol             = "HTTP"
   protocol_version     = each.value.protocol_version
-  target_type          = "ip"
+  target_type          = each.value.target_type
   vpc_id               = var.vpc_id
   deregistration_delay = tostring(each.value.deregistration_delay)
 
@@ -116,6 +116,15 @@ resource "aws_lb_target_group" "this" {
     unhealthy_threshold = each.value.health_check.unhealthy_threshold
   }
 
+  dynamic "stickiness" {
+    for_each = each.value.stickiness == null ? [] : [each.value.stickiness]
+    content {
+      type            = "lb_cookie"
+      enabled         = true
+      cookie_duration = stickiness.value.duration
+    }
+  }
+
   tags = merge(var.tags, { Name = "${var.name}-${each.key}" })
 }
 
@@ -126,8 +135,31 @@ resource "aws_lb_listener_rule" "this" {
   priority     = each.value.priority
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this[each.value.target_group].arn
+    type = "forward"
+    # Without forward the rule keeps the single target group action of 0.3.0.
+    target_group_arn = each.value.forward == null ? aws_lb_target_group.this[each.value.target_group].arn : null
+
+    dynamic "forward" {
+      for_each = each.value.forward == null ? [] : [each.value.forward]
+      content {
+        dynamic "target_group" {
+          for_each = forward.value.targets
+          content {
+            arn    = target_group.value.target_group != null ? aws_lb_target_group.this[target_group.value.target_group].arn : target_group.value.target_group_arn
+            weight = target_group.value.weight
+          }
+        }
+
+        # The provider requires duration inside stickiness, so no duration means no block (stickiness stays off).
+        dynamic "stickiness" {
+          for_each = forward.value.stickiness_duration == null ? [] : [forward.value.stickiness_duration]
+          content {
+            enabled  = true
+            duration = stickiness.value
+          }
+        }
+      }
+    }
   }
 
   dynamic "condition" {

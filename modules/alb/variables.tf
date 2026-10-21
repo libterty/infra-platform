@@ -116,6 +116,10 @@ variable "target_groups" {
     port                 = number
     protocol_version     = optional(string, "HTTP1")
     deregistration_delay = optional(number, 300)
+    target_type          = optional(string, "ip") # ip or instance
+    stickiness = optional(object({                # null disables; lb_cookie
+      duration = number                           # seconds, 1-604800
+    }))
     health_check = optional(object({
       path                = optional(string, "/health")
       matcher             = optional(string, "200")
@@ -126,26 +130,113 @@ variable "target_groups" {
     }), {})
   }))
   default     = {}
-  description = "Key => IP target group named <name>-<key>. Changing a port replaces the target group, which fails while a rule still uses it; add a new key and move the rule instead."
+  description = "Key => HTTP target group named <name>-<key>; target_type is ip (default) or instance. stickiness (lb_cookie) is off when null. Changing a port replaces the target group, which fails while a rule still uses it; add a new key and move the rule instead."
   validation {
     condition     = alltrue([for k in keys(var.target_groups) : can(regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$", "${var.name}-${k}"))])
     error_message = "<name>-<key> must be 1-32 letters, digits or hyphens, not starting or ending with a hyphen."
+  }
+  validation {
+    condition     = alltrue([for t in values(var.target_groups) : contains(["ip", "instance"], t.target_type)])
+    error_message = "target_type must be ip or instance."
+  }
+  validation {
+    condition     = alltrue([for t in values(var.target_groups) : t.stickiness == null ? true : t.stickiness.duration >= 1 && t.stickiness.duration <= 604800])
+    error_message = "stickiness.duration must be 1-604800 seconds."
   }
 }
 
 variable "listener_rules" {
   type = map(object({
-    priority              = number
-    target_group          = string
+    priority     = number
+    target_group = optional(string) # key of target_groups; exactly one of target_group and forward
+    forward = optional(object({
+      targets = map(object({
+        target_group     = optional(string) # key of target_groups
+        target_group_arn = optional(string) # external target group; exactly one of the two
+        weight           = number
+      }))
+      stickiness_duration = optional(number) # seconds; required when a target_groups entry used here has stickiness
+    }))
     path_patterns         = optional(list(string), [])
     host_headers          = optional(list(string), [])
     require_origin_verify = optional(bool, false)
   }))
   default     = {}
-  description = "Key => forward rule on the HTTPS listener (the HTTP listener when there is no certificate). Needs at least one path pattern or host header. require_origin_verify = true (opt-in) adds the origin verify header condition and needs origin_verify_header_name."
+  description = "Key => forward rule on the HTTPS listener (the HTTP listener when there is no certificate). Give either target_group (single target group) or forward (weighted targets, 1-5, weight 0-999, at least one above 0). Needs at least one path pattern or host header. require_origin_verify = true (opt-in) adds the origin verify header condition and needs origin_verify_header_name."
   validation {
-    condition     = alltrue([for r in values(var.listener_rules) : contains(keys(var.target_groups), r.target_group)])
+    condition     = alltrue([for r in values(var.listener_rules) : (r.target_group != null) != (r.forward != null)])
+    error_message = "Every rule needs exactly one of target_group and forward."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) :
+      r.target_group == null ? true : contains(keys(var.target_groups), r.target_group)
+    ])
     error_message = "Every rule target_group must be a key of target_groups."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : alltrue([
+        for t in values(r.forward.targets) : (t.target_group != null) != (t.target_group_arn != null)
+      ])
+    ])
+    error_message = "Every forward target needs exactly one of target_group and target_group_arn."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : alltrue([
+        for t in values(r.forward.targets) : t.target_group == null ? true : contains(keys(var.target_groups), t.target_group)
+      ])
+    ])
+    error_message = "Every forward target target_group must be a key of target_groups."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : alltrue([
+        for t in values(r.forward.targets) :
+        t.target_group_arn == null ? true : can(regex("^arn:aws[a-z-]*:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:targetgroup/[A-Za-z0-9-]+/[a-f0-9]+$", t.target_group_arn))
+      ])
+    ])
+    error_message = "target_group_arn must be an ELB target group ARN (arn:aws:elasticloadbalancing:<region>:<account>:targetgroup/<name>/<id>)."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : length(r.forward.targets) >= 1 && length(r.forward.targets) <= 5
+    ])
+    error_message = "A forward rule needs 1-5 targets (ALB limit)."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : alltrue([
+        for t in values(r.forward.targets) : t.weight >= 0 && t.weight <= 999
+      ])
+    ])
+    error_message = "Forward target weight must be 0-999."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : anytrue([
+        for t in values(r.forward.targets) : t.weight > 0
+      ])
+    ])
+    error_message = "At least one forward target must have a weight above 0."
+  }
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) :
+      r.forward == null ? true : r.forward.stickiness_duration == null ? true : r.forward.stickiness_duration >= 1 && r.forward.stickiness_duration <= 604800
+    ])
+    error_message = "forward.stickiness_duration must be 1-604800 seconds."
+  }
+  # Group-level stickiness only makes sense with a duration; ask for it when a local target group is sticky.
+  validation {
+    condition = alltrue([
+      for r in values(var.listener_rules) : r.forward == null ? true : (
+        r.forward.stickiness_duration != null ||
+        !anytrue([for t in values(r.forward.targets) : try(var.target_groups[t.target_group].stickiness != null, false)])
+      )
+    ])
+    error_message = "forward.stickiness_duration is required when a target group used in the rule has stickiness."
   }
   validation {
     condition     = length(distinct([for r in values(var.listener_rules) : r.priority])) == length(var.listener_rules)
