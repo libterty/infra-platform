@@ -34,5 +34,6 @@
   "modules/nlb": "0.1.0",
   "modules/eks-addons": "0.1.0",
   "modules/ec2-asg": "0.1.0",
-  "modules/eks-cluster": "0.1.0"
+  "modules/eks-cluster": "0.1.0",
+  "modules/ec2-instance": "0.1.0"
 }
