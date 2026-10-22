@@ -1,0 +1,25 @@
+{{- range $name, $class := .Values.nodeClasses }}
+{{- /* Defense in depth: the module validates this too. Pod security groups are a NodeClass setting and need Pod subnets. */}}
+{{- if ne (empty $class.podSubnetSelectorTerms) (empty $class.podSecurityGroupSelectorTerms) }}
+{{- fail (printf "nodeClasses.%s: podSubnetSelectorTerms and podSecurityGroupSelectorTerms must be set together" $name) }}
+{{- end }}
+---
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: {{ $name | quote }}
+spec:
+  role: {{ $.Values.nodeRoleName | quote }}
+  subnetSelectorTerms:
+    {{- toYaml $class.subnetSelectorTerms | nindent 4 }}
+  securityGroupSelectorTerms:
+    {{- toYaml $class.securityGroupSelectorTerms | nindent 4 }}
+  {{- if $class.podSubnetSelectorTerms }}
+  podSubnetSelectorTerms:
+    {{- toYaml $class.podSubnetSelectorTerms | nindent 4 }}
+  podSecurityGroupSelectorTerms:
+    {{- toYaml $class.podSecurityGroupSelectorTerms | nindent 4 }}
+  {{- end }}
+  networkPolicy: {{ $class.networkPolicy | quote }}
+  networkPolicyEventLogs: {{ $class.networkPolicyEventLogs | quote }}
+{{- end }}

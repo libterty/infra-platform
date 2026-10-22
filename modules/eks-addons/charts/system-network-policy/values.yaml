@@ -1,0 +1,37 @@
+# The eks-addons module always passes all of these. The placeholders below only let helm lint and helm template
+# render the chart on its own.
+
+# Creates the amazon-vpc-cni ConfigMap in kube-system with enable-network-policy-controller: "true".
+enableNetworkPolicyController: true
+
+# Namespaces to create so that the policies can exist before the controllers are installed. Never kube-system.
+namespaces:
+  - keda
+
+# Map of policy name to its settings. The policy is named system-<key>, selects podSelector (empty selects every Pod in
+# the namespace) and isolates both directions: only the listed rules are allowed.
+# A rule is a list of ipBlock cidrs and/or sameNamespace (every Pod of the namespace), plus the ports.
+policies:
+  keda:
+    namespace: keda
+    podSelector: {}
+    ingress:
+      - cidrs: ["10.10.0.0/28"]
+        sameNamespace: false
+        ports:
+          - { port: 6443, protocol: TCP }
+          - { port: 9443, protocol: TCP }
+      - cidrs: []
+        sameNamespace: true
+        ports:
+          - { port: 9666, protocol: TCP }
+    egress:
+      - cidrs: ["10.10.0.0/28"]
+        sameNamespace: false
+        ports:
+          - { port: 443, protocol: TCP }
+      - cidrs: ["172.20.0.10/32"]
+        sameNamespace: false
+        ports:
+          - { port: 53, protocol: UDP }
+          - { port: 53, protocol: TCP }

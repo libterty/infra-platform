@@ -1,6 +1,6 @@
 # eks-addons
 
-在一個已經建好的 EKS 叢集裡，用 Helm 裝平台元件：AWS Load Balancer Controller、Karpenter（加上預設的 NodePool 與 EC2NodeClass）、Argo Rollouts，以及應用程式用的 namespace。只用 helm provider，不用 kubernetes provider，也不建任何 AWS 資源。
+在一個已經建好的 EKS 叢集裡，用 Helm 裝平台元件：AWS Load Balancer Controller、Karpenter（加上預設的 NodePool 與 EC2NodeClass）、Argo Rollouts、應用程式用的 namespace，以及 0.2.0 起支援 EKS Auto Mode 的 NodeClass／NodePool、NetworkPolicy、KEDA 與 CloudWatch 採集。只用 helm provider，不用 kubernetes provider，也不建任何 AWS 資源。
 
 每個元件的輸入是一個物件，值是 `null`（預設）就不裝，沒有 `install_xxx` 開關。
 
@@ -19,7 +19,7 @@ kubernetes 與 helm provider 的文件都寫明：叢集與叢集裡的資源不
 
 ```hcl
 module "eks_addons" {
-  source = "git::https://github.com/<org>/<repo>.git//modules/eks-addons?ref=eks-addons-v0.1.0"
+  source = "git::https://github.com/<org>/<repo>.git//modules/eks-addons?ref=eks-addons-v0.2.0"
 
   cluster_name = "alpha-dev"
   region       = "ap-northeast-1"
@@ -112,21 +112,129 @@ EC2NodeClass 有幾項固定、沒有輸入可以改：
 
 alias 的格式與 30 字元上限是依 v1.15.0 CRD 的驗證規則寫的 validation；版本字串實際有哪些可以用，沒有在真實環境確認（設計文件 §6）。
 
+## Auto Mode 的 NodeClass 與 NodePool
+
+`auto_mode` 不是 `null` 時，裝本地 chart `auto-mode-nodes`（release 在 `kube-system`），建 `eks.amazonaws.com/v1` 的 NodeClass 與 `karpenter.sh/v1` 的 NodePool。完全不用 Auto Mode 內建的 NodePool，所以 `eks-cluster` 要先建好 node role 的 EC2 access entry。
+
+```hcl
+auto_mode = {
+  node_role_name = "alpha-dev-eks-node" # IAM role 名稱，不是 ARN
+
+  node_classes = {
+    app = {
+      subnet_selector_terms             = [{ tags = { "alpha/tier" = "app" } }]
+      security_group_selector_terms     = [{ id = "sg-0123456789abcdef0" }, { tags = { "alpha/tier" = "node" } }]
+      pod_subnet_selector_terms         = [{ tags = { "alpha/tier" = "app" } }]
+      pod_security_group_selector_terms = [{ id = "sg-0fedcba9876543210" }]
+    }
+    system = {
+      subnet_selector_terms         = [{ tags = { "alpha/tier" = "app" } }]
+      security_group_selector_terms = [{ id = "sg-0123456789abcdef0" }]
+    }
+  }
+
+  node_pools = {
+    app = { node_class = "app", capacity_types = ["on-demand", "spot"], cpu_limit = 200 }
+    system = {
+      node_class = "system"
+      taints     = [{ key = "CriticalAddonsOnly", value = "true", effect = "NoSchedule" }]
+      labels     = { "workload-tier" = "system" }
+    }
+  }
+}
+```
+
+- **selector term**：每個 term 只能是 `{ id = ... }` 或 `{ tags = { ... } }` 其中一種，不能兩個都給。
+- **Pod subnet 與 Pod SG 一起設**：`pod_subnet_selector_terms` 與 `pod_security_group_selector_terms` 要同時有值或同時留空，validation 會擋只設一邊。同一個 NodeClass 的所有 Pod 共用同一組 Pod SG；要讓兩種工作負載用不同的 SG，就開兩個 NodeClass 加兩個 NodePool。chart 裡另外有 `fail` 做第二道防線（只用 `helm template` 時也擋得住）。
+- **`network_policy`** 預設 `DefaultDeny`，`network_policy_event_logs` 預設 `Disabled`。`DefaultDeny` 時沒有 NetworkPolicy 放行的 Pod 完全不通，所以要搭配下一節的 `network_policy`。
+- **名稱**：NodeClass 不能叫 `default`；NodePool 必須指向已存在的 NodeClass。
+- **NodePool 內容**：`requirements` 固定 linux，加上 `architectures`（預設 `["amd64"]`）、`capacity_types`（預設 `["on-demand"]`）與選填的 `instance_categories`（對應 `eks.amazonaws.com/instance-category`，預設不限）；`taints` 的 effect 只接受 `NoSchedule`、`PreferNoSchedule`、`NoExecute`；`limits.cpu` 是 `cpu_limit`（預設 100）。`expireAfter: 336h`、`WhenEmptyOrUnderutilized`、`consolidateAfter: 1m` 固定，沒有輸入可以改。
+- 拿掉 `auto_mode` 或其中一個 pool 會刪掉 NodePool，Auto Mode 會把它的節點收掉，apply 前看 plan。
+- API 版本與欄位依 AWS 文件的 NodeClass 範例（`eks.amazonaws.com/v1`）寫的，沒有對真實叢集 apply 過。
+
+## NetworkPolicy 與 system 的放行規則
+
+`network_policy` 不是 `null` 時裝本地 chart `system-network-policy`，做兩件事：
+
+1. 在 `kube-system` 建 ConfigMap `amazon-vpc-cni`，`enable-network-policy-controller: "true"`，啟用 NetworkPolicy controller。叢集裡已經有同名 ConfigMap 時，Helm 會因為它不屬於這個 release 而失敗，要先處理掉。
+2. 對這個 module 裝的元件各建一個 NetworkPolicy（名稱 `system-<元件>`），`policyTypes` 同時有 Ingress 與 Egress。
+
+```hcl
+network_policy = {
+  service_cidr     = "172.20.0.0/16"                   # eks-cluster 輸出的 service CIDR
+  api_server_cidrs = ["10.10.0.0/28", "10.10.0.16/28"] # 控制平面 ENI 所在 subnet 的 CIDR
+  aws_api_cidrs    = ["10.10.1.0/28", "10.10.1.16/28"] # VPC interface endpoint 所在 subnet 的 CIDR
+}
+```
+
+CIDR 由呼叫端給，module 不猜。`api_server_cidrs` 不接受 `0.0.0.0/0`；`aws_api_cidrs` 只有在沒有 VPC endpoint、走 NAT 的環境才用 `["0.0.0.0/0"]`。
+
+每個元件的規則（port 來自 chart 的 values 與 template：LB Controller 3.6.1、KEDA 2.21.0、amazon-cloudwatch-observability 6.7.0）：
+
+| 元件（namespace） | Ingress | Egress |
+|---|---|---|
+| LB Controller（`kube-system`，只選它自己的 Pod：`app.kubernetes.io/name=aws-load-balancer-controller`） | API server CIDR 到 9443/TCP（webhook，`webhookBindPort` 預設 9443） | 共用規則 |
+| KEDA（`keda`，選整個 namespace） | API server CIDR 到 6443/TCP（metrics API server，`service.portHttpsTarget`）與 9443/TCP（admission webhook，`webhooks.port`）；同 namespace 到 9666/TCP（operator gRPC，`operator.metricsServiceTargetPort`） | 共用規則；同 namespace 到 9666/TCP |
+| CloudWatch 採集（`amazon-cloudwatch`，選整個 namespace） | API server CIDR 到 9443/TCP（operator webhook，`manager.ports.webhookPort`） | 共用規則 |
+
+共用的 egress：
+
+- API server：`api_server_cidrs` 的 443/TCP。
+- DNS：`service_cidr` 的 `.10`（`/32`）的 53/UDP 與 53/TCP。Auto Mode 的 CoreDNS 在每台 node 本機，位址是 service CIDR 的 `.10`（設計文件 K5）。
+- AWS API：`aws_api_cidrs` 的 443/TCP。
+- Pod Identity agent：`169.254.170.23/32` 的 80/TCP。拿 Pod Identity 的憑證要打這個位址，少了這條，KEDA 與 LB Controller 拿不到 AWS 權限。
+
+幾個取捨：
+
+- **kube-system 為什麼只放 LB Controller 的 Pod**：kube-system 還有這個 module 管不到的 Pod（例如 EKS add-on 的 metrics-server）。用 `podSelector: {}` 的整個 namespace 規則會把它們也隔離起來，所以只選 LB Controller 自己的 Pod。這依賴 chart 的 `app.kubernetes.io/name` label；你改了 chart 的 `nameOverride`，要同步調整。其他放在 kube-system 的元件（Karpenter、Argo Rollouts）不在範圍內，`DefaultDeny` 下要自己加規則。
+- **KEDA 與 CloudWatch 的 namespace 由 `system-network-policy` 建**：policy 要先於 controller 存在，namespace 就得更早建好。controller 的 release 仍然帶 `create_namespace = true`，預期 Helm 在 namespace 已存在時不會失敗（沒有對真實叢集確認）。
+- **metrics 的 port 沒有開**：KEDA 的 8080（Prometheus）與 8081（health）沒有來源要放行。kubelet 的探測是 node 本機的流量，預期不被擋（沒有實測，設計文件 §11 第 4 點）。之後加 Prometheus 時，另外寫一個 NetworkPolicy 放行它；NetworkPolicy 是疊加的。
+- **CloudWatch agent 與 Fluent Bit 不受 NetworkPolicy 管**：chart 裡兩個 DaemonSet 都是 `hostNetwork: true`，所以這個 namespace 的 policy 實際上管的是 operator。
+- **都沒有在真實叢集驗證**：Pod Identity agent 與 DNS 位址在 NetworkPolicy 下會不會被正確比對（service IP 與 DNAT 之後的位址）、探測流量，列為整合驗證（設計文件 §11 第 4 點）。
+
+## KEDA
+
+`keda` 裝 `kedacore/keda`（預設 `2.21.0`，namespace `keda`，operator service account `keda-operator`）。`service_account` 傳給 chart 的 `serviceAccount.operator.name`；`eks-cluster` 的 Pod Identity association 要建在這個 namespace 與 service account 上，KEDA 才能用 `aws-cloudwatch` scaler 讀 CloudWatch 指標。`values` 併進 chart values，`system_placement` 與 service account 優先。
+
+## CloudWatch 採集
+
+`cloudwatch_observability` 裝 `amazon-cloudwatch-observability`（預設 chart `6.7.0`，namespace `amazon-cloudwatch`）：
+
+- Container Insights（enhanced observability）固定開（`containerInsights.enabled=true`）；`container_logs`（Fluent Bit）預設 `true`；`application_signals` 預設 `false`。
+- `service_account` 預設 `cloudwatch-agent`，傳給 `agent.serviceAccount.name`。這個 chart 的 Fluent Bit DaemonSet 與 CloudWatch agent 共用同一個 service account（template 的 `cloudwatch-agent.serviceAccountName`），所以一個 Pod Identity association 涵蓋兩者。
+- **不設 `system_placement`**：chart 預設 `tolerations: [{ operator: Exists }]`，DaemonSet 才會涵蓋 `app` 與 `system` 兩個 pool 的 node（設計文件 K3）。不要在 `values` 把它改掉。
+- `clusterName` 與 `region` 由 module 傳入。
+
+## system_placement
+
+`system_placement` 把 `node_selector` 與 `tolerations` 寫進 LB Controller 與 KEDA 的 chart values 最上層（`nodeSelector`、`tolerations`），讓它們排到有 taint 的 `system` pool。跟 `values` 裡同名的 key 衝突時以 `system_placement` 為準。其他 release 不受影響。KEDA chart 頂層的 `nodeSelector`／`tolerations` 會套到 operator、metrics server、webhooks 三個 Deployment（元件自己沒設時）。
+
+## 安裝順序
+
+`auto_mode`、`network_policy` 與 controller 之間用 `depends_on` 明確串起來（設計文件 C5），不靠隱含相依：
+
+```
+auto_mode_nodes -> system_network_policy -> load_balancer_controller -> keda
+                                                                     -> cloudwatch_observability
+                                                                     -> karpenter, argo_rollouts
+```
+
+沒有 Auto Mode 的 node 就沒地方跑；`DefaultDeny` 下沒有 policy，controller 連 API server 都連不上、webhook 也進不來。元件為 `null` 時對應的資源是空的，不影響其他元件。
+
+`terraform test` 看不到 `depends_on`，所以用 [`tests/check-ordering.sh`](./tests/check-ordering.sh) 讀 `terraform graph` 檢查。`terraform graph` 會做 transitive reduction（`keda -> auto_mode_nodes` 這種可以由別的邊推出來的邊不會出現），所以腳本檢查的是可達性，缺任何一條都會印 `FAIL` 並回傳非零。腳本只需要 `init -backend=false`，不碰 AWS 與叢集；目前沒有接進 `scripts/validate.sh`。
+
 ## Auto Mode 與自裝 LB Controller 並存
 
-EKS Auto Mode 內建 ALB 與 NLB 的處理，自己再裝 AWS Load Balancer Controller 就是兩個 controller 並存。兩者要用 IngressClass 分開，每個 Ingress 明確指定 `ingressClassName`：
+EKS Auto Mode 內建 ALB 與 NLB 的處理，自己再裝 AWS Load Balancer Controller 就是兩個 controller 並存。`auto_mode` 有值時，module 把 LB Controller 兩個會跟 Auto Mode 搶工作的設定固定住：
 
-- LB Controller 的 chart 預設建一個叫 `alb` 的 IngressClass（`ingressClass: alb`、`createIngressClassResource: true`，v3.6.0 的 `values.yaml` 確認過）。Auto Mode 的 IngressClass 也可能取名 `alb`，名稱衝突時請把其中一個改掉，例如：
+- `enableServiceMutatorWebhook = false`：不讓 LB Controller 把所有新的 `type: LoadBalancer` Service 預設接走。
+- `createIngressClassResource = false`：不建 `alb` IngressClass，避免跟 Auto Mode 的名稱衝突。
 
-  ```hcl
-  load_balancer_controller = {
-    values = { ingressClass = "alb-lbc" }
-  }
-  ```
+這兩個值用 `set` 傳，Helm 的 `set` 優先於 `values`，所以 `load_balancer_controller.values` 裡寫 `true` 也會被蓋掉（測試有涵蓋）。這時 LB Controller 只用來處理 TargetGroupBinding（`elbv2.k8s.aws/v1beta1`）。
 
-- 兩邊都不要設成 default IngressClass，沒有指定 `ingressClassName` 的 Ingress 才不會被誰默默接手。
+`auto_mode = null` 時維持 chart 預設（webhook 與 IngressClass 都開）。這時若仍要跟 Auto Mode 並存，兩個 IngressClass 要用不同名稱，每個 Ingress 明確指定 `ingressClassName`，例如 `values = { ingressClass = "alb-lbc" }`，而且兩邊都不要設成 default IngressClass。
 
-Auto Mode 與自裝 controller 並存實際會不會互相干擾，沒有在真實環境確認。
+預設 chart 版本是 `3.6.1`（0.1.0 是 `3.6.0`）。Auto Mode 與自裝 controller 並存實際會不會互相干擾，沒有在真實環境確認（設計文件 §11 第 2 點）。
 
 ## private cluster 的 chart mirror
 
@@ -137,14 +245,16 @@ chart_repository_overrides = {
   load_balancer_controller = "oci://111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/charts"
   karpenter                = "oci://111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/charts"
   argo_rollouts            = "oci://111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/charts"
+  keda                     = "oci://111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/charts"
+  cloudwatch_observability = "oci://111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/charts"
 }
 ```
 
-- key 只有 `load_balancer_controller`、`karpenter`、`argo_rollouts`；值要是 `https://` 或 `oci://`。
-- mirror 裡的 chart 名稱與版本要跟預設一樣（`aws-load-balancer-controller`、`karpenter`、`argo-rollouts`），module 只換 repository，不換 chart 名稱。
+- key 只有 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值要是 `https://` 或 `oci://`。
+- mirror 裡的 chart 名稱與版本要跟預設一樣（`aws-load-balancer-controller`、`karpenter`、`argo-rollouts`、`keda`、`amazon-cloudwatch-observability`），module 只換 repository，不換 chart 名稱。
 - 抓 ECR 要登入。helm provider 的 `registries` 區塊接受 `url`、`username`、`password`，密碼可以用 `aws_ecr_authorization_token`（12 小時有效）；這個接法沒有實測，列為未確認。
-- chart 的 image 也要在 mirror：用各 chart 自己的 values 改 image repository，從 `values` 傳進去。三個 controller 都一樣。
-- 兩個本地 chart 隨 module 一起，不需要 mirror。
+- chart 的 image 也要在 mirror：用各 chart 自己的 values 改 image repository，從 `values` 傳進去。每個 chart 都一樣。
+- 四個本地 chart（`karpenter-defaults`、`app-namespaces`、`auto-mode-nodes`、`system-network-policy`）隨 module 一起，不需要 mirror。
 
 ## CI 用 Helm 部署應用程式的權限
 
@@ -158,9 +268,9 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 ## 注意
 
 - **用 atomic，不只是 wait。** 所有 release 都開 `atomic = true`、`cleanup_on_fail = true`；controller 的 `timeout` 是 600 秒，本地 chart 是 300 秒。依 helm provider 的說明，`atomic` 在失敗時清掉安裝，而且會自動開 `wait`，所以 apply 要等 Pod 都 ready 才算成功，升級失敗會 rollback。只開 `wait` 的話，失敗的安裝會留下 failed release，要手動處理。代價是失敗時要等到 timeout 才看得到結果。這些值沒有輸入可以調。
-- **安裝順序。** `karpenter-defaults` 依賴 `karpenter`（CRD 要先在）；`karpenter` 與 `argo_rollouts` 依賴 LB Controller，因為 LB Controller 註冊了 Service 的 mutating webhook，它沒 ready 時其他 chart 建 Service 可能失敗（這是依 webhook 的運作方式推的，沒有實測）。
+- **安裝順序。** 見上面〈安裝順序〉一節。另外 `karpenter-defaults` 依賴 `karpenter`（CRD 要先在）；`karpenter` 與 `argo_rollouts` 依賴 LB Controller，因為 LB Controller 註冊了 Service 的 mutating webhook，它沒 ready 時其他 chart 建 Service 可能失敗（這是依 webhook 的運作方式推的，沒有實測）。
 - **`values` 與內建欄位的優先順序。** `load_balancer_controller.values` 與 `argo_rollouts.values` 用 YAML 傳給 chart。module 另外用 `set` 傳 `clusterName`、`region`、`vpcId`、`serviceAccount.name`、`replicaCount`（LB Controller）與 `settings.clusterName`、`settings.interruptionQueue`、`serviceAccount.name`（Karpenter）。Helm 的 `set` 優先於 values，所以 `values` 裡同名的 key 會被蓋掉。Karpenter 沒有 `values` 輸入，Argo Rollouts 沒有 `set`。
-- **chart 版本是精確版本。** `chart_version` 只接受 `3.6.0` 這種格式（可以帶 `-rc.1`），不接受 `v3.6.0`、`latest`、版本範圍。預設值（LB Controller `3.6.0`、Karpenter `1.15.0`、Argo Rollouts `2.43.8`）跟 `eks-iam-policies` 的 policy 版本綁在一起，改 chart 版本要確認 policy 還對得上。
+- **chart 版本是精確版本。** `chart_version` 只接受 `3.6.0` 這種格式（可以帶 `-rc.1`），不接受 `v3.6.0`、`latest`、版本範圍。預設值（LB Controller `3.6.1`、Karpenter `1.15.0`、Argo Rollouts `2.43.8`）跟 `eks-iam-policies` 的 policy 版本綁在一起，改 chart 版本要確認 policy 還對得上。
 - **Karpenter chart 1.15.0 存在於 `public.ecr.aws/karpenter/karpenter`。** 2026-10-21 用匿名的 public ECR registry API 查過 manifest（HTTP 200）。`v1.15.0` tag 裡的 `charts/karpenter/Chart.yaml` 寫 `1.14.1`，是官方發佈時才改版號，不影響。
 - **本地 chart 改了要升版號。** module 把 `Chart.yaml` 的 `version` 傳給 release 的 `version`，改 chart 內容時同步升版號，release 才會被判定要更新。
 - **namespace 拿掉就是整個刪掉。** `app_namespaces` 拿掉一個 key，或整個 release 被移除，那個 namespace 與裡面所有東西都會被刪。同理拿掉 `default_node_pool` 會刪 NodePool，Karpenter 會把它的節點收掉。apply 前看 plan。
@@ -188,15 +298,20 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 | `cluster_name` | `string` | 無 | 是 | EKS 叢集名稱 |
 | `region` | `string` | 無 | 是 | 叢集所在 region，傳給 LB Controller |
 | `vpc_id` | `string` | 無 | 是 | 叢集的 VPC ID，傳給 LB Controller（hop limit 1 時它讀不到 IMDS） |
-| `load_balancer_controller` | `object({ chart_version, service_account, replica_count, values })` | `null` | 否 | 預設 `3.6.0`、`aws-load-balancer-controller`、`2`、`{}`；namespace 固定 `kube-system`；`null` 不裝 |
+| `load_balancer_controller` | `object({ chart_version, service_account, replica_count, values })` | `null` | 否 | 預設 `3.6.1`、`aws-load-balancer-controller`、`2`、`{}`；namespace 固定 `kube-system`；`null` 不裝 |
 | `karpenter` | `object({ chart_version, namespace, service_account, interruption_queue_name, values, default_node_class, default_node_pool })` | `null` | 否 | 預設 `1.15.0`、`kube-system`、`karpenter`；`interruption_queue_name` 必填；`null` 不裝 |
 | `karpenter.default_node_class` | `object({ node_role_name, subnet_discovery_tag, security_group_discovery_tag, ami_alias })` | `null` | 否 | `node_role_name` 是 IAM role 名稱；兩個 tag 是 `map(string)`（至少一個）；`ami_alias` 預設 `al2023@latest` |
 | `karpenter.default_node_pool` | `object({ cpu_limit, capacity_types })` | `null` | 否 | `cpu_limit` 預設 `100`（要大於 0）；`capacity_types` 預設 `["on-demand"]`，只接受 `on-demand`、`spot`；與 `default_node_class` 都有值才安裝 `karpenter-defaults` |
+| `auto_mode` | `object({ node_role_name, node_classes, node_pools })` | `null` | 否 | NodeClass／NodePool（local chart `auto-mode-nodes`）；`node_classes` 的欄位：`subnet_selector_terms`、`security_group_selector_terms`、`pod_subnet_selector_terms`、`pod_security_group_selector_terms`（兩個 pod 欄位要一起設）、`network_policy`（預設 `DefaultDeny`）、`network_policy_event_logs`（預設 `Disabled`）；`node_pools` 的欄位：`node_class`、`taints`、`labels`、`capacity_types`、`instance_categories`、`architectures`、`cpu_limit`；有值時 LB Controller 的 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false` |
+| `network_policy` | `object({ service_cidr, api_server_cidrs, aws_api_cidrs })` | `null` | 否 | 啟用 NetworkPolicy controller 並建 system 的 NetworkPolicy（local chart `system-network-policy`）；三個欄位都必填 |
+| `system_placement` | `object({ node_selector, tolerations })` | `null` | 否 | 套到 LB Controller 與 KEDA；`node_selector` 預設 `{}`，`tolerations` 預設 `[]` |
+| `keda` | `object({ chart_version, namespace, service_account, values })` | `null` | 否 | 預設 `2.21.0`、`keda`、`keda-operator`、`{}`；`null` 不裝 |
+| `cloudwatch_observability` | `object({ chart_version, namespace, service_account, container_logs, application_signals, values })` | `null` | 否 | 預設 `6.7.0`、`amazon-cloudwatch`、`cloudwatch-agent`、`true`、`false`、`{}`；`null` 不裝 |
 | `argo_rollouts` | `object({ chart_version, namespace, values })` | `null` | 否 | 預設 `2.43.8`、`argo-rollouts`、`{}`；`null` 不裝 |
 | `app_namespaces` | `map(object({ labels }))` | `{}` | 否 | key 是 namespace 名稱，`labels` 預設 `{}`；空的不裝 |
-| `chart_repository_overrides` | `map(string)` | `{}` | 否 | key 是 `load_balancer_controller`、`karpenter`、`argo_rollouts`；值是 `https://` 或 `oci://` URL |
+| `chart_repository_overrides` | `map(string)` | `{}` | 否 | key 是 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值是 `https://` 或 `oci://` URL |
 
-預設 repository：LB Controller `https://aws.github.io/eks-charts`（chart `aws-load-balancer-controller`）、Karpenter `oci://public.ecr.aws/karpenter`（chart `karpenter`）、Argo Rollouts `https://argoproj.github.io/argo-helm`（chart `argo-rollouts`）。
+預設 repository：LB Controller `https://aws.github.io/eks-charts`（chart `aws-load-balancer-controller`）、Karpenter `oci://public.ecr.aws/karpenter`（chart `karpenter`）、Argo Rollouts `https://argoproj.github.io/argo-helm`（chart `argo-rollouts`）、KEDA `https://kedacore.github.io/charts`（chart `keda`）、CloudWatch 採集 `https://aws-observability.github.io/helm-charts`（chart `amazon-cloudwatch-observability`）。
 
 ## 輸出
 
@@ -204,7 +319,7 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 
 | 名稱 | 型別 | 說明 |
 |---|---|---|
-| `releases` | `map(object({ name, namespace, version }))` | 每個已安裝 release 的名稱、namespace 與 chart 版本。key 是 `load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`；沒裝的元件不會出現 |
+| `releases` | `map(object({ name, namespace, version }))` | 每個已安裝 release 的名稱、namespace 與 chart 版本。key 是 `load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`；沒裝的元件不會出現 |
 
 ## 測試
 
@@ -212,12 +327,19 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 scripts/validate.sh modules/eks-addons
 ```
 
-`tests/releases.tftest.hcl` 驗證哪些 release 會建與傳給 chart 的值：物件為 `null` 時沒有 release、chart 版本預設值、LB Controller 的 `clusterName`、`region`、`vpcId`、Karpenter 的 `settings.clusterName` 與 `settings.interruptionQueue`、`karpenter-defaults` 的安裝條件、`app_namespaces`、`chart_repository_overrides`、輸出。`tests/validation.tftest.hcl` 每條 validation 正反各測。全部用 `mock_provider "helm"`，不連叢集。
+`tests/releases.tftest.hcl` 驗證哪些 release 會建與傳給 chart 的值：物件為 `null` 時沒有 release、chart 版本預設值、LB Controller 的 `clusterName`、`region`、`vpcId`、Karpenter 的 `settings.clusterName` 與 `settings.interruptionQueue`、`karpenter-defaults` 的安裝條件、`app_namespaces`、`chart_repository_overrides`、輸出。`tests/auto-mode.tftest.hcl`（NodeClass 的 selector 與 Pod 欄位成對、NodePool 的 taint、LB Controller 在 Auto Mode 下被固定的兩個旗標）、`tests/network-policy.tftest.hcl`（ConfigMap 開關、各元件的 port 與 CIDR，含 DNS 53 UDP 與 TCP）、`tests/addons.tftest.hcl`（KEDA 與 CloudWatch 的版本、namespace、service account、Application Signals 關閉、`system_placement`）驗證 0.2.0 的輸入，這些輸入預設全部是關的。`tests/validation.tftest.hcl` 與 `tests/validation-new-inputs.tftest.hcl` 每條 validation 正反各測。`tests/check-ordering.sh` 檢查安裝順序（見〈安裝順序〉）。全部用 `mock_provider "helm"`，不連叢集。
 
-兩個本地 chart 由 `scripts/validate.sh` 在本機有 `helm` 時跑 `helm lint` 與 `helm template`（CI 已安裝 helm）。本機沒有 `helm` 時 `validate.sh` 會印「略過 helm lint」，代表 chart 沒被檢查。
+四個本地 chart 由 `scripts/validate.sh` 在本機有 `helm` 時跑 `helm lint` 與 `helm template`（CI 已安裝 helm）。本機沒有 `helm` 時 `validate.sh` 會印「略過 helm lint」，代表 chart 沒被檢查。
 
 `validate.sh` 不檢查 chart 輸出是否符合 Karpenter 的 CRD。EC2NodeClass 的固定欄位可以手動確認：
 
 ```bash
 helm template x modules/eks-addons/charts/karpenter-defaults | grep -E 'httpTokens|httpPutResponseHopLimit|encrypted'
+```
+
+新的兩個 chart 可以手動確認渲染結果：
+
+```bash
+helm template x modules/eks-addons/charts/auto-mode-nodes
+helm template x modules/eks-addons/charts/system-network-policy
 ```

@@ -1,0 +1,48 @@
+{{- range $name, $pool := .Values.nodePools }}
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ $name | quote }}
+spec:
+  template:
+    {{- with $pool.labels }}
+    metadata:
+      labels:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: {{ $pool.nodeClass | quote }}
+      {{- with $pool.taints }}
+      taints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      requirements:
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            {{- toYaml $pool.architectures | nindent 12 }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            {{- toYaml $pool.capacityTypes | nindent 12 }}
+        {{- if $pool.instanceCategories }}
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values:
+            {{- toYaml $pool.instanceCategories | nindent 12 }}
+        {{- end }}
+      # Fixed: 14 days, inside the 21 day maximum of Auto Mode.
+      expireAfter: 336h
+  limits:
+    cpu: {{ $pool.cpuLimit | int64 | quote }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+{{- end }}

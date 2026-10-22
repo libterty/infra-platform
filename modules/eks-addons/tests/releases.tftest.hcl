@@ -17,7 +17,11 @@ run "all_null_installs_nothing" {
       length(helm_release.karpenter) == 0 &&
       length(helm_release.karpenter_defaults) == 0 &&
       length(helm_release.argo_rollouts) == 0 &&
-      length(helm_release.app_namespaces) == 0
+      length(helm_release.app_namespaces) == 0 &&
+      length(helm_release.auto_mode_nodes) == 0 &&
+      length(helm_release.system_network_policy) == 0 &&
+      length(helm_release.keda) == 0 &&
+      length(helm_release.cloudwatch_observability) == 0
     )
     error_message = "With every component null no release may be planned"
   }
@@ -38,8 +42,8 @@ run "chart_defaults" {
   }
 
   assert {
-    condition     = helm_release.load_balancer_controller[0].version == "3.6.0"
-    error_message = "LB Controller chart default must be 3.6.0"
+    condition     = helm_release.load_balancer_controller[0].version == "3.6.1"
+    error_message = "LB Controller chart default must be 3.6.1"
   }
 
   assert {
@@ -414,7 +418,7 @@ run "outputs_list_installed_releases_only" {
       load_balancer_controller = {
         name      = "aws-load-balancer-controller"
         namespace = "kube-system"
-        version   = "3.6.0"
+        version   = "3.6.1"
       }
       app_namespaces = {
         name      = "app-namespaces"

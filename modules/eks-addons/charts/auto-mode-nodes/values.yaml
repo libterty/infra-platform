@@ -1,0 +1,37 @@
+# The eks-addons module always passes all of these. The placeholders below only let helm lint and helm template
+# render the chart on its own.
+
+# IAM role name (not ARN) of the node role. Shared by every node class.
+nodeRoleName: example-eks-node
+
+# Map of NodeClass name to its settings. A NodeClass must not be named "default".
+# A selector term is { id: ... } or { tags: { ... } }.
+# podSubnetSelectorTerms and podSecurityGroupSelectorTerms must both be set or both be empty.
+nodeClasses:
+  app:
+    subnetSelectorTerms:
+      - tags:
+          tier: app
+    securityGroupSelectorTerms:
+      - id: sg-0123456789abcdef0
+    podSubnetSelectorTerms:
+      - tags:
+          tier: app
+    podSecurityGroupSelectorTerms:
+      - id: sg-0fedcba9876543210
+    networkPolicy: DefaultDeny
+    networkPolicyEventLogs: Disabled
+
+# Map of NodePool name to its settings.
+nodePools:
+  app:
+    nodeClass: app
+    taints: []
+    labels: {}
+    capacityTypes:
+      - on-demand
+    # Empty means no constraint on the instance category.
+    instanceCategories: []
+    architectures:
+      - amd64
+    cpuLimit: 100

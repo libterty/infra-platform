@@ -1,0 +1,62 @@
+{{- range $key, $p := .Values.policies }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "system-%s" ($key | replace "_" "-") | quote }}
+  namespace: {{ $p.namespace | quote }}
+spec:
+  {{- if $p.podSelector }}
+  podSelector:
+    matchLabels:
+      {{- toYaml $p.podSelector | nindent 6 }}
+  {{- else }}
+  podSelector: {}
+  {{- end }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- with $p.ingress }}
+  ingress:
+    {{- range . }}
+    {{- /* A rule without peers would allow every source: refuse to render it. */}}
+    {{- if not (or .cidrs .sameNamespace) }}
+    {{- fail (printf "policies.%s: an ingress rule needs cidrs or sameNamespace" $key) }}
+    {{- end }}
+    - from:
+        {{- range .cidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+        {{- if .sameNamespace }}
+        - podSelector: {}
+        {{- end }}
+      ports:
+        {{- range .ports }}
+        - protocol: {{ .protocol | quote }}
+          port: {{ .port }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with $p.egress }}
+  egress:
+    {{- range . }}
+    {{- if not (or .cidrs .sameNamespace) }}
+    {{- fail (printf "policies.%s: an egress rule needs cidrs or sameNamespace" $key) }}
+    {{- end }}
+    - to:
+        {{- range .cidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+        {{- if .sameNamespace }}
+        - podSelector: {}
+        {{- end }}
+      ports:
+        {{- range .ports }}
+        - protocol: {{ .protocol | quote }}
+          port: {{ .port }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
