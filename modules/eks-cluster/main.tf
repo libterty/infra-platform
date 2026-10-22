@@ -86,5 +86,16 @@ resource "aws_eks_cluster" "this" {
       condition     = length(var.managed_node_groups) > 0 || length(var.fargate_profiles) > 0 || local.auto_mode || var.karpenter != null
       error_message = "Pick at least one node mode: managed_node_groups, fargate_profiles, auto_mode or karpenter."
     }
+
+    # Auto Mode without built-in node pools has no node role on the cluster; the nodes of the caller's own NodePools
+    # only join through an EC2 access entry with AmazonEKSAutoNodePolicy (design C1-4). A precondition for the same
+    # reason as above: it spans two variables.
+    precondition {
+      condition = !local.auto_mode || length(var.auto_mode.node_pools) > 0 || anytrue([
+        for e in values(var.access_entries) :
+        e.type == "EC2" && anytrue([for p in values(e.policies) : p.policy == "AmazonEKSAutoNodePolicy"])
+      ])
+      error_message = "auto_mode with node_pools = [] needs an access_entries entry of type EC2 holding AmazonEKSAutoNodePolicy, otherwise Auto Mode nodes cannot join."
+    }
   }
 }
