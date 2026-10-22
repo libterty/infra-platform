@@ -9,8 +9,8 @@ override_data {
 }
 
 override_data {
-  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_name"]
-  values = { insecure_value = "alpha-dev-alb-logs-111111111111" }
+  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_arn"]
+  values = { insecure_value = "arn:aws:s3:::alpha-dev-alb-logs-111111111111" }
 }
 
 override_data {

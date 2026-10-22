@@ -9,8 +9,8 @@ override_data {
 }
 
 override_data {
-  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_name"]
-  values = { insecure_value = "alpha-dev-alb-logs-111111111111" }
+  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_arn"]
+  values = { insecure_value = "arn:aws:s3:::alpha-dev-alb-logs-111111111111" }
 }
 
 override_data {
@@ -72,7 +72,7 @@ run "example_settings_reach_the_alb" {
   }
 
   assert {
-    condition     = var.access_logs_enabled == (local.alb_wiring.access_logs != null)
+    condition     = length(module.alb_access_logs) == (var.access_logs_enabled ? 1 : 0)
     error_message = "access_logs_enabled must decide whether access logs are configured"
   }
 

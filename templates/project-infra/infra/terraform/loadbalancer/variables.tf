@@ -5,7 +5,7 @@ variable "certificate_arn" {
 }
 
 variable "access_logs_enabled" {
-  description = "Write ALB access logs to the foundation bucket. The bucket exists in every environment; this only decides whether it is used."
+  description = "Deliver ALB access logs to the foundation bucket through log-delivery. The bucket exists in every environment; this only decides whether it is used."
   type        = bool
   default     = false
 }

@@ -12,8 +12,8 @@ override_data {
 }
 
 override_data {
-  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_name"]
-  values = { insecure_value = "alpha-dev-alb-logs-111111111111" }
+  target = module.in.data.aws_ssm_parameter.this["foundation/alb_log_bucket_arn"]
+  values = { insecure_value = "arn:aws:s3:::alpha-dev-alb-logs-111111111111" }
 }
 
 override_data {
@@ -37,10 +37,10 @@ run "reads_only_listed_keys" {
   assert {
     condition = (
       local.ssm_input_strings == {
-        alarm_topic_arn     = "foundation/alarm_topic_arn"
-        alb_log_bucket_name = "foundation/alb_log_bucket_name"
-        sg_alb_id           = "network/sg_alb_id"
-        alb_https           = "network/alb_https"
+        alarm_topic_arn    = "foundation/alarm_topic_arn"
+        alb_log_bucket_arn = "foundation/alb_log_bucket_arn"
+        sg_alb_id          = "network/sg_alb_id"
+        alb_https          = "network/alb_https"
       } &&
       local.ssm_input_lists == { subnet_ids_public = "network/subnet_ids_public" }
     )
@@ -109,7 +109,7 @@ run "access_logs_off_by_default" {
   command = plan
 
   assert {
-    condition     = local.alb_wiring.access_logs == null
+    condition     = length(module.alb_access_logs) == 0
     error_message = "Access logs must stay off unless access_logs_enabled is set"
   }
 }
@@ -121,9 +121,36 @@ run "access_logs_use_the_foundation_bucket" {
     access_logs_enabled = true
   }
 
+  override_module {
+    target = module.alb
+    outputs = {
+      alb_arn           = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/alpha-dev-alb/0123456789abcdef"
+      alb_arn_suffix    = "app/alpha-dev-alb/0123456789abcdef"
+      alb_dns_name      = "alpha-dev-alb-123.ap-northeast-1.elb.amazonaws.com"
+      alb_zone_id       = "Z14GRHDCWA56QT"
+      listener_arn      = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:listener/app/alpha-dev-alb/0123456789abcdef/fedcba9876543210"
+      listener_protocol = "HTTP"
+    }
+  }
+
+  # log-delivery checks that the ALB is in the current account.
+  override_data {
+    target = module.alb_access_logs[0].data.aws_caller_identity.current
+    values = { account_id = "111111111111" }
+  }
+
   assert {
-    condition     = local.alb_wiring.access_logs == { bucket = "alpha-dev-alb-logs-111111111111", prefix = "alpha-dev" }
-    error_message = "Access logs must go to the bucket name published by foundation"
+    condition     = length(module.alb_access_logs) == 1
+    error_message = "access_logs_enabled must create one log-delivery"
+  }
+
+  assert {
+    condition = local.alb_access_logs == {
+      sources      = { access = { resource_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/alpha-dev-alb/0123456789abcdef", log_type = "ALB_ACCESS_LOGS" } }
+      destinations = { bucket = { type = "S3", resource_arn = "arn:aws:s3:::alpha-dev-alb-logs-111111111111" } }
+      deliveries   = { access = { source = "access", destination = "bucket" } }
+    }
+    error_message = "ALB access logs must be delivered to the bucket ARN published by foundation"
   }
 }
 
