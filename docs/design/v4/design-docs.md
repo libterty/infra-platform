@@ -32,7 +32,14 @@ example3 用 EKS Auto Mode 跑 api 與 worker，其他部分沿用 example2：
 9. **`eks-addons` 0.1.0 只有 Karpenter 用的預設 NodePool**（`modules/eks-addons/charts/karpenter-defaults`），沒有 Auto Mode 的 NodeClass（`eks.amazonaws.com/v1`）與 NodePool。
 10. **repo 目前的封裝與 vendoring 策略是「一個 module 一個獨立單位」**：HCP 依 `modules/<name>` 目錄各自發佈，`scripts/vendor-modules.sh` 一次複製一個 module，repo 裡沒有 module 引用另一個 module。Terraform 本身支援 package 內的 module 引用，但要用的話這兩條路徑都得重新設計，所以 `eks-workload-alarms` 直接建資源（W1）。
 11. **Container Insights（enhanced observability）的 EKS 指標**：Deployment 的副本數是 `replicas_desired`、`replicas_ready`（維度 `ClusterName` 或 `PodName`、`Namespace`、`ClusterName`）；pod 層級有 `pod_status_pending`、`pod_container_status_waiting_reason_crash_loop_back_off`、`pod_container_status_terminated_reason_oom_killed`、`pod_number_of_container_restarts` 等，namespace 是 `ContainerInsights`。
-12. **KEDA 的 `aws-cloudwatch` scaler** 需要 `cloudwatch:GetMetricData`，參數有 `metricStat`、`metricStatPeriod`、`metricCollectionTime`、`targetMetricValue`、`minMetricValue`（沒資料時回傳的值，預設 0）等。
+12. **KEDA 的 `aws-cloudwatch` scaler** 需要 `cloudwatch:GetMetricData`，參數有 `metricStat`、`metricStatPeriod`、`metricCollectionTime`、`targetMetricValue`、`minMetricValue`（沒資料時回傳的值，預設 0）等。ScaledObject trigger 的 `metricType` 可以是 `AverageValue`（預設）、`Value`、`Utilization`；`advanced.horizontalPodAutoscalerConfig.behavior` 會原樣交給 HPA。Pod Identity 用 `podIdentity.provider: aws`，不帶 `roleArn`、`identityOwner` 用預設的 `keda` 時，KEDA operator 會用自己 pod 上的 Pod Identity 憑證（KEDA 原始碼確認，文件只寫了 IRSA）。
+
+C1 查證時另外確認（2026-10-22，來源見 §12）：
+
+13. **CloudWatch 採集只有一個 ServiceAccount**：`amazon-cloudwatch-observability` chart 的 Fluent Bit DaemonSet 也用 `cloudwatch-agent` 這個 ServiceAccount，所以 CloudWatch agent 與 Fluent Bit 共用一個 Pod Identity association（namespace `amazon-cloudwatch`）。chart 的 DaemonSet 預設 toleration 是 `operator: Exists`，會排到所有 node。
+14. **Container Insights 指標的語意**：`pod_number_of_container_restarts` 是每次採集的增量，不是累計值；`PodName` 維度在 ReplicaSet 擁有的 pod 上是 Deployment 名稱，`replicas_desired`、`replicas_ready` 的 `PodName` 也是 Deployment 名稱；`Service` 維度只有被 Kubernetes Service 選到的 pod 才有。
+15. **LB Controller 可以跟 Auto Mode 並存**（AWS 文件〈migrate-auto〉），兩邊用 IngressClass 或 `loadBalancerClass` 區分；Auto Mode 的 TargetGroupBinding 是 `eks.amazonaws.com/v1`，跟 LB Controller 的 `elbv2.k8s.aws` 不同 API group。刪除 LB Controller 的 TargetGroupBinding 只會解除註冊 target，不會刪 target group（LB Controller 原始碼）。
+16. **建叢集時 `nodePools`、`nodeRoleArn` 都留空**：provider 6.69 的 schema 兩個都是選填；provider 在新設定把內建 NodePool 清空、role 也沒設時不會強制重建叢集。`EC2` 是獨立的 access entry 類型（跟 `EC2_LINUX` 不同），而且只有 `EC2` 類型能關聯 access policy（CreateAccessEntry API）。
 
 ## 3. 決策
 
@@ -91,9 +98,9 @@ example3 用 EKS Auto Mode 跑 api 與 worker，其他部分沿用 example2：
 
 | module | 版本 | 內容 |
 |---|---|---|
-| `eks-cluster` | 0.1.0 → 0.2.0 | `auto_mode.node_role_arn` 改成選填，`node_pools = []` 時可以留空；`access_entries` 支援 `EC2` 類型並能關聯 `AmazonEKSAutoNodePolicy`（目前只接受 `STANDARD`、`EC2_LINUX` 等，而且只有 `STANDARD` 能關聯 policy，`variables.tf:338-385`）；輸出 cluster SG 與 service CIDR |
-| `eks-addons` | 0.1.0 → 0.2.0 | Auto Mode 的 NodeClass／NodePool（本地 chart，`eks.amazonaws.com/v1`，含 Pod subnet／Pod SG、`networkPolicy`、`networkPolicyEventLogs`）；`amazon-vpc-cni` ConfigMap 啟用 NetworkPolicy controller；`system` 的 NetworkPolicy；KEDA；CloudWatch 採集（W3） |
-| `eks-iam-policies` | 0.1.0 → 0.2.0 | 輸出 KEDA 讀 CloudWatch 指標的 policy（`cloudwatch:GetMetricData`，K7） |
+| `eks-cluster` | 0.1.0 → 0.2.0 | `auto_mode.node_role_arn` 改成選填，只有 `node_pools = []` 時可以留空；`access_entries` 支援 `EC2` 類型，`EC2` entry 只能在叢集範圍關聯 `AmazonEKSAutoNodePolicy`，`AmazonEKSAutoNodePolicy` 也只能給 `EC2` entry（目前只接受 `STANDARD`、`EC2_LINUX` 等，而且只有 `STANDARD` 能關聯 policy，`variables.tf:338-385`）；防呆：`node_pools = []` 時必須有帶 `AmazonEKSAutoNodePolicy` 的 `EC2` entry，否則 plan 擋下（C1-4）；新增 output `service_ipv4_cidr`（cluster SG 已經有 output，`outputs.tf:26`） |
+| `eks-addons` | 0.1.0 → 0.2.0 | Auto Mode 的 NodeClass／NodePool（本地 chart，`eks.amazonaws.com/v1` 與 `karpenter.sh/v1`，含 Pod subnet／Pod SG、`networkPolicy`、`networkPolicyEventLogs`、taint；NodeClass 不能叫 `default`）；`amazon-vpc-cni` ConfigMap 啟用 NetworkPolicy controller；`system` 的 NetworkPolicy，放行範圍精細到 subnet 與 endpoint（C1-7）；KEDA 2.21.0；CloudWatch 採集 6.7.0（W3）；LB Controller 升 3.6.1，Auto Mode 時由 module 強制 `enableServiceMutatorWebhook=false`、`createIngressClassResource=false`（C1-2、C1-3）；安裝順序用 `depends_on` 串起來，並以靜態檢查驗收（C1-5） |
+| `eks-iam-policies` | 0.1.0 → 0.2.0 | 輸出 KEDA 讀 CloudWatch 指標的 policy（`cloudwatch:GetMetricData`，K7）；LB Controller 的官方 policy 換成 3.6.1 版並重新核對（C1-3） |
 | `iam-role` | 0.3.0 → 0.4.0 | managed policy 白名單加入 `CloudWatchAgentServerPolicy`（W2） |
 | `eks-workload-alarms` | 新，0.1.0 | api、worker 的工作負載告警，直接建 `aws_cloudwatch_metric_alarm`，沿用既有告警的寫法與測試慣例，不依賴其他 module（W1、§10） |
 | `vpc` | 0.2.0（已發） | subnet tag，給 NodeClass 的 selector 用；example3 從 0.1.0 升上來 |
@@ -204,20 +211,21 @@ VPC 或可連通的網路要滿足：
 
 | 規則 | metric（namespace `ContainerInsights`，除非註明） | dimensions | 統計與觀察時間 | 條件 | missing data |
 |---|---|---|---|---|---|
-| Ready 長時間低於期望 | metric math：`replicas_desired - replicas_ready` | `ClusterName`、`Namespace`、`PodName`（工作負載名稱，**未確認**） | 兩個都用 `Average`，period 60，10 個 period 中 10 個 | 差距 > 0 | `breaching`（採集停止也該知道） |
-| CrashLoop | `pod_container_status_waiting_reason_crash_loop_back_off` | `ClusterName`、`Namespace`、`Service`（api）；worker 沒有 Service，用 `PodName` 那組 | `Maximum`，period 60，5 個 period 中 3 個 | > 0 | `notBreaching` |
-| 近期重啟 | `pod_number_of_container_restarts` | `PodName`、`Namespace`、`ClusterName` | `Sum`，period 300，1 個 period；如果這個指標是累計值，改用 metric math `DIFF` | 增量 > `restart_threshold` | `notBreaching` |
+| Ready 長時間低於期望 | metric math：`replicas_desired - replicas_ready` | `ClusterName`、`Namespace`、`PodName`（Deployment 名稱，§2 第 14 點） | 兩個都用 `Average`，period 60，10 個 period 中 10 個 | 差距 > 0 | `breaching`（採集停止也該知道） |
+| CrashLoop | `pod_container_status_waiting_reason_crash_loop_back_off` | `ClusterName`、`Namespace`、`PodName`（api、worker 一樣，C1-1） | `Maximum`，period 60，5 個 period 中 3 個 | > 0 | `notBreaching` |
+| 近期重啟 | `pod_number_of_container_restarts`（每次採集的增量，§2 第 14 點） | `PodName`、`Namespace`、`ClusterName` | `Sum`，period 300，1 個 period | > `restart_threshold` | `notBreaching` |
 | 持續 Pending | `pod_status_pending` | 同 CrashLoop | `Maximum`，period 60，10 個 period 中 10 個 | ≥ 1 | `notBreaching` |
 | OOM | `pod_container_status_terminated_reason_oom_killed` | `ContainerName`、`PodName`、`Namespace`、`ClusterName` | `Sum`，period 300，1 個 period | > 0 | `notBreaching` |
 | api：target 5xx、p95 延遲、健康主機數 | `AWS/ApplicationELB` 的 `HTTPCode_Target_5XX_Count`、`TargetResponseTime`、`HealthyHostCount` | `TargetGroup`、`LoadBalancer` | 照 `ecs-service-alarms` 既有的設定 | 照既有 | 照既有 |
 | worker：backlog 與 consumer | — | — | 沿用 `postdeploy/stream-alarms.tf` 的 `backlog_high`、`no_consumers`，不放進新 module | — | — |
 
-`pod_number_of_container_restarts` 是每個 period 的增量還是累計值、`PodName` 維度在 Deployment 上的實際值，C1 對照 AWS 文件或在真實叢集確認後再定。
 
 ## 11. 風險與 mock 驗不到的事
 
 1. **node 與 pod 選同一個 subnet 行不行，以及 IP 預算**（K2）。
-2. **兩個 TargetGroupBinding controller 並存**：Auto Mode 的 load balancing 能力關不掉，LB Controller 又另外裝。要確認兩者不會搶同一個資源、LB Controller 的 webhook 不影響 Auto Mode，以及刪除 TargetGroupBinding 時 LB Controller 只解除註冊、保留 Terraform 的 target group。**未確認**。
+2. **兩個 load balancing controller 並存**：AWS 文件允許並存、API group 不同、刪除 TargetGroupBinding 會保留 target group（§2 第 15 點）。還要在真實叢集確認：關掉 service mutator webhook 與 IngressClass 之後，兩者不會搶同一個 Service 或 Ingress。
+13. **一個 NodePool 都不開時，NodeClass／NodePool 的 CRD 是否一定存在**：AWS 的流程隱含存在，但沒有文件明說。
+14. **`amazon-vpc-cni` ConfigMap 是否已經存在**：Auto Mode 叢集上如果已經有這個 ConfigMap，Helm 建立會失敗。
 3. **`app` SG 要補的規則**：kubelet 探測 pod、pod 查 node 上的 CoreDNS，都是 VPC 內的流量，會經過 Pod SG。少了會導致探測失敗、DNS 失敗。
 4. **`DefaultDeny` 下的系統元件**：bootstrap 的放行規則漏一條，LB Controller 或 KEDA 的 webhook、metrics 就會失效（K5）。
 5. **Pod Identity association 早於 namespace 與 ServiceAccount 存在**（v3 §6 已列）。
@@ -234,7 +242,12 @@ VPC 或可連通的網路要滿足：
 - Create a Node Class for Amazon EKS（含〈Separate subnets and security groups for Pods〉〈Create node class access entry〉）：<https://docs.aws.amazon.com/eks/latest/userguide/create-node-class.html>
 - Use Network Policies with EKS Auto Mode：<https://docs.aws.amazon.com/eks/latest/userguide/auto-net-pol.html>
 - Container Insights with enhanced observability 的 EKS 指標：<https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Container-Insights-metrics-enhanced-EKS.html>
-- KEDA `aws-cloudwatch` scaler：<https://keda.sh/docs/2.18/scalers/aws-cloudwatch/>
+- KEDA `aws-cloudwatch` scaler 與 ScaledObject spec：<https://keda.sh/docs/2.21/scalers/aws-cloudwatch/>、<https://keda.sh/docs/2.21/reference/scaledobject-spec/>
+- Create a Node Pool、Enable or Disable Built-in NodePools：<https://docs.aws.amazon.com/eks/latest/userguide/create-node-pool.html>、<https://docs.aws.amazon.com/eks/latest/userguide/set-builtin-node-pools.html>
+- CreateAccessEntry：<https://docs.aws.amazon.com/eks/latest/APIReference/API_CreateAccessEntry.html>
+- Migrate to Auto Mode（LB Controller 並存）：<https://docs.aws.amazon.com/eks/latest/userguide/migrate-auto.html>
+- Install the CloudWatch Observability add-on：<https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/install-CloudWatch-Observability-EKS-addon.html>
+- 原始碼（C1 查證）：terraform-provider-aws v6.69.0、kedacore/keda v2.21.0、aws-load-balancer-controller v3.6.1、aws-observability/helm-charts 6.7.0、amazon-contributing/opentelemetry-collector-contrib
 - 使用者 2026-10-22 查證：Auto Mode 原生 TargetGroupBinding 的生命週期、不用內建 NodePool 的建立流程、private endpoint 的影響範圍、加權 target group 不會自動 failover、SSM 參數的 Type（docs.aws.amazon.com）
 - v3 的 EKS 決策：[`../v3/design-docs.md`](../v3/design-docs.md)
 - 範本整合流程與保密規則：[`../v2/integration-playbook.md`](../v2/integration-playbook.md)
@@ -244,6 +257,18 @@ VPC 或可連通的網路要滿足：
 | # | 決定 | 文件裡的位置 |
 |---|---|---|
 | W1 | `eks-workload-alarms` 直接建 `aws_cloudwatch_metric_alarm`，沿用既有告警的寫法與測試慣例，不新增 module 相依。理由是 repo 目前的封裝與 vendoring 策略（§2 第 10 點） | §5、§10 |
-| W2 | `iam-role` 白名單加入 `CloudWatchAgentServerPolicy`。權限給採集元件的 ServiceAccount；CloudWatch agent 與 Fluent Bit 各自用哪個 ServiceAccount，C1 確認後分別建 Pod Identity association | §5、implement-process C1 |
+| W2 | `iam-role` 白名單加入 `CloudWatchAgentServerPolicy`。權限給採集元件的 ServiceAccount。C1 查證：CloudWatch agent 與 Fluent Bit 共用 `amazon-cloudwatch/cloudwatch-agent`，所以只要一個 Pod Identity association（§2 第 13 點） | §5、implement-process C1 |
 | W3 | `eks-addons` 用 Helm 裝 `amazon-cloudwatch-observability`。固定 chart 版本；採集模式是 Container Insights（enhanced observability）的 metrics 加 Fluent Bit 的 logs；Application Signals 預設關閉 | §5、implement-process C1、C5 |
 | W4 | NetworkPolicy 預設 `DefaultDeny`；`app` 與 `system` 都要有放行規則，`system` 的由平台 bootstrap 管 | K5、§4 |
+
+## 附錄：C1 查證後的決定（2026-10-22）
+
+| # | 決定 |
+|---|---|
+| C1-1 | CrashLoop、Pending 的告警，api 與 worker 都用 `PodName` 維度 |
+| C1-2 | LB Controller 跟 Auto Mode 並存時，`eks-addons` 在 Auto Mode 下強制 `enableServiceMutatorWebhook=false`、`createIngressClassResource=false` |
+| C1-3 | LB Controller 升 3.6.1，`eks-iam-policies` 內附的官方 policy 一起更新並核對 |
+| C1-4 | `eks-cluster` 加防呆：`node_pools = []` 時必須有帶 `AmazonEKSAutoNodePolicy` 的 `EC2` access entry |
+| C1-5 | 安裝順序（node → NetworkPolicy → controller）以靜態檢查驗收：用 `terraform graph` 檢查相依關係 |
+| C1-6 | 本機沒有 helm 時，下載官方 tarball 到暫存目錄、比對 sha256 後使用，不裝進系統 |
+| C1-7 | `system` NetworkPolicy 的放行範圍精細到 subnet 與 endpoint：控制平面 ENI 所在的 subnet CIDR、VPC endpoint 所在的 subnet CIDR，由呼叫端傳入 |
