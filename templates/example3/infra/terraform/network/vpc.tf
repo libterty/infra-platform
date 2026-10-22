@@ -3,9 +3,10 @@ locals {
   # public and db /24 at the low end, app /19 at 10.x.64.0-159.255, agent /19 at 10.x.160.0-255.255.
   vpc_subnets = {
     public = { type = "public", newbits = 8, netnum_base = 0 }
-    app    = { type = "private", newbits = 3, netnum_base = 2 }
-    agent  = { type = "private", newbits = 3, netnum_base = 5 }
-    db     = { type = "isolated", newbits = 8, netnum_base = 10 }
+    # EKS Auto Mode nodes and pods both live here; the NodeClass selects the subnets by these tags (value: cluster name).
+    app   = { type = "private", newbits = 3, netnum_base = 2, tags = { "eks-node" = local.name_prefix, "eks-pod" = local.name_prefix } }
+    agent = { type = "private", newbits = 3, netnum_base = 5 }
+    db    = { type = "isolated", newbits = 8, netnum_base = 10 }
   }
 
   vpc = {
@@ -20,7 +21,7 @@ locals {
 module "vpc" {
   # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
   source  = "app.terraform.io/libterty/vpc/aws"
-  version = "~> 0.1.0"
+  version = "~> 0.2.0"
 
   name              = local.name_prefix
   cidr              = local.vpc.cidr

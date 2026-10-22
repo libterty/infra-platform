@@ -96,3 +96,23 @@ variable "peering" {
     error_message = "peering.peer_cidrs needs at least one CIDR."
   }
 }
+
+variable "k8s_api_sources" {
+  description = "Networks and security groups of the runners that run Helm against the private Kubernetes API (eks-addons stack, CI). Empty means nobody outside the cluster can reach the API."
+  type = object({
+    cidrs              = optional(list(string), [])
+    security_group_ids = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for c in var.k8s_api_sources.cidrs : can(cidrnetmask(c)) && c != "0.0.0.0/0"])
+    error_message = "k8s_api_sources.cidrs must be IPv4 CIDRs and must not be 0.0.0.0/0; the API endpoint is private."
+  }
+
+  validation {
+    condition     = alltrue([for g in var.k8s_api_sources.security_group_ids : can(regex("^sg-[0-9a-f]{8,17}$", g))])
+    error_message = "k8s_api_sources.security_group_ids must look like sg-0123456789abcdef0."
+  }
+}

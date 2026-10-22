@@ -36,6 +36,12 @@ override_module {
       db     = ["rtb-0ddddddd00000001", "rtb-0ddddddd00000002"]
     }
     nat_gateway_ids = ["nat-0123456789abcdef0", "nat-0123456789abcdef1"]
+    subnet_cidrs = {
+      public = ["10.10.0.0/24", "10.10.1.0/24"]
+      app    = ["10.10.64.0/19", "10.10.96.0/19"]
+      agent  = ["10.10.160.0/19", "10.10.192.0/19"]
+      db     = ["10.10.10.0/24", "10.10.11.0/24"]
+    }
   }
 }
 
@@ -160,12 +166,107 @@ run "bedrock_endpoints_can_be_turned_off" {
 
 # ---- security groups ----
 
-run "seven_security_groups" {
+run "nine_security_groups" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.security_groups)) == toset(["alb", "app", "agent", "db", "db_proxy", "cache", "bastion"])
-    error_message = "One group per tier, plus a separate group for the RDS Proxy"
+    condition     = toset(keys(local.security_groups)) == toset(["alb", "app", "agent", "db", "db_proxy", "cache", "bastion", "node", "eks_api"])
+    error_message = "One group per tier, a separate group for the RDS Proxy, and the EKS node and Kubernetes API groups"
+  }
+}
+
+# ---- EKS ----
+
+run "app_subnets_carry_the_node_class_selector_tags" {
+  command = plan
+
+  assert {
+    condition     = local.vpc_subnets.app.tags == { "eks-node" = "example-dev", "eks-pod" = "example-dev" }
+    error_message = "NodeClass selects node and pod subnets by these tags; the value is the cluster name"
+  }
+
+  assert {
+    condition     = alltrue([for k, t in local.vpc_subnets : length(try(t.tags, {})) == 0 if k != "app"])
+    error_message = "Only the app tier hosts nodes and pods"
+  }
+}
+
+run "kubelet_reaches_the_api_pods_and_pods_reach_dns_on_the_node" {
+  command = plan
+
+  assert {
+    condition     = local.sg_rules["app_in_node"].type == "ingress" && local.sg_rules["app_in_node"].peer_group == "node" && local.sg_rules["app_in_node"].from_port == 8080 && local.sg_rules["node_out_app"].peer_group == "app"
+    error_message = "The node group may reach the app group on the app port (kubelet probes), with the matching egress rule"
+  }
+
+  assert {
+    condition = toset([for k, r in local.sg_rules : "${k}:${r.ip_protocol}:${r.from_port}" if contains(["app", "node"], r.security_group) && r.from_port == 53]) == toset([
+      "app_out_node:tcp:53",
+      "node_in_app:tcp:53",
+      "app_out_node_dns_udp:udp:53",
+      "node_in_app_dns_udp:udp:53",
+    ])
+    error_message = "Pods query CoreDNS on their node over UDP and TCP 53, and nothing else uses port 53"
+  }
+}
+
+run "kubernetes_api_is_closed_without_sources" {
+  command = plan
+
+  assert {
+    condition     = length([for r in values(local.sg_rules) : r if r.security_group == "eks_api"]) == 0
+    error_message = "Without k8s_api_sources nothing outside the cluster may reach the API"
+  }
+}
+
+run "kubernetes_api_accepts_only_the_given_sources_on_443" {
+  command = plan
+
+  variables {
+    k8s_api_sources = { cidrs = ["10.20.0.0/24"], security_group_ids = ["sg-0eeeeeee00000001"] }
+  }
+
+  assert {
+    condition = toset([for r in values(local.sg_rules) : "${r.type}:${r.from_port}:${coalesce(r.cidr_ipv4, r.peer_group_id, "-")}" if r.security_group == "eks_api"]) == toset([
+      "ingress:443:10.20.0.0/24",
+      "ingress:443:sg-0eeeeeee00000001",
+    ])
+    error_message = "The API group only accepts 443 from the runner networks and groups"
+  }
+}
+
+run "kubernetes_api_source_cidrs_cannot_be_the_internet" {
+  command = plan
+
+  variables {
+    k8s_api_sources = { cidrs = ["0.0.0.0/0"] }
+  }
+
+  expect_failures = [var.k8s_api_sources]
+}
+
+run "eks_endpoints_only_without_a_nat" {
+  command = plan
+
+  assert {
+    condition     = local.interface_endpoints.services == toset(["bedrock", "bedrock-agentcore", "bedrock-runtime"])
+    error_message = "With a NAT the EKS endpoints are not needed"
+  }
+}
+
+run "eks_endpoints_with_no_nat" {
+  command = plan
+
+  variables {
+    nat_mode = "none"
+  }
+
+  assert {
+    condition = local.interface_endpoints.services == toset([
+      "bedrock", "bedrock-agentcore", "bedrock-runtime",
+      "eks", "eks-auth", "ec2", "ecr.api", "ecr.dkr", "sts", "elasticloadbalancing", "logs", "monitoring",
+    ])
+    error_message = "Without a NAT the private cluster needs the EKS, ECR, STS, ELB, logs and metrics endpoints (S3 is the gateway endpoint)"
   }
 }
 
@@ -467,6 +568,12 @@ run "no_nat_no_nat_alarm" {
         db     = ["rtb-0ddddddd00000001", "rtb-0ddddddd00000002"]
       }
       nat_gateway_ids = []
+      subnet_cidrs = {
+        public = ["10.10.0.0/24", "10.10.1.0/24"]
+        app    = ["10.10.64.0/19", "10.10.96.0/19"]
+        agent  = ["10.10.160.0/19", "10.10.192.0/19"]
+        db     = ["10.10.10.0/24", "10.10.11.0/24"]
+      }
     }
   }
 
@@ -497,6 +604,8 @@ run "publishes_every_vpc_subnet_and_group_key" {
         db_proxy = "sg-0aaaaaaa00000005"
         cache    = "sg-0aaaaaaa00000006"
         bastion  = "sg-0aaaaaaa00000007"
+        node     = "sg-0aaaaaaa00000008"
+        eks_api  = "sg-0aaaaaaa00000009"
       }
     }
   }
@@ -512,6 +621,8 @@ run "publishes_every_vpc_subnet_and_group_key" {
       db_proxy_sg_id      = "sg-0aaaaaaa00000005"
       cache_sg_id         = "sg-0aaaaaaa00000006"
       bastion_sg_id       = "sg-0aaaaaaa00000007"
+      node_sg_id          = "sg-0aaaaaaa00000008"
+      eks_api_sg_id       = "sg-0aaaaaaa00000009"
       peering_connections = "{}"
     }
     error_message = "Each published string must come from the matching module output"
@@ -523,8 +634,9 @@ run "publishes_every_vpc_subnet_and_group_key" {
       app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
       agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
       db_subnet_ids     = ["subnet-0ddddddd00000001", "subnet-0ddddddd00000002"]
+      app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
     }
-    error_message = "Each subnet list must come from the matching tier, in AZ order"
+    error_message = "Each subnet list must come from the matching tier, in AZ order; app CIDRs feed the system NetworkPolicies"
   }
 
   assert {
@@ -538,12 +650,15 @@ run "publishes_every_vpc_subnet_and_group_key" {
       db_proxy_sg_id      = "/example/dev/network/db_proxy_sg_id"
       cache_sg_id         = "/example/dev/network/cache_sg_id"
       bastion_sg_id       = "/example/dev/network/bastion_sg_id"
+      node_sg_id          = "/example/dev/network/node_sg_id"
+      eks_api_sg_id       = "/example/dev/network/eks_api_sg_id"
       peering_connections = "/example/dev/network/peering_connections"
       public_subnet_ids   = "/example/dev/network/public_subnet_ids"
       app_subnet_ids      = "/example/dev/network/app_subnet_ids"
       agent_subnet_ids    = "/example/dev/network/agent_subnet_ids"
       db_subnet_ids       = "/example/dev/network/db_subnet_ids"
+      app_subnet_cidrs    = "/example/dev/network/app_subnet_cidrs"
     }
-    error_message = "ssm-publish must write the fourteen network keys under the network path"
+    error_message = "ssm-publish must write the seventeen network keys under the network path"
   }
 }
