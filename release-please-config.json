@@ -22,6 +22,7 @@
     "modules/eks-addons": { "release-type": "terraform-module", "component": "eks-addons", "initial-version": "0.1.0" },
     "modules/eks-cluster": { "release-type": "terraform-module", "component": "eks-cluster", "initial-version": "0.1.0" },
     "modules/eks-iam-policies": { "release-type": "terraform-module", "component": "eks-iam-policies", "initial-version": "0.1.0" },
+    "modules/eks-workload-alarms": { "release-type": "terraform-module", "component": "eks-workload-alarms", "initial-version": "0.1.0" },
     "modules/elasticache-redis": { "release-type": "terraform-module", "component": "elasticache-redis" },
     "modules/iam-oidc-provider": { "release-type": "terraform-module", "component": "iam-oidc-provider", "initial-version": "0.1.0" },
     "modules/iam-role": { "release-type": "terraform-module", "component": "iam-role" },
