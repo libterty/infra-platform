@@ -34,7 +34,7 @@
   "modules/nlb": "0.2.0",
   "modules/eks-addons": "0.2.0",
   "modules/ec2-asg": "0.1.0",
-  "modules/eks-cluster": "0.1.0",
+  "modules/eks-cluster": "0.2.0",
   "modules/ec2-instance": "0.1.0",
   "modules/lb-traffic-breaker": "0.1.0",
   "modules/eks-iam-policies": "0.2.0",
