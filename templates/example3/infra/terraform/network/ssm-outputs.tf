@@ -10,6 +10,8 @@ locals {
     cache_sg_id    = module.sg.security_group_ids["cache"]
     # The group exists even when bastion_enabled is false (it then has no rules), so downstream stacks can always read it.
     bastion_sg_id = module.sg.security_group_ids["bastion"]
+    node_sg_id    = module.sg.security_group_ids["node"]
+    eks_api_sg_id = module.sg.security_group_ids["eks_api"]
     # SSM rejects an empty map, so this is JSON in a String: peering name => connection ID, "{}" without a peering.
     peering_connections = jsonencode(var.peering == null ? {} : { peer = module.peering[0].peering_connection_id })
   }
@@ -19,6 +21,8 @@ locals {
     app_subnet_ids    = module.vpc.subnet_ids["app"]
     agent_subnet_ids  = module.vpc.subnet_ids["agent"]
     db_subnet_ids     = module.vpc.subnet_ids["db"]
+    # Control-plane ENIs and the interface endpoints sit in the app subnets; the system NetworkPolicies allow these.
+    app_subnet_cidrs = module.vpc.subnet_cidrs["app"]
   }
 }
 

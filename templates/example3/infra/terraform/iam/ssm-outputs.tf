@@ -6,6 +6,14 @@ locals {
     import_extract_role_arn = module.role["import_extract"].arn
     import_load_role_arn    = module.role["import_load"].arn
     agent_runtime_role_arn  = module.role["agent_runtime"].arn
+    # EKS (design v4 §8.1).
+    eks_cluster_role_arn      = module.role["eks_cluster"].arn
+    eks_node_role_arn         = module.role["eks_node"].arn
+    api_pod_role_arn          = module.role["api_pod"].arn
+    worker_pod_role_arn       = module.role["worker_pod"].arn
+    lb_controller_role_arn    = module.role["lb_controller"].arn
+    keda_role_arn             = module.role["keda"].arn
+    cloudwatch_agent_role_arn = module.role["cloudwatch_agent"].arn
   }
 }
 

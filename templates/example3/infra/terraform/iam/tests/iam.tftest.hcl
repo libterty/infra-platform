@@ -55,8 +55,8 @@ run "dev_has_seven_roles_including_eval_batch" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eval_batch"])
-    error_message = "dev gets the six service roles (one per Lambda function) and the eval-batch role"
+    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eval_batch", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
+    error_message = "dev gets the six service roles (one per Lambda function), the eval-batch role and the seven EKS roles (ECS roles stay until phase C7)"
   }
 }
 
@@ -69,7 +69,7 @@ run "sit_has_no_eval_batch_role" {
   }
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime"])
+    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
     error_message = "eval_batch exists only when env is dev"
   }
 
@@ -99,7 +99,7 @@ run "sit_does_not_need_an_eval_batch_model" {
   }
 
   assert {
-    condition     = length(module.role) == 6
+    condition     = length(module.role) == 13
     error_message = "Without eval_batch there is nothing to name a model for"
   }
 }
@@ -109,13 +109,20 @@ run "role_names_follow_the_prefix" {
 
   assert {
     condition = { for k, r in local.roles : k => r.name } == {
-      ecs_execution  = "example-dev-ecs-execution"
-      api_task       = "example-dev-api-task"
-      worker_task    = "example-dev-worker-task"
-      import_extract = "example-dev-import-extract"
-      import_load    = "example-dev-import-load"
-      agent_runtime  = "example-dev-agent-runtime"
-      eval_batch     = "example-dev-eval-batch"
+      ecs_execution    = "example-dev-ecs-execution"
+      api_task         = "example-dev-api-task"
+      worker_task      = "example-dev-worker-task"
+      import_extract   = "example-dev-import-extract"
+      import_load      = "example-dev-import-load"
+      agent_runtime    = "example-dev-agent-runtime"
+      eval_batch       = "example-dev-eval-batch"
+      eks_cluster      = "example-dev-eks-cluster"
+      eks_node         = "example-dev-eks-node"
+      api_pod          = "example-dev-api-pod"
+      worker_pod       = "example-dev-worker-pod"
+      lb_controller    = "example-dev-lb-controller"
+      keda             = "example-dev-keda"
+      cloudwatch_agent = "example-dev-cloudwatch-agent"
     }
     error_message = "Roles are named <project>-<env>-<role>"
   }
@@ -127,19 +134,31 @@ run "every_role_trusts_one_service_in_this_account_only" {
   command = plan
 
   assert {
-    condition     = alltrue([for r in values(local.roles) : r.trust.source_account == "111111111111" && length(r.trust.service_principals) == 1])
+    condition     = alltrue([for k, r in local.roles : r.trust.source_account == "111111111111" && length(r.trust.service_principals) == 1 if !contains(["eks_cluster", "eks_node"], k)])
     error_message = "Each role must be assumable by one service, on behalf of this account only"
   }
 
   assert {
+    condition     = local.roles.eks_cluster.trust.source_account == null && local.roles.eks_node.trust.source_account == null
+    error_message = "The EKS cluster and node roles follow the AWS trust policies, which carry no aws:SourceAccount condition"
+  }
+
+  assert {
     condition = { for k, r in local.roles : k => one(r.trust.service_principals) } == {
-      ecs_execution  = "ecs-tasks.amazonaws.com"
-      api_task       = "ecs-tasks.amazonaws.com"
-      worker_task    = "ecs-tasks.amazonaws.com"
-      import_extract = "lambda.amazonaws.com"
-      import_load    = "lambda.amazonaws.com"
-      agent_runtime  = "bedrock-agentcore.amazonaws.com"
-      eval_batch     = "bedrock.amazonaws.com"
+      ecs_execution    = "ecs-tasks.amazonaws.com"
+      api_task         = "ecs-tasks.amazonaws.com"
+      worker_task      = "ecs-tasks.amazonaws.com"
+      import_extract   = "lambda.amazonaws.com"
+      import_load      = "lambda.amazonaws.com"
+      agent_runtime    = "bedrock-agentcore.amazonaws.com"
+      eval_batch       = "bedrock.amazonaws.com"
+      eks_cluster      = "eks.amazonaws.com"
+      eks_node         = "ec2.amazonaws.com"
+      api_pod          = "pods.eks.amazonaws.com"
+      worker_pod       = "pods.eks.amazonaws.com"
+      lb_controller    = "pods.eks.amazonaws.com"
+      keda             = "pods.eks.amazonaws.com"
+      cloudwatch_agent = "pods.eks.amazonaws.com"
     }
     error_message = "Each role is trusted by the service that runs it"
   }
@@ -171,6 +190,9 @@ run "wildcard_resources_are_the_known_exceptions_only" {
       "import_load/VpcNetworkInterfaces",
       "agent_runtime/EcrLoginToken",
       "agent_runtime/TraceSegments",
+      "api_pod/TraceSegments",
+      "worker_pod/TraceSegments",
+      "worker_pod/PutCustomMetrics",
     ])
     error_message = "Resource * is only for actions AWS does not scope by resource: ecr:GetAuthorizationToken, X-Ray, ssmmessages, EC2 network interfaces, and PutMetricData (limited by a namespace condition)"
   }
@@ -433,7 +455,7 @@ run "a_missing_repository_is_reported_by_name" {
 
 # ---- publishing ----
 
-run "publishes_the_six_role_arns" {
+run "publishes_the_thirteen_role_arns" {
   command = plan
 
   override_module {
@@ -464,29 +486,71 @@ run "publishes_the_six_role_arns" {
     target  = module.role["eval_batch"]
     outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-eval-batch" }
   }
+  override_module {
+    target  = module.role["eks_cluster"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-eks-cluster" }
+  }
+  override_module {
+    target  = module.role["eks_node"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-eks-node" }
+  }
+  override_module {
+    target  = module.role["api_pod"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-api-pod" }
+  }
+  override_module {
+    target  = module.role["worker_pod"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-worker-pod" }
+  }
+  override_module {
+    target  = module.role["lb_controller"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-lb-controller" }
+  }
+  override_module {
+    target  = module.role["keda"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-keda" }
+  }
+  override_module {
+    target  = module.role["cloudwatch_agent"]
+    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent" }
+  }
 
   assert {
     condition = local.published_strings == {
-      ecs_execution_role_arn  = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-      api_task_role_arn       = "arn:aws:iam::111111111111:role/example-dev-api-task"
-      worker_task_role_arn    = "arn:aws:iam::111111111111:role/example-dev-worker-task"
-      import_extract_role_arn = "arn:aws:iam::111111111111:role/example-dev-import-extract"
-      import_load_role_arn    = "arn:aws:iam::111111111111:role/example-dev-import-load"
-      agent_runtime_role_arn  = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
+      ecs_execution_role_arn    = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
+      api_task_role_arn         = "arn:aws:iam::111111111111:role/example-dev-api-task"
+      worker_task_role_arn      = "arn:aws:iam::111111111111:role/example-dev-worker-task"
+      import_extract_role_arn   = "arn:aws:iam::111111111111:role/example-dev-import-extract"
+      import_load_role_arn      = "arn:aws:iam::111111111111:role/example-dev-import-load"
+      agent_runtime_role_arn    = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
+      eks_cluster_role_arn      = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+      eks_node_role_arn         = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+      api_pod_role_arn          = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+      worker_pod_role_arn       = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+      lb_controller_role_arn    = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+      keda_role_arn             = "arn:aws:iam::111111111111:role/example-dev-keda"
+      cloudwatch_agent_role_arn = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
     }
     error_message = "Each published ARN must come from the matching role; eval_batch is not published"
   }
 
   assert {
     condition = module.ssm_publish.names == {
-      ecs_execution_role_arn  = "/example/dev/iam/ecs_execution_role_arn"
-      api_task_role_arn       = "/example/dev/iam/api_task_role_arn"
-      worker_task_role_arn    = "/example/dev/iam/worker_task_role_arn"
-      import_extract_role_arn = "/example/dev/iam/import_extract_role_arn"
-      import_load_role_arn    = "/example/dev/iam/import_load_role_arn"
-      agent_runtime_role_arn  = "/example/dev/iam/agent_runtime_role_arn"
+      ecs_execution_role_arn    = "/example/dev/iam/ecs_execution_role_arn"
+      api_task_role_arn         = "/example/dev/iam/api_task_role_arn"
+      worker_task_role_arn      = "/example/dev/iam/worker_task_role_arn"
+      import_extract_role_arn   = "/example/dev/iam/import_extract_role_arn"
+      import_load_role_arn      = "/example/dev/iam/import_load_role_arn"
+      agent_runtime_role_arn    = "/example/dev/iam/agent_runtime_role_arn"
+      eks_cluster_role_arn      = "/example/dev/iam/eks_cluster_role_arn"
+      eks_node_role_arn         = "/example/dev/iam/eks_node_role_arn"
+      api_pod_role_arn          = "/example/dev/iam/api_pod_role_arn"
+      worker_pod_role_arn       = "/example/dev/iam/worker_pod_role_arn"
+      lb_controller_role_arn    = "/example/dev/iam/lb_controller_role_arn"
+      keda_role_arn             = "/example/dev/iam/keda_role_arn"
+      cloudwatch_agent_role_arn = "/example/dev/iam/cloudwatch_agent_role_arn"
     }
-    error_message = "ssm-publish must write the six role keys under the iam path"
+    error_message = "ssm-publish must write the thirteen role keys under the iam path"
   }
 }
 
@@ -538,4 +602,84 @@ run "rejects_a_malformed_profile_id" {
   }
 
   expect_failures = [var.guardrail_cross_region_profile_id]
+}
+
+# ---- EKS (design v4 §4, §8.1) ----
+
+run "pod_roles_trust_pod_identity_for_this_cluster_only" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for k in ["api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"] :
+      local.roles[k].trust.tag_session && local.roles[k].trust.source_arn == "arn:aws:eks:ap-northeast-1:111111111111:cluster/example-dev"
+    ])
+    error_message = "Pod Identity roles need sts:TagSession and are limited to this account's example-dev cluster"
+  }
+}
+
+run "eks_cluster_and_node_roles_use_the_auto_mode_managed_policies" {
+  command = plan
+
+  assert {
+    condition = toset(local.roles.eks_cluster.managed_policy_arns) == toset([
+      "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+      "arn:aws:iam::aws:policy/AmazonEKSComputePolicy",
+      "arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy",
+      "arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy",
+      "arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy",
+    ]) && local.roles.eks_cluster.trust.tag_session
+    error_message = "The Auto Mode cluster role gets the five EKS managed policies and sts:TagSession"
+  }
+
+  assert {
+    condition = toset(local.roles.eks_node.managed_policy_arns) == toset([
+      "arn:aws:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy",
+      "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
+    ])
+    error_message = "The Auto Mode node role gets the minimal worker policy and ECR pull-only"
+  }
+
+  assert {
+    condition     = toset(local.roles.cloudwatch_agent.managed_policy_arns) == toset(["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"])
+    error_message = "The Container Insights collector (agent and Fluent Bit share one service account) gets CloudWatchAgentServerPolicy"
+  }
+
+  assert {
+    condition     = alltrue([for k in ["eks_cluster", "eks_node", "cloudwatch_agent", "lb_controller", "keda"] : length(local.statements[k]) == 0])
+    error_message = "These roles carry no statements of this stack; their permissions are managed policies or the eks-iam-policies documents"
+  }
+}
+
+run "pod_roles_keep_the_task_permissions_without_ecs_exec" {
+  command = plan
+
+  assert {
+    condition     = local.statements.api_pod == [for s in local.statements.api_task : s if s.Sid != "EcsExec"]
+    error_message = "api_pod has the api_task permissions minus ECS Exec"
+  }
+
+  assert {
+    condition     = local.statements.worker_pod == [for s in local.statements.worker_task : s if s.Sid != "EcsExec"]
+    error_message = "worker_pod has the worker_task permissions minus ECS Exec"
+  }
+}
+
+run "controller_policies_come_from_eks_iam_policies" {
+  command = plan
+
+  assert {
+    condition     = local.controller_policies.lb_controller == module.eks_policies.load_balancer_controller_policy_json && local.controller_policies.keda == module.eks_policies.keda_cloudwatch_policy_json
+    error_message = "The LB Controller and KEDA roles use the eks-iam-policies documents unchanged"
+  }
+
+  assert {
+    condition     = toset(keys(local.controller_policies)) == toset(["lb_controller", "keda"])
+    error_message = "Only the LB Controller and KEDA roles get an eks-iam-policies document"
+  }
+
+  assert {
+    condition     = module.eks_policies.policy_sizes.load_balancer_controller <= 10240
+    error_message = "The LB Controller policy must fit the inline policy size limit of its role"
+  }
 }
