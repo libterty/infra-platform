@@ -1,0 +1,5 @@
+apiVersion: v2
+name: crd-role-aggregation
+description: ClusterRoles that aggregate custom resources into the default view, edit and admin roles, for the eks-addons module.
+type: application
+version: 0.1.0

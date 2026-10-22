@@ -217,6 +217,7 @@ CIDR 由呼叫端給，module 不猜。`api_server_cidrs` 不接受 `0.0.0.0/0`�
 auto_mode_nodes -> system_network_policy -> load_balancer_controller -> keda
                                                                      -> cloudwatch_observability
                                                                      -> karpenter, argo_rollouts
+                                                                     -> crd_role_aggregation
 ```
 
 沒有 Auto Mode 的 node 就沒地方跑；`DefaultDeny` 下沒有 policy，controller 連 API server 都連不上、webhook 也進不來。元件為 `null` 時對應的資源是空的，不影響其他元件。
@@ -254,7 +255,7 @@ chart_repository_overrides = {
 - mirror 裡的 chart 名稱與版本要跟預設一樣（`aws-load-balancer-controller`、`karpenter`、`argo-rollouts`、`keda`、`amazon-cloudwatch-observability`），module 只換 repository，不換 chart 名稱。
 - 抓 ECR 要登入。helm provider 的 `registries` 區塊接受 `url`、`username`、`password`，密碼可以用 `aws_ecr_authorization_token`（12 小時有效）；這個接法沒有實測，列為未確認。
 - chart 的 image 也要在 mirror：用各 chart 自己的 values 改 image repository，從 `values` 傳進去。每個 chart 都一樣。
-- 四個本地 chart（`karpenter-defaults`、`app-namespaces`、`auto-mode-nodes`、`system-network-policy`）隨 module 一起，不需要 mirror。
+- 五個本地 chart（`karpenter-defaults`、`app-namespaces`、`auto-mode-nodes`、`system-network-policy`、`crd-role-aggregation`）隨 module 一起，不需要 mirror。
 
 ## CI 用 Helm 部署應用程式的權限
 
@@ -264,6 +265,9 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 - chart 會建 Role 或 RoleBinding 時要用 namespace scope 的 `AmazonEKSAdminPolicy`；Edit 不含 roles 與 rolebindings。
 - Edit 含 serviceaccount 的 `impersonate`，有這個風險。
 - CI 裝不了 CRD 與 cluster scope 的資源，也建不了 namespace。CRD 由這個 module 裝，namespace 由 `app_namespaces` 建，所以 CI 部署的 namespace 要先列在 `app_namespaces`。
+- Edit 與 Admin 對應 Kubernetes 內建的 `edit`、`admin` ClusterRole，只會帶到有 aggregate label 的 CRD 權限。LB Controller 3.6.1 的 chart 沒有這種 ClusterRole，KEDA 2.21.0 的 chart 有但預設關閉（`rbac.aggregateToDefaultRoles: false`）。chart 要建 TargetGroupBinding 或 ScaledObject 時，設 `aggregate_crd_roles = true`（0.3.0 起）：
+  - LB Controller 有裝時，裝本地 chart `crd-role-aggregation`（release 在 `kube-system`），建 `eks-addons:targetgroupbindings-edit`（create、delete、deletecollection、patch、update，併進 edit 與 admin）與 `eks-addons:targetgroupbindings-view`（get、list、watch，併進 view、edit 與 admin）。
+  - KEDA 有裝時，用 `set` 把 `rbac.aggregateToDefaultRoles` 設成 `true`，`keda.values` 改不回來。
 
 ## 注意
 
@@ -309,6 +313,7 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 | `cloudwatch_observability` | `object({ chart_version, namespace, service_account, container_logs, application_signals, values })` | `null` | 否 | 預設 `6.7.0`、`amazon-cloudwatch`、`cloudwatch-agent`、`true`、`false`、`{}`；`null` 不裝 |
 | `argo_rollouts` | `object({ chart_version, namespace, values })` | `null` | 否 | 預設 `2.43.8`、`argo-rollouts`、`{}`；`null` 不裝 |
 | `app_namespaces` | `map(object({ labels }))` | `{}` | 否 | key 是 namespace 名稱，`labels` 預設 `{}`；空的不裝 |
+| `aggregate_crd_roles` | `bool` | `false` | 否 | 把 TargetGroupBinding（有裝 LB Controller 時）與 KEDA 的 CRD（有裝 KEDA 時）權限併進內建的 view、edit、admin，讓 namespace scope 的 Edit 或 Admin 能管理（見〈CI 用 Helm 部署應用程式的權限〉） |
 | `chart_repository_overrides` | `map(string)` | `{}` | 否 | key 是 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值是 `https://` 或 `oci://` URL |
 
 預設 repository：LB Controller `https://aws.github.io/eks-charts`（chart `aws-load-balancer-controller`）、Karpenter `oci://public.ecr.aws/karpenter`（chart `karpenter`）、Argo Rollouts `https://argoproj.github.io/argo-helm`（chart `argo-rollouts`）、KEDA `https://kedacore.github.io/charts`（chart `keda`）、CloudWatch 採集 `https://aws-observability.github.io/helm-charts`（chart `amazon-cloudwatch-observability`）。
@@ -319,7 +324,7 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 
 | 名稱 | 型別 | 說明 |
 |---|---|---|
-| `releases` | `map(object({ name, namespace, version }))` | 每個已安裝 release 的名稱、namespace 與 chart 版本。key 是 `load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`；沒裝的元件不會出現 |
+| `releases` | `map(object({ name, namespace, version }))` | 每個已安裝 release 的名稱、namespace 與 chart 版本。key 是 `load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`、`crd_role_aggregation`；沒裝的元件不會出現 |
 
 ## 測試
 
@@ -327,9 +332,9 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 scripts/validate.sh modules/eks-addons
 ```
 
-`tests/releases.tftest.hcl` 驗證哪些 release 會建與傳給 chart 的值：物件為 `null` 時沒有 release、chart 版本預設值、LB Controller 的 `clusterName`、`region`、`vpcId`、Karpenter 的 `settings.clusterName` 與 `settings.interruptionQueue`、`karpenter-defaults` 的安裝條件、`app_namespaces`、`chart_repository_overrides`、輸出。`tests/auto-mode.tftest.hcl`（NodeClass 的 selector 與 Pod 欄位成對、NodePool 的 taint、LB Controller 在 Auto Mode 下被固定的兩個旗標）、`tests/network-policy.tftest.hcl`（ConfigMap 開關、各元件的 port 與 CIDR，含 DNS 53 UDP 與 TCP）、`tests/addons.tftest.hcl`（KEDA 與 CloudWatch 的版本、namespace、service account、Application Signals 關閉、`system_placement`）驗證 0.2.0 的輸入，這些輸入預設全部是關的。`tests/validation.tftest.hcl` 與 `tests/validation-new-inputs.tftest.hcl` 每條 validation 正反各測。`tests/check-ordering.sh` 檢查安裝順序（見〈安裝順序〉）。全部用 `mock_provider "helm"`，不連叢集。
+`tests/releases.tftest.hcl` 驗證哪些 release 會建與傳給 chart 的值：物件為 `null` 時沒有 release、chart 版本預設值、LB Controller 的 `clusterName`、`region`、`vpcId`、Karpenter 的 `settings.clusterName` 與 `settings.interruptionQueue`、`karpenter-defaults` 的安裝條件、`app_namespaces`、`chart_repository_overrides`、輸出。`tests/auto-mode.tftest.hcl`（NodeClass 的 selector 與 Pod 欄位成對、NodePool 的 taint、LB Controller 在 Auto Mode 下被固定的兩個旗標）、`tests/network-policy.tftest.hcl`（ConfigMap 開關、各元件的 port 與 CIDR，含 DNS 53 UDP 與 TCP）、`tests/addons.tftest.hcl`（KEDA 與 CloudWatch 的版本、namespace、service account、Application Signals 關閉、`system_placement`）驗證 0.2.0 的輸入，這些輸入預設全部是關的。`tests/crd-roles.tftest.hcl` 驗證 `aggregate_crd_roles`：預設關閉、只在 LB Controller 有裝時裝 `crd-role-aggregation`、KEDA 的 `set` 蓋過 `values`。`tests/validation.tftest.hcl` 與 `tests/validation-new-inputs.tftest.hcl` 每條 validation 正反各測。`tests/check-ordering.sh` 檢查安裝順序（見〈安裝順序〉）。全部用 `mock_provider "helm"`，不連叢集。
 
-四個本地 chart 由 `scripts/validate.sh` 在本機有 `helm` 時跑 `helm lint` 與 `helm template`（CI 已安裝 helm）。本機沒有 `helm` 時 `validate.sh` 會印「略過 helm lint」，代表 chart 沒被檢查。
+五個本地 chart 由 `scripts/validate.sh` 在本機有 `helm` 時跑 `helm lint` 與 `helm template`（CI 已安裝 helm）。本機沒有 `helm` 時 `validate.sh` 會印「略過 helm lint」，代表 chart 沒被檢查。
 
 `validate.sh` 不檢查 chart 輸出是否符合 Karpenter 的 CRD。EC2NodeClass 的固定欄位可以手動確認：
 

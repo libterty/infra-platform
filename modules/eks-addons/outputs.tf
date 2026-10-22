@@ -9,10 +9,11 @@ locals {
     { for r in helm_release.system_network_policy : "system_network_policy" => r },
     { for r in helm_release.keda : "keda" => r },
     { for r in helm_release.cloudwatch_observability : "cloudwatch_observability" => r },
+    { for r in helm_release.crd_role_aggregation : "crd_role_aggregation" => r },
   )
 }
 
 output "releases" {
-  description = "Name, namespace and chart version of each installed release, keyed by component (load_balancer_controller, karpenter, karpenter_defaults, argo_rollouts, app_namespaces, auto_mode_nodes, system_network_policy, keda, cloudwatch_observability). Components that are not installed are absent."
+  description = "Name, namespace and chart version of each installed release, keyed by component (load_balancer_controller, karpenter, karpenter_defaults, argo_rollouts, app_namespaces, auto_mode_nodes, system_network_policy, keda, cloudwatch_observability, crd_role_aggregation). Components that are not installed are absent."
   value       = { for k, r in local.releases : k => { name = r.name, namespace = r.namespace, version = r.version } }
 }

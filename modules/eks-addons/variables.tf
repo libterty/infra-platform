@@ -444,6 +444,18 @@ variable "cloudwatch_observability" {
   }
 }
 
+variable "aggregate_crd_roles" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Aggregate the custom resources that application charts create into the default view, edit and admin roles, so a
+    namespace-scoped edit or admin (for example a CI role with AmazonEKSEditPolicy) can manage them: TargetGroupBinding
+    through the local chart crd-role-aggregation when the AWS Load Balancer Controller is installed, and ScaledObject,
+    TriggerAuthentication and the other KEDA resources through the KEDA chart's rbac.aggregateToDefaultRoles when KEDA
+    is installed.
+  EOT
+}
+
 variable "chart_repository_overrides" {
   type        = map(string)
   default     = {}
