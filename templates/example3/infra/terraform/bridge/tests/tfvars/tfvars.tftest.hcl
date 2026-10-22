@@ -28,6 +28,14 @@ override_module {
       import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+      eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+      eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+      eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+      api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+      worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+      lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+      keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+      cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
     }
     lists = {
       services          = ["api", "worker"]

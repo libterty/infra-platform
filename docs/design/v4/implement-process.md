@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C3 完成（2026-10-22），下一步 C4。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C4 完成（2026-10-22），下一步 C5。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -32,7 +32,7 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C1r | C1 合併、發版、HCP 登記並確認讀得到 | 完成：5 個 tag 與 GitHub Release；`eks-workload-alarms` 已登記；HCP 上 5 個新版本從消費端抓下來跟 tag 相同 | `995bb05` |
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 完成：`git archive` 複製 196 個追蹤中的檔案；README 只改標題、改寫中說明與驗證指令的路徑；兩個範本 22 個 stack 全部通過、`check-ssm-contract.sh` 兩邊都過；example2 無變動 | — |
 | C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 完成：network 43、iam 34 個 run 全過；example3 11 個 stack 與 `check-ssm-contract.sh` 通過；突變（pod trust 不限叢集、api_pod 保留 ECS Exec）都被抓到；example2 無變動 | — |
-| C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 未開始 | — |
+| C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 完成：eks-cluster 22 個 run、bridge 16 個 run 全過；example3 12 個 stack 與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；example2 無變動 | — |
 | C5 | `eks-addons` stack；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
@@ -98,6 +98,13 @@ C3 的結果：
 - ORDER 只加入 `eks-cluster`（`eks-addons` 目錄在 C5 才建立）。
 
 驗收：同 C3，另外測 access entry 的範圍（CI 只有 namespace 範圍、node entry 是 EC2 類型）。
+
+C4 的結果：
+
+- `eks-cluster` stack：kms-key 0.1.0 建 secrets 加密的 key；eks-cluster 0.2.0 建叢集（名稱 `<project>-<env>`，private endpoint，Auto Mode `node_pools = []`、不帶 node role，`security_group_ids` 帶 `eks_api_sg_id`）。access entry 有 node（`EC2`、`AmazonEKSAutoNodePolicy`）、每個管理者、`addons_apply`（叢集管理者）、`ci_deploy`（`AmazonEKSEditPolicy`，限 `app_namespace`）。Pod Identity association 有 api、worker、LB Controller、KEDA、CloudWatch 採集 5 個。發布 design §8.1 的 9 個 key，`contract_version = "1"`。
+- 只讀樹 B（design C4-1）：`bridge` 多轉寫 `eks_api_sg_id` 與 7 個 EKS role，README 的樹 B 合約表跟著更新成 34 個 key、apply 順序表加入 `eks-cluster`。
+- 測試先後：實作比測試先寫，所以用突變測試補驗。9 個突變都被抓到：node entry 改成 `STANDARD`、CI 改叢集範圍、CI 改 Admin policy、KEDA ServiceAccount、worker 拿到 api 的 role、拿掉 principal 不重複的檢查、叢集名稱、拿掉 `contract_version`、`bridge` 少轉寫一個 key（由 `check-ssm-contract.sh` 抓到）。
+- 保密：這個 Phase 改到的 21 個檔案跑過 9 組 pattern，都沒有命中。反向比對命中的都是公開識別，或 example2 原本就有的變數名稱。
 
 ### C5：eks-addons stack
 
