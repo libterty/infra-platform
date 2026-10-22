@@ -47,7 +47,7 @@ infra/
 | `database` | Aurora PostgreSQL（含 RDS Proxy、Enhanced Monitoring）、兩組 Redis（`rate-limit`、`stream`）、連線數告警、partition 維護的 log 告警 |
 | `iam` | ECS、Lambda、AgentCore 各 role 與 policy；`eval_batch` role 只在 `dev` 建 |
 | `bridge` | 把樹 A 的 key 原樣寫到樹 B，不建其他東西 |
-| `loadbalancer` | ALB、listener 規則、WAF 與 WAF log、ALB access log bucket |
+| `loadbalancer` | ALB、listener 規則、WAF 與 WAF log、ALB access log（bucket 與 `log-delivery`） |
 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory、Runtime 的 log delivery |
 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling |
 | `operation` | bastion（可關）、兩個 import Lambda、import bucket、eval-batch bucket（只在 `dev`）、ETL 指標 |
@@ -254,7 +254,7 @@ cd infra/terraform
 下面都是 mock 驗不到的推論，沒有在真實帳號驗證過，第一次 apply 時要逐項確認。完整清單與理由見 `docs/design/v2/design-docs.md` §5.8、§5.10。
 
 - **IAM 與 policy 的形狀**：RDS Proxy role 的 `kms:Decrypt` 限定 `alias/aws/secretsmanager` 的 key 加 `kms:ViaService` 是否足夠（那個 alias 要先有人用預設 key 建過 secret 才存在，`foundation` 先 apply 所以成立）；Enhanced Monitoring role 收窄到 `RDSOSMetrics` log group 是否足夠；AgentCore Runtime role 的 `aws:SourceArn` 與 `runtime/<name>-*`、`memory/<name>-*` 的 ARN 形狀；bastion 的 Session Manager 最小權限是否足夠註冊與開 session。
-- **ALB 與 WAF**：`alb` 的 count 依 Web ACL 物件是否為 null 決定，沒有對真實 provider 跑過；ALB 開 access log 時 AWS 會試寫一個測試物件，`depends_on` 是否足以讓 bucket policy 先到位；WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`。
+- **ALB 與 WAF**：`alb` 的 count 依 Web ACL 物件是否為 null 決定，沒有對真實 provider 跑過；ALB access log 改用 `log-delivery` 的 vended delivery，`depends_on` 是否足以讓 bucket policy 在建 delivery 之前到位，以及 apply 身分建 delivery 需要的權限（`logs:PutDeliverySource` 等）；WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`。
 - **AgentCore 與 Bedrock**：`/aws/vendedlogs/...` 當 log delivery 的目的地、Runtime 的 `APPLICATION_LOGS` delivery 能否建立；Runtime 的預設 log group 授權與實際行為可能不一致；guardrail 的 `STANDARD` tier 加 cross-region profile 的實際行為。
 - **網路**：沒有 NAT 時，app 與 agent 還缺 ECR、CloudWatch Logs、Secrets Manager 的 interface endpoint（`network` 只建 Bedrock 的三個）；Lambda 放進 VPC 後，只靠 app security group 與 NAT 或 endpoint 的出口能否呼叫 Bedrock、S3、Secrets Manager。
 - **S3 通知**：`incoming/`（無後綴）與 `extracted/` 加 `ready.json` 不重疊，S3 在 apply 時才會驗。
