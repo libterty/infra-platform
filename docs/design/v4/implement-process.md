@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C2 完成（2026-10-22），下一步 C3。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C3 完成（2026-10-22），下一步 C4。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -31,7 +31,7 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C1 | module：`eks-cluster` 0.2.0、`eks-addons` 0.2.0、`eks-iam-policies` 0.2.0、`iam-role` 0.4.0、新 module `eks-workload-alarms` 0.1.0 | 完成（#57）：iam-role 68、eks-iam-policies 48、eks-workload-alarms 22、eks-cluster 132、eks-addons 116 個 run 全過；4 個本地 chart 經 helm lint 與 template；4 個突變都被測試抓到；`validate.sh` 會跑 `tests/check-*.sh` | `bd6650b` |
 | C1r | C1 合併、發版、HCP 登記並確認讀得到 | 完成：5 個 tag 與 GitHub Release；`eks-workload-alarms` 已登記；HCP 上 5 個新版本從消費端抓下來跟 tag 相同 | `995bb05` |
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 完成：`git archive` 複製 196 個追蹤中的檔案；README 只改標題、改寫中說明與驗證指令的路徑；兩個範本 22 個 stack 全部通過、`check-ssm-contract.sh` 兩邊都過；example2 無變動 | — |
-| C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 未開始 | — |
+| C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 完成：network 43、iam 34 個 run 全過；example3 11 個 stack 與 `check-ssm-contract.sh` 通過；突變（pod trust 不限叢集、api_pod 保留 ECS Exec）都被抓到；example2 無變動 | — |
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 未開始 | — |
 | C5 | `eks-addons` stack；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
@@ -83,6 +83,11 @@ C1 的結果：
 - `iam`：新增 design §8.1 的 `iam` role；ECS role 先保留，讓合約在這個 Phase 仍然成立。
 
 驗收：example3 全量 `validate.sh`；`check-ssm-contract.sh`；example2 無變動。
+
+C3 的結果：
+
+- `network`：新增 `node`、`eks_api` 兩個 SG（9 個）。`eks_api` 掛在控制平面 ENI 上，只放行 `k8s_api_sources`（新變數，預設空、不收 0.0.0.0/0）的 443，由 C4 的 `eks-cluster` 以 `security_group_ids` 帶入，避開跨 stack 循環。`node`→`app` 開 `app_port`（kubelet 探測），`app`→`node` 開 TCP 與 UDP 53（CoreDNS）。`app` tier 加 `eks-node`、`eks-pod` tag（值是叢集名稱）。`nat_mode = "none"` 時加 EKS、ECR、STS、ELB、logs、monitoring 的 interface endpoint。新發布 `node_sg_id`、`eks_api_sg_id`、`app_subnet_cidrs`。
+- `iam`：iam-role 升 0.4.0；新增 7 個 role。叢集名稱固定是 `<project>-<env>`，Pod Identity role 以 aws:SourceArn 限定這個叢集。叢集 role 的 BlockStorage policy 用 `AmazonEKSBlockStoragePolicy`（v3 留下的兩個名稱之一，真實環境要核對）。LB Controller、KEDA 的 policy 直接用 `eks-iam-policies` 0.2.0 的輸出。新發布 7 個 role ARN；ECS 的 3 個 role 與 key 保留到 C7。
 
 ### C4：eks-cluster stack
 
