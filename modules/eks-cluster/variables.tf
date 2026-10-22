@@ -238,15 +238,15 @@ variable "fargate_profiles" {
 
 variable "auto_mode" {
   type = object({
-    node_role_arn = string
+    node_role_arn = optional(string)
     node_pools    = optional(list(string), ["general-purpose", "system"])
   })
   default     = null
-  description = "EKS Auto Mode. When set, compute, elastic load balancing and block storage are all enabled together. node_role_arn cannot be changed afterwards without recreating the cluster. null leaves Auto Mode off (all three explicitly false)."
+  description = "EKS Auto Mode. When set, compute, elastic load balancing and block storage are all enabled together. node_role_arn is required while node_pools is non-empty, and cannot be changed afterwards without recreating the cluster. With node_pools = [] it may be null: the cluster is created without a node role and the node role comes from an EC2 access entry holding AmazonEKSAutoNodePolicy (access_entries). null leaves Auto Mode off (all three explicitly false)."
 
   validation {
-    condition     = var.auto_mode == null ? true : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.auto_mode.node_role_arn))
-    error_message = "auto_mode.node_role_arn must be an IAM role ARN."
+    condition     = var.auto_mode == null ? true : var.auto_mode.node_role_arn == null ? length(var.auto_mode.node_pools) == 0 : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.auto_mode.node_role_arn))
+    error_message = "auto_mode.node_role_arn must be an IAM role ARN; it may be null only when node_pools is empty."
   }
   validation {
     condition     = var.auto_mode == null ? true : alltrue([for p in var.auto_mode.node_pools : contains(["general-purpose", "system"], p)])
@@ -344,7 +344,7 @@ variable "access_entries" {
       namespaces = optional(list(string), [])
     })), {})
   }))
-  description = "EKS access entries by name. policies maps a name to an access policy and its namespaces (empty means cluster scope). The cluster is created without creator admin permissions, so at least one STANDARD entry must hold AmazonEKSClusterAdminPolicy at cluster scope, normally the role that runs terraform apply."
+  description = "EKS access entries by name. policies maps a name to an access policy and its namespaces (empty means cluster scope). The cluster is created without creator admin permissions, so at least one STANDARD entry must hold AmazonEKSClusterAdminPolicy at cluster scope, normally the role that runs terraform apply. type EC2 is the Auto Mode node role entry: it may only hold AmazonEKSAutoNodePolicy at cluster scope, and that policy is allowed on no other type. With auto_mode and node_pools = [], one such entry is required."
 
   validation {
     condition = anytrue([
@@ -358,21 +358,22 @@ variable "access_entries" {
     error_message = "principal_arn must be an IAM role or user ARN."
   }
   validation {
-    condition     = alltrue([for e in values(var.access_entries) : contains(["STANDARD", "EC2_LINUX", "EC2_WINDOWS", "FARGATE_LINUX"], e.type)])
-    error_message = "type must be STANDARD, EC2_LINUX, EC2_WINDOWS or FARGATE_LINUX."
+    condition     = alltrue([for e in values(var.access_entries) : contains(["STANDARD", "EC2", "EC2_LINUX", "EC2_WINDOWS", "FARGATE_LINUX"], e.type)])
+    error_message = "type must be STANDARD, EC2, EC2_LINUX, EC2_WINDOWS or FARGATE_LINUX."
   }
   validation {
-    condition     = alltrue([for e in values(var.access_entries) : e.type == "STANDARD" || length(e.policies) == 0])
-    error_message = "Only STANDARD access entries can have access policies."
+    condition     = alltrue([for e in values(var.access_entries) : e.type == "STANDARD" || e.type == "EC2" || length(e.policies) == 0])
+    error_message = "Only STANDARD and EC2 access entries can have access policies."
   }
   validation {
     condition = alltrue([
       for e in values(var.access_entries) : alltrue([
         for p in values(e.policies) :
+        e.type == "EC2" ? p.policy == "AmazonEKSAutoNodePolicy" && length(p.namespaces) == 0 :
         contains(["AmazonEKSClusterAdminPolicy", "AmazonEKSAdminPolicy", "AmazonEKSEditPolicy", "AmazonEKSViewPolicy", "AmazonEKSAdminViewPolicy"], p.policy)
       ])
     ])
-    error_message = "policy must be one of AmazonEKSClusterAdminPolicy, AmazonEKSAdminPolicy, AmazonEKSEditPolicy, AmazonEKSViewPolicy, AmazonEKSAdminViewPolicy (a name, not an ARN)."
+    error_message = "STANDARD entries accept AmazonEKSClusterAdminPolicy, AmazonEKSAdminPolicy, AmazonEKSEditPolicy, AmazonEKSViewPolicy or AmazonEKSAdminViewPolicy (a name, not an ARN). EC2 entries accept only AmazonEKSAutoNodePolicy at cluster scope (empty namespaces)."
   }
   validation {
     condition = alltrue([

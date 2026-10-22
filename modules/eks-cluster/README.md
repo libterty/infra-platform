@@ -85,6 +85,30 @@ module "eks" {
 
 Auto Mode 的叢集，cluster role 的 trust 要有 `sts:TagSession`（`iam-role` 的 `trust.tag_session = true`）。
 
+### Auto Mode 不帶內建 node pool（AWS 的標準做法）
+
+使用者自己用 NodeClass、NodePool 管節點時，叢集建立時不需要內建 node pool，也不需要 node role：
+
+```hcl
+auto_mode = {
+  node_pools = []   # node_role_arn 省略（null）
+}
+
+access_entries = {
+  # ...cluster admin entry...
+  auto_nodes = {
+    principal_arn = "arn:aws:iam::111111111111:role/alpha-dev-eks-auto-node"
+    type          = "EC2"
+    policies = {
+      node = { policy = "AmazonEKSAutoNodePolicy" }
+    }
+  }
+}
+```
+
+- `node_role_arn` 只有在 `node_pools = []` 時才能是 `null`；`node_pools` 有值卻沒給 role，plan 失敗。有給 role 時行為跟以前一樣。
+- `node_pools = []` 時，`access_entries` 必須有一個 `type = "EC2"` 的 entry 掛 `AmazonEKSAutoNodePolicy`，否則 plan 失敗（`aws_eks_cluster.this` 的 precondition），因為沒有它 Auto Mode 的節點無法加入叢集。node role 本身由呼叫端建（`iam-role`），NodeClass 的 `role` 指向它。
+
 ## add-on
 
 `addons` 的 key 是 add-on 名稱，`version` 必填（版本跟 `kubernetes_version` 綁在一起，module 不給預設）。
@@ -104,11 +128,11 @@ Auto Mode 的叢集，cluster role 的 trust 要有 `sts:TagSession`（`iam-role
 
 ## 存取
 
-`access_entries` 是 map：`principal_arn`、`type`（預設 `STANDARD`，也可以是 `EC2_LINUX`、`EC2_WINDOWS`、`FARGATE_LINUX`）、`policies`（map：`policy` 與 `namespaces`）。`namespaces` 空的是 cluster scope，有值是 namespace scope。
+`access_entries` 是 map：`principal_arn`、`type`（預設 `STANDARD`，也可以是 `EC2`、`EC2_LINUX`、`EC2_WINDOWS`、`FARGATE_LINUX`）、`policies`（map：`policy` 與 `namespaces`）。`namespaces` 空的是 cluster scope，有值是 namespace scope。
 
 - 叢集固定用 `authentication_mode = "API"` 與 `bootstrap_cluster_creator_admin_permissions = false`，建立叢集的人不會自動變成 admin。所以 `access_entries` 至少要有一個 `STANDARD` entry 帶 cluster scope 的 `AmazonEKSClusterAdminPolicy`（給跑 `terraform apply` 的 role），不然 plan 失敗，因為沒有它 apply 完之後沒有人能操作叢集。
 - `policy` 只收名稱，白名單：`AmazonEKSClusterAdminPolicy`、`AmazonEKSAdminPolicy`、`AmazonEKSEditPolicy`、`AmazonEKSViewPolicy`、`AmazonEKSAdminViewPolicy`。module 組成 `arn:aws:eks::aws:cluster-access-policy/<名稱>`（partition 固定 `aws`）。
-- 只有 `STANDARD` 的 entry 能掛 policy。
+- 只有 `STANDARD` 與 `EC2` 的 entry 能掛 policy。`STANDARD` 只能掛上面五個；`EC2`（Auto Mode 的 node role 用）只能掛 `AmazonEKSAutoNodePolicy`，而且只能是 cluster scope（`namespaces` 空的）；`AmazonEKSAutoNodePolicy` 不能掛在其他 type。`EC2` 與 `EC2_LINUX` 是不同的 type，只有 `EC2` 能關聯 access policy。
 - `pod_identity_associations` 是 map：`namespace`、`service_account`、`role_arn`。role 的 trust 要是 `pods.eks.amazonaws.com` 並帶 `sts:TagSession`。
 
 ## CI 用 Helm 部署的最小權限
@@ -207,10 +231,10 @@ Fargate 不支援 EKS Pod Identity，也不支援 DaemonSet、privileged、HostN
 | `zonal_shift` | `bool` | `false` | 否 | 開 ARC zonal shift |
 | `managed_node_groups` | `map(object)` | `{}` | 否 | `node_role_arn`、`subnet_ids`（預設叢集 subnet）、`ami_type`（`AL2023_x86_64_STANDARD`）、`instance_types`、`capacity_type`（`ON_DEMAND`）、`min_size`、`max_size`、`desired_size`、`disk_size`（50）、`disk_kms_key_arn`、`labels`、`taints`、`max_unavailable_percentage`（33） |
 | `fargate_profiles` | `map(object)` | `{}` | 否 | `pod_execution_role_arn`、`subnet_ids`、`selectors`（`namespace`、`labels`） |
-| `auto_mode` | `object({ node_role_arn, node_pools })` | `null` | 否 | `node_pools` 預設 `["general-purpose", "system"]`；`null` 不開 |
+| `auto_mode` | `object({ node_role_arn, node_pools })` | `null` | 否 | `node_pools` 預設 `["general-purpose", "system"]`；`node_role_arn` 選填，只有 `node_pools = []` 時可以省略，且要有 `EC2` access entry 掛 `AmazonEKSAutoNodePolicy`；`null` 不開 |
 | `karpenter` | `object({ node_role_arn, controller_namespace, controller_service_account, controller_role_arn })` | `null` | 否 | 預設 `kube-system`、`karpenter`；`null` 不建 |
 | `addons` | `map(object)` | `{}` | 視模式 | `version`（必填）、`configuration_values`、`pod_identity_role_arn`、`service_account`、`resolve_conflicts_on_update`（`OVERWRITE`）；沒有 `auto_mode` 時要有四個核心 add-on |
-| `access_entries` | `map(object)` | 無 | 是 | `principal_arn`、`type`（`STANDARD`）、`policies`（`policy`、`namespaces`）；至少一個 cluster scope 的 `AmazonEKSClusterAdminPolicy` |
+| `access_entries` | `map(object)` | 無 | 是 | `principal_arn`、`type`（`STANDARD`；也可以是 `EC2`、`EC2_LINUX`、`EC2_WINDOWS`、`FARGATE_LINUX`）、`policies`（`policy`、`namespaces`）；至少一個 cluster scope 的 `AmazonEKSClusterAdminPolicy`；`EC2` 只能掛 cluster scope 的 `AmazonEKSAutoNodePolicy` |
 | `pod_identity_associations` | `map(object)` | `{}` | 否 | `namespace`、`service_account`、`role_arn` |
 | `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；`Name` 由 module 加上 |
 
@@ -226,6 +250,7 @@ Fargate 不支援 EKS Pod Identity，也不支援 DaemonSet、privileged、HostN
 | `certificate_authority_data` | `string` | 叢集 CA（base64），給 kubeconfig、kubernetes 與 helm provider |
 | `oidc_issuer_url` | `string` | OIDC issuer URL，給 `iam-oidc-provider` |
 | `cluster_security_group_id` | `string` | EKS 建的 cluster security group |
+| `service_ipv4_cidr` | `string` | 叢集的 Kubernetes service CIDR（沒指定時 EKS 從 `10.100.0.0/16`、`172.20.0.0/16` 擇一） |
 | `node_group_names` | `list(string)` | managed node group 名稱 |
 | `karpenter_interruption_queue_name` | `string` | Karpenter 的 SQS queue 名稱；沒開 `karpenter` 時是 `null` |
 | `log_group_name` | `string` | control plane log group 名稱 |
@@ -236,4 +261,4 @@ Fargate 不支援 EKS Pod Identity，也不支援 DaemonSet、privileged、HostN
 scripts/validate.sh modules/eks-cluster
 ```
 
-`tests/` 依主題分檔：`cluster`（叢集設定與固定值）、`node-groups`（managed node group 與 launch template）、`node-modes`（Fargate、Auto Mode、互斥規則）、`addons`、`access`（access entry 與 Pod Identity）、`karpenter`。全部用 `mock_provider "aws"`，不連 AWS。
+`tests/` 依主題分檔：`cluster`（叢集設定與固定值）、`node-groups`（managed node group 與 launch template）、`node-modes`（Fargate、Auto Mode、互斥規則）、`auto-mode-nodes`（不帶 node role 與內建 node pool 的 Auto Mode、`service_ipv4_cidr`）、`addons`、`access`（access entry 與 Pod Identity）、`ec2-access`（`EC2` entry 與 `AmazonEKSAutoNodePolicy`）、`karpenter`。全部用 `mock_provider "aws"`，不連 AWS。

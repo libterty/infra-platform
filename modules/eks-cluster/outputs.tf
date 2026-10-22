@@ -28,6 +28,11 @@ output "cluster_security_group_id" {
   value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
 }
 
+output "service_ipv4_cidr" {
+  description = "Kubernetes service CIDR of the cluster (EKS picks 10.100.0.0/16 or 172.20.0.0/16 when it is not set)."
+  value       = aws_eks_cluster.this.kubernetes_network_config[0].service_ipv4_cidr
+}
+
 output "node_group_names" {
   description = "Names of the managed node groups."
   value       = [for g in aws_eks_node_group.this : g.node_group_name]

@@ -6,7 +6,7 @@
 
 ## module
 
-共 40 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 41 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -44,6 +44,7 @@
 | EKS | `eks-cluster` | EKS 叢集：managed node group、Karpenter、Fargate、Auto Mode，access entry、Pod Identity | [![eks-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=eks-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=eks-cluster-v) |
 | EKS | `eks-addons` | 用 Helm 裝 LB Controller、Karpenter、Argo Rollouts 與預設 NodePool、app namespace | [![eks-addons](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=eks-addons-v*&label=)](https://github.com/libterty/infra-platform/releases?q=eks-addons-v) |
 | EKS | `eks-iam-policies` | 不建資源，輸出 LB Controller、Karpenter、Argo Rollouts 的官方 IAM policy | [![eks-iam-policies](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=eks-iam-policies-v*&label=)](https://github.com/libterty/infra-platform/releases?q=eks-iam-policies-v) |
+| EKS | `eks-workload-alarms` | EKS 工作負載告警：Ready 副本、CrashLoop、重啟、Pending、OOM，可選 ALB target 告警 | [![eks-workload-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=eks-workload-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=eks-workload-alarms-v) |
 | LLM 與 AgentCore | `bedrock-guardrail`         | Bedrock guardrail，tier 預設 `STANDARD`                                          | [![bedrock-guardrail](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=bedrock-guardrail-v*&label=)](https://github.com/libterty/infra-platform/releases?q=bedrock-guardrail-v) |
 | LLM 與 AgentCore | `bedrock-inference-profile` | application inference profile，給成本歸屬                                          | [![bedrock-inference-profile](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=bedrock-inference-profile-v*&label=)](https://github.com/libterty/infra-platform/releases?q=bedrock-inference-profile-v) |
 | LLM 與 AgentCore | `agentcore-runtime`         | AgentCore Runtime                                                                  | [![agentcore-runtime](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=agentcore-runtime-v*&label=)](https://github.com/libterty/infra-platform/releases?q=agentcore-runtime-v) |

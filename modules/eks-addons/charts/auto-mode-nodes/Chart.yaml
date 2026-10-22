@@ -1,0 +1,5 @@
+apiVersion: v2
+name: auto-mode-nodes
+description: EKS Auto Mode NodeClass and NodePool objects for the eks-addons module.
+type: application
+version: 0.1.0

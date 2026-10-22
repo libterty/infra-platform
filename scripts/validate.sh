@@ -424,6 +424,13 @@ validate_dir() {
     terraform -chdir="$dir" test || return 1
   fi
 
+  # Step 6b: static checks that terraform test cannot express (for example eks-addons install order via terraform graph).
+  # Any executable tests/check-*.sh runs here; each must work offline after init -backend=false.
+  for x in "$dir"/tests/check-*.sh; do
+    [ -x "$x" ] || continue
+    "$x" || return 1
+  done
+
   # Step 6a: stacks (decided by directory layout, not by path) run tests against their tfvars files.
   local x
   for x in "$dir"/envs/*.tfvars; do

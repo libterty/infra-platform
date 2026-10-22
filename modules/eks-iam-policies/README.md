@@ -1,6 +1,6 @@
 # eks-iam-policies
 
-輸出 EKS 常用 controller 的官方 IAM policy JSON：AWS Load Balancer Controller、Karpenter controller、Argo Rollouts（CloudWatch analysis 用）。不建任何資源。
+輸出 EKS 常用 controller 的官方 IAM policy JSON：AWS Load Balancer Controller、Karpenter controller、Argo Rollouts（CloudWatch analysis 用）、KEDA（CloudWatch scaler 用）。不建任何資源。
 
 ## 為什麼是一個沒有資源的 module
 
@@ -40,21 +40,22 @@ module "lb_controller_role" {
 }
 ```
 
-Karpenter、Argo Rollouts 的 role 寫法相同，分別用 `karpenter_controller_policy_json` 與 `argo_rollouts_cloudwatch_policy_json`。完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
+Karpenter、Argo Rollouts、KEDA 的 role 寫法相同，分別用 `karpenter_controller_policy_json`、`argo_rollouts_cloudwatch_policy_json` 與 `keda_cloudwatch_policy_json`。完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
 
-三個 policy 都通過 `iam-role` 的 `inline_policies` 檢查（沒有 `*` 或 `service:*` 的 Allow 動作、沒有 `NotAction`、`NotResource`）。
+四個 policy 都通過 `iam-role` 的 `inline_policies` 檢查（沒有 `*` 或 `service:*` 的 Allow 動作、沒有 `NotAction`、`NotResource`）。
 
 ## Policy 來源
 
 | Policy | 版本 | 來源 | 取得時的 tag 與 commit |
 |---|---|---|---|
-| LB Controller | `3.6.0` | [`docs/install/iam_policy.json`](https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.6.0/docs/install/iam_policy.json) | tag `v3.6.0`，commit `267b5458b4c4c3066d47673a36dda275af07a6d6` |
+| LB Controller | `3.6.1`（預設）、`3.6.0` | [`docs/install/iam_policy.json`](https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.6.1/docs/install/iam_policy.json) | 預設 `3.6.1`：tag `v3.6.1`，commit `cce96f2c8ae138e85ead0e5efa0d6ad0bde7b11c`；`3.6.0`：tag `v3.6.0`，commit `267b5458b4c4c3066d47673a36dda275af07a6d6` |
 | Karpenter controller | `1.15.0` | [`cloudformation.yaml`](https://raw.githubusercontent.com/aws/karpenter-provider-aws/v1.15.0/website/content/en/docs/getting-started/getting-started-with-karpenter/cloudformation.yaml) | tag `v1.15.0`，commit `b2896451034b61e8641b8b891e4a0f10d905608f` |
 | Argo Rollouts CloudWatch | 無版本 | 自己寫，只有 `cloudwatch:GetMetricData` | 不適用 |
+| KEDA CloudWatch | 無版本 | 自己寫，只有 `cloudwatch:GetMetricData`（KEDA `aws-cloudwatch` scaler 需要） | 不適用 |
 
 ### LB Controller
 
-- 官方檔案原樣存在 [`policies/aws-load-balancer-controller/v3.6.0.json`](./policies/aws-load-balancer-controller/v3.6.0.json)，沒有手改。輸出是 `jsonencode(jsondecode(file(...)))`，只去掉空白，內容不變。
+- 官方檔案原樣存在 [`policies/aws-load-balancer-controller/v3.6.1.json`](./policies/aws-load-balancer-controller/v3.6.1.json)（預設）與 [`v3.6.0.json`](./policies/aws-load-balancer-controller/v3.6.0.json)，沒有手改。`3.6.1` 與 `3.6.0` 的 policy 內容逐字相同（和官方 `v3.6.1` 的 `iam_policy.json` 做 diff 沒有差異），保留 `3.6.0` 是讓已經固定這個版本的呼叫端不會壞掉。輸出是 `jsonencode(jsondecode(file(...)))`，只去掉空白，內容不變。
 - 官方檔案的 ARN 寫死 `arn:aws:`（13 處）。照官方，所以 `partition` 對這個 policy 沒有作用；在 `aws-cn`、`aws-us-gov` 使用前要自己確認。
 - `cluster_name`、`region`、`account_id` 對這個 policy 也沒有作用：官方 policy 不依叢集而變。
 
@@ -78,6 +79,10 @@ Karpenter、Argo Rollouts 的 role 寫法相同，分別用 `karpenter_controlle
 - 官方的 `iam:PassedToService` 條件含 `ec2.amazonaws.com.cn`，照官方保留。
 - 沒有逐字比對轉換結果與 yaml 的測試；測試檢查 statement 數、Sid 清單、`iam:PassRole`、SQS、`eks:DescribeCluster` 的範圍與佔位符是否替換乾淨。轉換是人工做的，升版時要逐段對照 yaml。
 
+### KEDA
+
+- 只有 `cloudwatch:GetMetricData`，`Resource` 為 `"*"`，內容與 Argo Rollouts 的 policy 相同，理由見下一節。分成兩個輸出是因為兩者掛在不同的 role（不同 ServiceAccount）。
+
 ### Argo Rollouts
 
 - 只有 `cloudwatch:GetMetricData`，`Resource` 為 `"*"`。
@@ -95,6 +100,7 @@ IAM 對一個 role 的 inline policy 總和限制是 10,240 字元，計算時�
 | `load_balancer_controller` | 5,196 | 51% |
 | `karpenter_controller` | 6,154 | 60% |
 | `argo_rollouts_cloudwatch` | 110 | 1% |
+| `keda_cloudwatch` | 110 | 1% |
 
 結論：
 
@@ -136,7 +142,7 @@ IAM 對一個 role 的 inline policy 總和限制是 10,240 字元，計算時�
 | `region` | `string` | 無 | 是 | 叢集所在 region，例如 `ap-northeast-1` |
 | `account_id` | `string` | 無 | 是 | 12 位數字的帳號 ID |
 | `partition` | `string` | `"aws"` | 否 | `aws`、`aws-cn` 或 `aws-us-gov`；只影響這個 module 組出的 ARN，不影響 LB Controller 官方 policy |
-| `load_balancer_controller_version` | `string` | `"3.6.0"` | 否 | 只接受 module 附的版本（目前只有 `3.6.0`） |
+| `load_balancer_controller_version` | `string` | `"3.6.1"` | 否 | 只接受 module 附的版本（目前是 `3.6.0`、`3.6.1`） |
 | `karpenter` | `object({ version = optional(string, "1.15.0"), node_role_arn = string, interruption_queue_name = string })` | `null` | 否 | `null` 時不輸出 Karpenter policy；`version` 只接受 module 附的版本（目前只有 `1.15.0`）；`node_role_arn` 必須是 role ARN；`interruption_queue_name` 1–80 字元，限字母、數字、`-`、`_` |
 
 ## 輸出
@@ -148,7 +154,8 @@ IAM 對一個 role 的 inline policy 總和限制是 10,240 字元，計算時�
 | `load_balancer_controller_policy_json` | `string` | LB Controller 官方 policy，去空白的 JSON |
 | `karpenter_controller_policy_json` | `string` | Karpenter controller policy；`karpenter` 為 `null` 時是 `null` |
 | `argo_rollouts_cloudwatch_policy_json` | `string` | `cloudwatch:GetMetricData` 的 policy |
-| `policy_sizes` | `map(number)` | 各 policy 去空白後的字元數；key 為 `load_balancer_controller`、`argo_rollouts_cloudwatch`，`karpenter` 有給時加 `karpenter_controller` |
+| `keda_cloudwatch_policy_json` | `string` | KEDA `aws-cloudwatch` scaler 用的 `cloudwatch:GetMetricData` policy |
+| `policy_sizes` | `map(number)` | 各 policy 去空白後的字元數；key 為 `load_balancer_controller`、`argo_rollouts_cloudwatch`、`keda_cloudwatch`，`karpenter` 有給時加 `karpenter_controller` |
 
 ## 測試
 

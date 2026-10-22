@@ -1,0 +1,10 @@
+{{- range .Values.namespaces }}
+{{- if eq . "kube-system" }}
+{{- fail "namespaces must not contain kube-system: it already exists" }}
+{{- end }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . | quote }}
+{{- end }}

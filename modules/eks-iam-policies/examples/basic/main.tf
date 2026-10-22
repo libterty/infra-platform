@@ -28,6 +28,10 @@ output "argo_rollouts_cloudwatch_policy_json" {
   value = module.policies.argo_rollouts_cloudwatch_policy_json
 }
 
+output "keda_cloudwatch_policy_json" {
+  value = module.policies.keda_cloudwatch_policy_json
+}
+
 output "policy_sizes" {
   value = module.policies.policy_sizes
 }

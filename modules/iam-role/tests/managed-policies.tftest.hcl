@@ -60,12 +60,26 @@ run "every_allowlisted_name_accepted" {
       "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy",
       "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
       "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2",
+      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
     ]
   }
 
   assert {
-    condition     = length(aws_iam_role_policy_attachment.this) == 13
-    error_message = "All 13 allowlist entries must be accepted"
+    condition     = length(aws_iam_role_policy_attachment.this) == 14
+    error_message = "All 14 allowlist entries must be accepted"
+  }
+}
+
+run "cloudwatch_agent_server_policy_accepted" {
+  command = plan
+
+  variables {
+    managed_policy_arns = ["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"]
+  }
+
+  assert {
+    condition     = aws_iam_role_policy_attachment.this["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"].policy_arn == "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+    error_message = "CloudWatchAgentServerPolicy is allowlisted for the Container Insights collector (design v4 W2)"
   }
 }
 

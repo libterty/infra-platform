@@ -10,7 +10,7 @@ run "sizes_without_karpenter" {
   command = plan
 
   assert {
-    condition     = output.policy_sizes["load_balancer_controller"] == length(replace(file("${path.module}/policies/aws-load-balancer-controller/v3.6.0.json"), "/\\s/", ""))
+    condition     = output.policy_sizes["load_balancer_controller"] == length(replace(file("${path.module}/policies/aws-load-balancer-controller/v3.6.1.json"), "/\\s/", ""))
     error_message = "load_balancer_controller size must count the official file with whitespace removed"
   }
 
@@ -20,7 +20,12 @@ run "sizes_without_karpenter" {
   }
 
   assert {
-    condition     = length(output.policy_sizes) == 2 && !contains(keys(output.policy_sizes), "karpenter_controller")
+    condition     = output.policy_sizes["keda_cloudwatch"] == length(replace(output.keda_cloudwatch_policy_json, "/\\s/", ""))
+    error_message = "keda_cloudwatch size must match the output JSON"
+  }
+
+  assert {
+    condition     = length(output.policy_sizes) == 3 && !contains(keys(output.policy_sizes), "karpenter_controller")
     error_message = "policy_sizes must omit karpenter_controller when karpenter is null"
   }
 }
@@ -41,7 +46,7 @@ run "sizes_with_karpenter" {
   }
 
   assert {
-    condition     = length(output.policy_sizes) == 3
-    error_message = "policy_sizes must have three keys when karpenter is set"
+    condition     = length(output.policy_sizes) == 4
+    error_message = "policy_sizes must have four keys when karpenter is set"
   }
 }
