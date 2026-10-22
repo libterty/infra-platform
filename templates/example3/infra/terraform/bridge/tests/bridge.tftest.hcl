@@ -34,6 +34,14 @@ override_module {
       import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+      eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+      eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+      eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+      api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+      worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+      lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+      keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+      cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
     }
     lists = {
       services          = ["api", "worker"]
@@ -54,8 +62,10 @@ run "publishes_exactly_the_keys_the_late_stacks_read" {
       "db_proxy_endpoint", "db_secret_arn", "rate_limit_redis_endpoint", "stream_redis_endpoint", "db_name", "stream_shard_count",
       "ecs_execution_role_arn", "api_task_role_arn", "worker_task_role_arn", "import_extract_role_arn",
       "import_load_role_arn", "agent_runtime_role_arn",
+      "eks_api_sg_id", "eks_cluster_role_arn", "eks_node_role_arn", "api_pod_role_arn", "worker_pod_role_arn",
+      "lb_controller_role_arn", "keda_role_arn", "cloudwatch_agent_role_arn",
     ])
-    error_message = "Tree B strings must be exactly the keys read by loadbalancer, agent, application, operation and postdeploy"
+    error_message = "Tree B strings must be exactly the keys read by eks-cluster, loadbalancer, agent, application, operation and postdeploy"
   }
 
   assert {
@@ -111,6 +121,14 @@ run "rejects_an_empty_string_value" {
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+        eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+        eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+        api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+        worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+        lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+        keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+        cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
       }
       lists = {
         services          = ["api", "worker"]
@@ -153,6 +171,14 @@ run "rejects_a_single_subnet" {
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+        eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+        eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+        api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+        worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+        lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+        keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+        cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
       }
       lists = {
         services          = ["api", "worker"]
@@ -195,6 +221,14 @@ run "rejects_an_agent_runtimes_value_that_is_not_json" {
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+        eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+        eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+        api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+        worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+        lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+        keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+        cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
       }
       lists = {
         services          = ["api", "worker"]
@@ -237,6 +271,14 @@ run "rejects_ecr_repository_urls_that_are_not_an_object" {
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+        eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
+        eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
+        api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
+        worker_pod_role_arn            = "arn:aws:iam::111111111111:role/example-dev-worker-pod"
+        lb_controller_role_arn         = "arn:aws:iam::111111111111:role/example-dev-lb-controller"
+        keda_role_arn                  = "arn:aws:iam::111111111111:role/example-dev-keda"
+        cloudwatch_agent_role_arn      = "arn:aws:iam::111111111111:role/example-dev-cloudwatch-agent"
       }
       lists = {
         services          = ["api", "worker"]

@@ -12,6 +12,7 @@ locals {
     app_sg_id                      = module.in.strings["app_sg_id"]
     agent_sg_id                    = module.in.strings["agent_sg_id"]
     bastion_sg_id                  = module.in.strings["bastion_sg_id"]
+    eks_api_sg_id                  = module.in.strings["eks_api_sg_id"]
     db_proxy_endpoint              = module.in.strings["db_proxy_endpoint"]
     db_secret_arn                  = module.in.strings["db_secret_arn"]
     rate_limit_redis_endpoint      = module.in.strings["rate_limit_redis_endpoint"]
@@ -24,6 +25,14 @@ locals {
     import_extract_role_arn        = module.in.strings["import_extract_role_arn"]
     import_load_role_arn           = module.in.strings["import_load_role_arn"]
     agent_runtime_role_arn         = module.in.strings["agent_runtime_role_arn"]
+    # Read by eks-cluster (design v4 §8.1).
+    eks_cluster_role_arn      = module.in.strings["eks_cluster_role_arn"]
+    eks_node_role_arn         = module.in.strings["eks_node_role_arn"]
+    api_pod_role_arn          = module.in.strings["api_pod_role_arn"]
+    worker_pod_role_arn       = module.in.strings["worker_pod_role_arn"]
+    lb_controller_role_arn    = module.in.strings["lb_controller_role_arn"]
+    keda_role_arn             = module.in.strings["keda_role_arn"]
+    cloudwatch_agent_role_arn = module.in.strings["cloudwatch_agent_role_arn"]
   }
 
   published_lists = {

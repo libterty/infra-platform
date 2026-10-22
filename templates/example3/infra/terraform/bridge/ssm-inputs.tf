@@ -10,6 +10,7 @@ locals {
     app_sg_id                      = "network/app_sg_id"
     agent_sg_id                    = "network/agent_sg_id"
     bastion_sg_id                  = "network/bastion_sg_id"
+    eks_api_sg_id                  = "network/eks_api_sg_id"
     db_proxy_endpoint              = "database/db_proxy_endpoint"
     db_secret_arn                  = "database/db_secret_arn"
     rate_limit_redis_endpoint      = "database/rate_limit_redis_endpoint"
@@ -22,6 +23,13 @@ locals {
     import_extract_role_arn        = "iam/import_extract_role_arn"
     import_load_role_arn           = "iam/import_load_role_arn"
     agent_runtime_role_arn         = "iam/agent_runtime_role_arn"
+    eks_cluster_role_arn           = "iam/eks_cluster_role_arn"
+    eks_node_role_arn              = "iam/eks_node_role_arn"
+    api_pod_role_arn               = "iam/api_pod_role_arn"
+    worker_pod_role_arn            = "iam/worker_pod_role_arn"
+    lb_controller_role_arn         = "iam/lb_controller_role_arn"
+    keda_role_arn                  = "iam/keda_role_arn"
+    cloudwatch_agent_role_arn      = "iam/cloudwatch_agent_role_arn"
   }
 
   ssm_input_lists = {
