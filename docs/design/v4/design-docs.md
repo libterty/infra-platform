@@ -118,7 +118,7 @@ containerimage foundation network database iam bridge eks-cluster eks-addons loa
 | `containerimage`、`foundation`、`database`、`agent`、`operation` | 照搬（E12）；`containerimage` 只改描述文字 |
 | `network` | `vpc` 升 0.2.0、`app` subnet 加 NodeClass 用的 tag；新增 `node` SG（K1）；`app` SG 加 node↔pod 需要的規則（kubelet 探測、DNS，**未實測**）；`nat_mode = "none"` 時加 EKS 需要的 interface endpoint（v3 §5 第 1 步的清單，再加 KEDA 讀指標用的 `monitoring`，**完整性未確認**） |
 | `iam` | 拿掉 `ecs_execution`、`api_task`、`worker_task` 與 ECS Exec 權限（`iam/roles.tf:6-17`、`iam/policies.tf`）；新增 §4 列的 role |
-| `bridge` | 轉發的 key 從三個 ECS role 換成 `api_pod_role_arn`、`worker_pod_role_arn` |
+| `bridge` | 轉發的 key 從三個 ECS role 換成 `eks-cluster` 要讀的 EKS role 與 `eks_api_sg_id`（§8.1、C4-1） |
 | `eks-cluster`（新） | 叢集（private endpoint、Auto Mode、`node_pools = []`、不指定 node role）、node role 的 EC2 access entry、其他 access entry、Pod Identity association、secrets 加密的 KMS key |
 | `eks-addons`（新） | 呼叫 `eks-addons` 0.2.0；helm provider 由 SSM 讀到的 endpoint 與 CA 設定，用 `aws eks get-token` |
 | `loadbalancer` | 不變的部分：ALB、WAF、origin-verify、access log、`api` target group（已經是 `ip` 類型，`loadbalancer/alb.tf:61-67`）；新增 `canary`（§6.1） |
@@ -169,7 +169,7 @@ VPC 或可連通的網路要滿足：
 | stack | 拿掉 | 新增 |
 |---|---|---|
 | `iam` | `ecs_execution_role_arn`、`api_task_role_arn`、`worker_task_role_arn` | `eks_cluster_role_arn`、`eks_node_role_arn`、`api_pod_role_arn`、`worker_pod_role_arn`、`lb_controller_role_arn`、`keda_role_arn`、`cloudwatch_agent_role_arn` |
-| `bridge`（tree B） | 三個 ECS role | `api_pod_role_arn`、`worker_pod_role_arn` |
+| `bridge`（tree B） | 三個 ECS role | `eks_api_sg_id`、`eks_cluster_role_arn`、`eks_node_role_arn`、`api_pod_role_arn`、`worker_pod_role_arn`、`lb_controller_role_arn`、`keda_role_arn`、`cloudwatch_agent_role_arn`（`eks-cluster` 排在 `bridge` 之後，只讀樹 B，C4-1） |
 | `eks-cluster` | — | `contract_version`、`cluster_name`、`cluster_endpoint`、`cluster_ca_data`、`cluster_sg_id`、`service_cidr`、`app_namespace`、`api_service_account`、`worker_service_account` |
 | `application` | `cluster_name`、`*_service_name`、`*_log_group_name`（C7 才拿掉，見 implement-process C6） | `api_environment_json`、`worker_environment_json`、`api_target_group_arn`（轉發，讓 CI 只讀一個前綴）、image repository URL、副本數上下限、`stream_length_cap` |
 
@@ -234,7 +234,9 @@ VPC 或可連通的網路要滿足：
 8. **no-NAT 時的 interface endpoint 是否齊全**（Auto Mode、KEDA、CloudWatch 採集都會打 AWS API）。
 9. **KEDA 依 CloudWatch 指標擴縮，對長連線（SSE）的實際效果**（§9）。
 10. **Container Insights 包了一層之後，`$.event` 這類 log filter 還能不能比對**（`postdeploy/log-alarms.tf`）。
-11. **Kubernetes 版本**：placeholder 選目前仍在標準支援的版本（1.35 以上），C4 再查。
+11. **Kubernetes 版本**：placeholder 用 1.36（C4-3）。
+15. **CI 的 `AmazonEKSEditPolicy` 能不能建 CRD**：TargetGroupBinding、ScaledObject 要靠 controller 的 ClusterRole 帶 `aggregate-to-edit` label 才會併進 edit；沒有的話 CI 部署會被 RBAC 擋下，C5 或 C6 要補（C4-2）。
+16. **secrets 加密的 grant**：EKS 建叢集時由執行 apply 的身分建立 KMS grant，這個身分要有該 key 的 `kms:CreateGrant`、`kms:DescribeKey`。
 12. **保密**：example3 是從 example2 複製，只能帶 example2 已有的字串；每個 phase 都做來源字串的反向比對（[`../v2/integration-playbook.md`](../v2/integration-playbook.md)）。
 
 ## 12. 來源
@@ -272,3 +274,13 @@ VPC 或可連通的網路要滿足：
 | C1-5 | 安裝順序（node → NetworkPolicy → controller）以靜態檢查驗收：用 `terraform graph` 檢查相依關係 |
 | C1-6 | 本機沒有 helm 時，下載官方 tarball 到暫存目錄、比對 sha256 後使用，不裝進系統 |
 | C1-7 | `system` NetworkPolicy 的放行範圍精細到 subnet 與 endpoint：控制平面 ENI 所在的 subnet CIDR、VPC endpoint 所在的 subnet CIDR，由呼叫端傳入 |
+
+## 附錄：C4 實作時的決定（2026-10-22）
+
+| # | 決定 |
+|---|---|
+| C4-1 | `eks-cluster` 排在 `bridge` 之後，跟其他後段 stack 一樣只讀樹 B。`bridge` 多轉寫 `eks_api_sg_id` 與 7 個 EKS role（§8.1），樹 B 改由外部發布時 `eks-cluster` 照樣能跑（使用者選定） |
+| C4-2 | CI 部署身分用 `AmazonEKSEditPolicy`，範圍限 `app_namespace`；CRD 權限列為待驗證（§11 第 15 點，使用者選定） |
+| C4-3 | Kubernetes 版本的 placeholder 用 1.36：AWS 文件列在標準支援內，第三方追蹤記錄標準支援到 2027-08。1.37 只有第三方文章提到，查不到 AWS 確認 |
+| C4-4 | access entry 的 principal 從 tfvars 給：`cluster_admin_principal_arns`（至少一個）、`addons_apply_principal_arn`、`ci_deploy_principal_arn`，三者必須不同（EKS 一個 principal 只能有一個 entry）。管理者 entry 以 ARN 當 key，調整清單順序不會重建 |
+| C4-5 | LB Controller、KEDA、CloudWatch 採集的 namespace 與 ServiceAccount 用 `eks-addons` module 的預設值，寫在 `eks-cluster` 的 locals；C5 的 stack 不能改這些值 |
