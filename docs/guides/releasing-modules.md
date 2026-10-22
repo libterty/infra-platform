@@ -74,6 +74,10 @@ feat(ecs-service): ... 合併到 main
 
 新增 module 時，`release-please-config.json` 的 `packages` 加一行並設 `"initial-version": "0.1.0"`，`.release-please-manifest.json` 不要加；`CHANGELOG.md` 只放 `# Changelog` 這一行標題。合併到 `main` 後 release-please 會開這個 module 的第一個 release PR，合併就打出 `<module>-v0.1.0` 並寫好 CHANGELOG。release-please 會把原本那行 `# Changelog` 降成 `## Changelog` 留在檔尾，第一次發版後開個 `chore` commit 刪掉（v3 的 8 個 module 就是這樣）。`README.md` 的 module 表也要加。新 module 的第一個 tag 出來後，照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) §3 到 HCP 登記一次。v3 的 8 個 module 是第一批這樣發的；下面兩節手動打 tag 的做法只是當時的紀錄。
 
+### 一個 PR 動到多個 module
+
+用 merge commit 合併（不要 squash），每個 module 的 commit 才會各自進 CHANGELOG。PR 標題**不要**寫成 Conventional Commit 格式（例如 `feat(eks): ...`）：merge commit 的內文就是 PR 標題，release-please 會把它當成一個 feature，寫進每個被動到的 module 的 CHANGELOG（2026-10-22 v4 C1 發生過）。標題改用一般敘述，例如「v4 C1：EKS module」。已經發生的話，在重建 release PR 時把那一行刪掉。
+
 ### 同時有多個 release PR
 
 每個 release PR 都改 `.release-please-manifest.json`，合併一個之後其他的會衝突，release-please 不會自己重建。一次處理一個：
