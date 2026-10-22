@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.3.0...iam-role-v0.4.0) (2026-10-22)
+
+
+### Features
+
+* **iam-role:** allowlist CloudWatchAgentServerPolicy for the Container Insights collector ([17b2edd](https://github.com/libterty/infra-platform/commit/17b2edd7d1fa9ed9e08dc7ae4d02bb9087325289))
+
 ## [0.3.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.2.0...iam-role-v0.3.0) (2026-10-21)
 
 
