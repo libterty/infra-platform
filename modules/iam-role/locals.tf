@@ -1,6 +1,7 @@
 locals {
   # Allowlist of AWS managed policies this module may attach (design v3 section 4.1, D8).
-  # Sources: EKS cluster/node/Auto Mode/Fargate/add-on IAM docs and the SSM managed instance docs.
+  # Sources: EKS cluster/node/Auto Mode/Fargate/add-on IAM docs, the SSM managed instance docs and the
+  # CloudWatch Observability (Container Insights) install docs (design v4 W2).
   # The exact ARN paths (plain "policy/" vs "policy/service-role/") and the BlockStorage policy name
   # (AmazonEKSBlockStoragePolicy vs AmazonEKSBlockStoragePolicyV2) must be verified in a real
   # environment before first use (design section 6); both BlockStorage names are listed until then.
@@ -18,5 +19,6 @@ locals {
     "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy",
     "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
     "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2",
+    "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
   ])
 }
