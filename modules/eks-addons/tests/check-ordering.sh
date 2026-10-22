@@ -30,6 +30,7 @@ keda load_balancer_controller
 cloudwatch_observability system_network_policy
 cloudwatch_observability auto_mode_nodes
 cloudwatch_observability load_balancer_controller
+crd_role_aggregation load_balancer_controller
 "
 
 # Prints "yes" when $2 is reachable from $1 following "dependent -> dependency" edges.

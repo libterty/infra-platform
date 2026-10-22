@@ -18,6 +18,7 @@ locals {
     app_namespaces        = yamldecode(file("${path.module}/charts/app-namespaces/Chart.yaml")).version
     auto_mode_nodes       = yamldecode(file("${path.module}/charts/auto-mode-nodes/Chart.yaml")).version
     system_network_policy = yamldecode(file("${path.module}/charts/system-network-policy/Chart.yaml")).version
+    crd_role_aggregation  = yamldecode(file("${path.module}/charts/crd-role-aggregation/Chart.yaml")).version
   }
 
   install_karpenter_defaults = var.karpenter == null ? false : (var.karpenter.default_node_class != null && var.karpenter.default_node_pool != null)
@@ -220,9 +221,9 @@ resource "helm_release" "keda" {
 
   values = [yamlencode(merge(var.keda.values, local.placement_values))]
 
-  set = [
+  set = concat([
     { name = "serviceAccount.operator.name", value = var.keda.service_account },
-  ]
+  ], var.aggregate_crd_roles ? [{ name = "rbac.aggregateToDefaultRoles", value = "true" }] : [])
 
   depends_on = [helm_release.auto_mode_nodes, helm_release.system_network_policy, helm_release.load_balancer_controller]
 }
@@ -329,6 +330,24 @@ resource "helm_release" "argo_rollouts" {
   timeout         = 600
 
   values = [yamlencode(var.argo_rollouts.values)]
+
+  depends_on = [helm_release.load_balancer_controller]
+}
+
+# Roles only, no CRD needed to install them; it follows the controller so the roles appear together with the CRD.
+resource "helm_release" "crd_role_aggregation" {
+  count = var.aggregate_crd_roles && var.load_balancer_controller != null ? 1 : 0
+
+  name      = "crd-role-aggregation"
+  namespace = local.local_chart_release_namespace
+  chart     = "${path.module}/charts/crd-role-aggregation"
+  version   = local.local_chart_versions.crd_role_aggregation
+
+  atomic          = true
+  cleanup_on_fail = true
+  timeout         = 300
+
+  values = [yamlencode({ targetGroupBindings = true })]
 
   depends_on = [helm_release.load_balancer_controller]
 }

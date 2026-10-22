@@ -33,7 +33,8 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 完成：`git archive` 複製 196 個追蹤中的檔案；README 只改標題、改寫中說明與驗證指令的路徑；兩個範本 22 個 stack 全部通過、`check-ssm-contract.sh` 兩邊都過；example2 無變動 | — |
 | C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 完成：network 43、iam 34 個 run 全過；example3 11 個 stack 與 `check-ssm-contract.sh` 通過；突變（pod trust 不限叢集、api_pod 保留 ECS Exec）都被抓到；example2 無變動 | — |
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 完成：eks-cluster 22 個 run、bridge 16 個 run 全過；example3 12 個 stack 與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；example2 無變動 | — |
-| C5 | `eks-addons` stack；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
+| C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 進行中 | — |
+| C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
 | C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
@@ -105,6 +106,17 @@ C4 的結果：
 - 只讀樹 B（design C4-1）：`bridge` 多轉寫 `eks_api_sg_id` 與 7 個 EKS role，README 的樹 B 合約表跟著更新成 34 個 key、apply 順序表加入 `eks-cluster`。
 - 測試先後：實作比測試先寫，所以用突變測試補驗。9 個突變都被抓到：node entry 改成 `STANDARD`、CI 改叢集範圍、CI 改 Admin policy、KEDA ServiceAccount、worker 拿到 api 的 role、拿掉 principal 不重複的檢查、叢集名稱、拿掉 `contract_version`、`bridge` 少轉寫一個 key（由 `check-ssm-contract.sh` 抓到）。
 - 保密：這個 Phase 改到的 21 個檔案跑過 9 組 pattern，都沒有命中。反向比對命中的都是公開識別，或 example2 原本就有的變數名稱。
+
+### C5m：eks-addons 0.3.0
+
+C4 留下的風險（design §11 第 15 點）在 C5 開始前查 chart 原始碼確認：LB Controller 3.6.1 的 chart 沒有併進 `edit` 的 ClusterRole，也沒有 extraObjects；KEDA 2.21.0 有 `keda:edit`、`keda:view`，但 `rbac.aggregateToDefaultRoles` 預設是 `false`。範本只能呼叫 module，所以先改 module（design C5-1）。
+
+- `aggregate_crd_roles`（預設 `false`）：有裝 LB Controller 時裝本地 chart `crd-role-aggregation`（`depends_on` LB Controller）；有裝 KEDA 時 `set` `rbac.aggregateToDefaultRoles=true`。
+- TDD：先寫 `tests/crd-roles.tftest.hcl` 看到失敗，再實作；`check-ordering.sh` 加一條邊。
+
+驗收：`validate.sh modules/eks-addons` 全過、`helm lint` 與 `helm template`（`targetGroupBindings` 開與關）、`check-ordering.sh`、突變測試；發版照 C1r。
+
+C5m 的結果：120 個 run 全過（新增 4 個）；chart 兩種值都通過 lint 與 template；`check-ordering.sh` 通過；4 個突變（KEDA 永遠打開、不看 LB Controller、忽略開關、值寫成 `false`）都被抓到。
 
 ### C5：eks-addons stack
 

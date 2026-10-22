@@ -1,0 +1,29 @@
+{{- if .Values.targetGroupBindings }}
+# The AWS Load Balancer Controller chart has no aggregated roles, so a namespace-scoped edit or admin (for example
+# AmazonEKSEditPolicy) could not create a TargetGroupBinding. Same split as the KEDA chart: write verbs go to edit and
+# admin, read verbs to view, edit and admin.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eks-addons:targetgroupbindings-edit
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: ["elbv2.k8s.aws"]
+    resources: ["targetgroupbindings"]
+    verbs: ["create", "delete", "deletecollection", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eks-addons:targetgroupbindings-view
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: ["elbv2.k8s.aws"]
+    resources: ["targetgroupbindings"]
+    verbs: ["get", "list", "watch"]
+{{- end }}

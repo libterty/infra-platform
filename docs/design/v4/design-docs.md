@@ -235,7 +235,7 @@ VPC 或可連通的網路要滿足：
 9. **KEDA 依 CloudWatch 指標擴縮，對長連線（SSE）的實際效果**（§9）。
 10. **Container Insights 包了一層之後，`$.event` 這類 log filter 還能不能比對**（`postdeploy/log-alarms.tf`）。
 11. **Kubernetes 版本**：placeholder 用 1.36（C4-3）。
-15. **CI 的 `AmazonEKSEditPolicy` 能不能建 CRD**：TargetGroupBinding、ScaledObject 要靠 controller 的 ClusterRole 帶 `aggregate-to-edit` label 才會併進 edit；沒有的話 CI 部署會被 RBAC 擋下，C5 或 C6 要補（C4-2）。
+15. **CI 的 `AmazonEKSEditPolicy` 能不能建 CRD**：查 chart 原始碼確認，LB Controller 3.6.1 沒有併進 edit 的 ClusterRole，KEDA 2.21.0 有但預設關閉。`eks-addons` 0.3.0 的 `aggregate_crd_roles` 補上（C5-1）；Auto Mode 的 `edit` aggregation 實際生效要在真實叢集確認。
 16. **secrets 加密的 grant**：EKS 建叢集時由執行 apply 的身分建立 KMS grant，這個身分要有該 key 的 `kms:CreateGrant`、`kms:DescribeKey`。
 12. **保密**：example3 是從 example2 複製，只能帶 example2 已有的字串；每個 phase 都做來源字串的反向比對（[`../v2/integration-playbook.md`](../v2/integration-playbook.md)）。
 
@@ -284,3 +284,9 @@ VPC 或可連通的網路要滿足：
 | C4-3 | Kubernetes 版本的 placeholder 用 1.36：AWS 文件列在標準支援內，第三方追蹤記錄標準支援到 2027-08。1.37 只有第三方文章提到，查不到 AWS 確認 |
 | C4-4 | access entry 的 principal 從 tfvars 給：`cluster_admin_principal_arns`（至少一個）、`addons_apply_principal_arn`、`ci_deploy_principal_arn`，三者必須不同（EKS 一個 principal 只能有一個 entry）。管理者 entry 以 ARN 當 key，調整清單順序不會重建 |
 | C4-5 | LB Controller、KEDA、CloudWatch 採集的 namespace 與 ServiceAccount 用 `eks-addons` module 的預設值，寫在 `eks-cluster` 的 locals；C5 的 stack 不能改這些值 |
+
+## 附錄：C5 實作時的決定（2026-10-23）
+
+| # | 決定 |
+|---|---|
+| C5-1 | CI 的 Edit 權限要能建 TargetGroupBinding 與 ScaledObject。`eks-addons` 升 0.3.0，新增 `aggregate_crd_roles`（預設關閉）：有裝 LB Controller 時用本地 chart `crd-role-aggregation` 建兩個帶 aggregate label 的 ClusterRole；有裝 KEDA 時用 `set` 打開 `rbac.aggregateToDefaultRoles`。在 C5 之前插入 C5m（module 修改與發版），使用者選定 |

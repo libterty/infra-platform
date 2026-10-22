@@ -1,0 +1,2 @@
+# Render the roles for TargetGroupBinding (elbv2.k8s.aws) of the AWS Load Balancer Controller.
+targetGroupBindings: false
