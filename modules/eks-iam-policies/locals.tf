@@ -3,6 +3,7 @@ locals {
   # under policies/aws-load-balancer-controller/ and one entry here.
   load_balancer_controller_policies = {
     "3.6.0" = file("${path.module}/policies/aws-load-balancer-controller/v3.6.0.json")
+    "3.6.1" = file("${path.module}/policies/aws-load-balancer-controller/v3.6.1.json")
   }
 
   # Versions for which karpenter_policy_statements below is a translation of the official CloudFormation
@@ -14,6 +15,17 @@ locals {
   # cloudwatch:GetMetricData does not support resource-level permissions: the CloudWatch permissions
   # reference says to give "*" as the resource.
   argo_rollouts_cloudwatch_policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudwatch:GetMetricData"]
+      Resource = "*"
+    }]
+  })
+
+  # KEDA aws-cloudwatch scaler needs cloudwatch:GetMetricData. Same no-resource-level-permissions
+  # reasoning as above, so Resource is "*".
+  keda_cloudwatch_policy_json = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
@@ -295,6 +307,7 @@ locals {
     {
       load_balancer_controller = length(replace(local.load_balancer_controller_policy_json, "/\\s/", ""))
       argo_rollouts_cloudwatch = length(replace(local.argo_rollouts_cloudwatch_policy_json, "/\\s/", ""))
+      keda_cloudwatch          = length(replace(local.keda_cloudwatch_policy_json, "/\\s/", ""))
     },
     local.karpenter_controller_policy_json == null ? {} : {
       karpenter_controller = length(replace(local.karpenter_controller_policy_json, "/\\s/", ""))

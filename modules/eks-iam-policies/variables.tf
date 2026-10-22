@@ -37,7 +37,7 @@ variable "partition" {
 
 variable "load_balancer_controller_version" {
   type        = string
-  default     = "3.6.0"
+  default     = "3.6.1"
   description = "AWS Load Balancer Controller version whose official IAM policy is returned. Only the versions vendored in policies/aws-load-balancer-controller/ are accepted."
   validation {
     condition     = contains(keys(local.load_balancer_controller_policies), var.load_balancer_controller_version)

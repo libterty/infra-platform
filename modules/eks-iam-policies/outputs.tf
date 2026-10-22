@@ -13,7 +13,12 @@ output "argo_rollouts_cloudwatch_policy_json" {
   value       = local.argo_rollouts_cloudwatch_policy_json
 }
 
+output "keda_cloudwatch_policy_json" {
+  description = "Policy for the KEDA aws-cloudwatch scaler: cloudwatch:GetMetricData, as compact JSON."
+  value       = local.keda_cloudwatch_policy_json
+}
+
 output "policy_sizes" {
-  description = "Characters of each policy JSON with whitespace removed, which is how IAM counts against the 10,240-character inline policy limit of a role. Keys: load_balancer_controller, argo_rollouts_cloudwatch, and karpenter_controller when karpenter is set. Add the sizes of the policies put on the same role."
+  description = "Characters of each policy JSON with whitespace removed, which is how IAM counts against the 10,240-character inline policy limit of a role. Keys: load_balancer_controller, argo_rollouts_cloudwatch, keda_cloudwatch, and karpenter_controller when karpenter is set. Add the sizes of the policies put on the same role."
   value       = local.policy_sizes
 }
