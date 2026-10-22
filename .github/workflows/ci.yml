@@ -27,6 +27,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # PR 檢出的是 merge commit，第一個 parent 就是 base branch；Validate 拿它來算這個 PR 改了哪些目錄。
+          fetch-depth: 2
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -53,7 +56,13 @@ jobs:
           # owners team token（Personal 方案不能建唯讀 team），30 天到期。只給這一步。
           # 風險與補償措施見 docs/guides/hcp-registry-setup.md〈CI 的 token〉。
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
-        run: scripts/validate.sh
+        # PR 只驗證改動影響得到的目錄（改到共用檔案時仍是全部）；push、排程、手動觸發一律全量。
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            scripts/validate.sh --changed-since HEAD^1
+          else
+            scripts/validate.sh
+          fi
 
       - name: Registry versions
         if: always()

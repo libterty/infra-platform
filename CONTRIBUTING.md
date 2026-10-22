@@ -20,9 +20,10 @@ issue 只能用表單開：
 ```bash
 scripts/validate.sh                      # 全部
 scripts/validate.sh modules/<module>     # 只跑指定目錄
+scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
 ```
 
-這支腳本做哪些檢查，見 [README〈開發〉](./README.md#開發)。CI 在 PR 上跑同一支腳本。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
+這支腳本做哪些檢查，見 [README〈開發〉](./README.md#開發)。CI 在 PR 上跑同一支腳本的 `--changed-since`，只驗證這個 PR 影響得到的目錄。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
 
 ## 不能做的事
 
