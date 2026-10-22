@@ -91,7 +91,7 @@ locals {
     ]
   }
 
-  statements = merge(
+  base_statements = merge(
     {
       ecs_execution = [
         {
@@ -293,4 +293,19 @@ locals {
 
 data "aws_kms_alias" "secretsmanager" {
   name = "alias/aws/secretsmanager"
+}
+
+locals {
+  statements = merge(local.base_statements, {
+    # Pods of the EKS version: the task permissions minus ECS Exec (kubectl exec is governed by access entries).
+    api_pod    = [for s in local.base_statements.api_task : s if s.Sid != "EcsExec"]
+    worker_pod = [for s in local.base_statements.worker_task : s if s.Sid != "EcsExec"]
+
+    # These get managed policies or the eks-iam-policies documents only.
+    eks_cluster      = []
+    eks_node         = []
+    lb_controller    = []
+    keda             = []
+    cloudwatch_agent = []
+  })
 }
