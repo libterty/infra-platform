@@ -43,6 +43,7 @@ run "publishes_foundation_keys" {
     target = module.log_bucket["alb_log"]
     outputs = {
       bucket_name = "alpha-dev-alb-logs-111111111111"
+      arn         = "arn:aws:s3:::alpha-dev-alb-logs-111111111111"
     }
   }
 
@@ -60,7 +61,7 @@ run "publishes_foundation_keys" {
       kms_key_arn         = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
       app_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/app-AbCdEf"
       flow_log_bucket_arn = "arn:aws:s3:::alpha-dev-flow-logs-111111111111"
-      alb_log_bucket_name = "alpha-dev-alb-logs-111111111111"
+      alb_log_bucket_arn  = "arn:aws:s3:::alpha-dev-alb-logs-111111111111"
     }
     error_message = "Each published key must come from the matching module output or secret"
   }
@@ -75,7 +76,7 @@ run "publishes_under_stack_path" {
       kms_key_arn         = "/alpha/dev/foundation/kms_key_arn"
       app_secret_arn      = "/alpha/dev/foundation/app_secret_arn"
       flow_log_bucket_arn = "/alpha/dev/foundation/flow_log_bucket_arn"
-      alb_log_bucket_name = "/alpha/dev/foundation/alb_log_bucket_name"
+      alb_log_bucket_arn  = "/alpha/dev/foundation/alb_log_bucket_arn"
     }
     error_message = "ssm-publish must write exactly the five foundation keys under the foundation stack path"
   }
@@ -147,8 +148,8 @@ run "log_buckets_delivery" {
   }
 
   assert {
-    condition     = local.log_buckets["alb_log"].log_delivery == ["alb_access_logs"]
-    error_message = "The ALB bucket must allow alb_access_logs delivery only"
+    condition     = local.log_buckets["alb_log"].log_delivery == ["vended_logs"]
+    error_message = "The ALB bucket must allow vended log delivery only"
   }
 
   assert {

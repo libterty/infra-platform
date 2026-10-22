@@ -41,7 +41,7 @@ infra/
 
 | 順序 | stack | 讀（來源 stack） | 發布 |
 |---|---|---|---|
-| 1 | `foundation` | 無 | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_name` |
+| 1 | `foundation` | 無 | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn`、`alb_log_bucket_arn` |
 | 2 | `containerimage` | foundation | `services`、`ecr_<service>_url`、`ecr_<service>_arn`、`mirrored_images`、`ecr_mirror_<name>_url`、`ecr_mirror_<name>_arn`、`agent_runtimes`、`ecr_agent_<rt>_url`、`ecr_agent_<rt>_arn` |
 | 3 | `network` | foundation、containerimage | VPC、subnet、security group（含每個 Runtime 的 `sg_agent_<rt>_id`）、`nat`、`interface_endpoints`、`agent_data_access` 與三個決定點，見下表 |
 | 4 | `iam-base` | foundation、containerimage（含 `mirrored_images`、`agent_runtimes` 與各 mirror、各 Runtime 的 ARN） | `role_ecs_execution_arn`、`role_rds_proxy_arn`、`role_rds_monitoring_arn`、`role_agent_<rt>_execution_arn`、`role_bedrock_kb_arn`、`role_agentcore_gateway_arn`、`agent_service_roles` |
@@ -125,7 +125,7 @@ terraform plan -var-file=envs/dev.tfvars
 | stack | key | 型別 | 內容 |
 |---|---|---|---|
 | `foundation` | `alarm_topic_arn`、`kms_key_arn`、`app_secret_arn`、`flow_log_bucket_arn` | String | ARN |
-| `foundation` | `alb_log_bucket_name` | String | bucket 名稱（ALB 的 access log 收名稱，不收 ARN） |
+| `foundation` | `alb_log_bucket_arn` | String | ALB access log bucket 的 ARN（`loadbalancer` 用 `log-delivery` 接 vended delivery） |
 | `containerimage` | `services` | StringList | 服務名稱 |
 | `containerimage` | `ecr_<service>_url`、`ecr_<service>_arn` | String | repository URL 與 ARN |
 | `containerimage` | `mirrored_images` | String（JSON 陣列） | 放外部映像副本的 repository 名稱，沒有時是 `[]`。SSM 不收空的 StringList，所以用 JSON；`iam-base` 靠它知道要讀哪些 `ecr_mirror_*` |

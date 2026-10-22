@@ -10,6 +10,12 @@ variables {
   origin_verify_host_headers = ["api.dev.example.com"]
 }
 
+# log-delivery checks that the ALB is in the current account.
+override_data {
+  target = module.alb_access_logs.data.aws_caller_identity.current
+  values = { account_id = "111111111111" }
+}
+
 override_module {
   target = module.shared
   outputs = {
@@ -251,6 +257,38 @@ run "access_log_bucket_follows_the_naming_pattern" {
   }
 }
 
+run "access_logs_go_to_the_bucket_through_log_delivery" {
+  command = plan
+
+  override_module {
+    target = module.alb
+    outputs = {
+      alb_arn                   = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/example-dev-alb/0123456789abcdef"
+      alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
+      target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" }
+      target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789ab" }
+      alb_dns_name              = "example-dev-alb-123.ap-northeast-1.elb.amazonaws.com"
+    }
+  }
+
+  override_module {
+    target = module.alb_logs
+    outputs = {
+      bucket_name = "example-dev-alb-access-logs-111111111111"
+      arn         = "arn:aws:s3:::example-dev-alb-access-logs-111111111111"
+    }
+  }
+
+  assert {
+    condition = local.alb_access_logs == {
+      sources      = { access = { resource_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/example-dev-alb/0123456789abcdef", log_type = "ALB_ACCESS_LOGS" } }
+      destinations = { bucket = { type = "S3", resource_arn = "arn:aws:s3:::example-dev-alb-access-logs-111111111111" } }
+      deliveries   = { access = { source = "access", destination = "bucket" } }
+    }
+    error_message = "ALB access logs must be delivered to the stack's own access log bucket"
+  }
+}
+
 # ---- publishing ----
 
 run "publishes_the_three_keys_under_the_stack_path" {
@@ -259,6 +297,7 @@ run "publishes_the_three_keys_under_the_stack_path" {
   override_module {
     target = module.alb
     outputs = {
+      alb_arn                   = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:loadbalancer/app/example-dev-alb/0123456789abcdef"
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
       target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" }
       target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789ab" }

@@ -35,17 +35,17 @@ locals {
 module "alb_logs" {
   # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
   source  = "app.terraform.io/libterty/s3-bucket/aws"
-  version = "~> 0.2.0"
+  version = "~> 0.3.0"
 
   name            = local.access_log_bucket_name
-  log_delivery    = ["alb_access_logs"]
+  log_delivery    = ["vended_logs"]
   expiration_days = var.access_log_retention_days
 }
 
 module "alb" {
   # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
   source  = "app.terraform.io/libterty/alb/aws"
-  version = "~> 0.3.0"
+  version = "~> 0.5.0"
 
   name                = local.alb_name
   subnet_ids          = module.shared.lists["public_subnet_ids"]
@@ -69,10 +69,28 @@ module "alb" {
 
   origin_verify_header_name  = var.origin_verify_header_name
   origin_verify_header_value = var.origin_verify_header_value
+}
 
-  access_logs = { bucket = module.alb_logs.bucket_name, prefix = local.name_prefix }
+# Access logs go through CloudWatch Logs vended delivery into the bucket above (vended_logs).
+locals {
+  alb_access_logs = {
+    sources      = { access = { resource_arn = module.alb.alb_arn, log_type = "ALB_ACCESS_LOGS" } }
+    destinations = { bucket = { type = "S3", resource_arn = module.alb_logs.arn } }
+    deliveries   = { access = { source = "access", destination = "bucket" } }
+  }
+}
 
-  # ALB checks write access to the bucket when access logs are switched on, and the bucket policy is a separate
-  # resource inside the module; depending on the bucket name alone would let the ALB be created before the policy.
+module "alb_access_logs" {
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source  = "app.terraform.io/libterty/log-delivery/aws"
+  version = "~> 0.2.0"
+
+  name_prefix  = local.alb_name
+  sources      = local.alb_access_logs.sources
+  destinations = local.alb_access_logs.destinations
+  deliveries   = local.alb_access_logs.deliveries
+
+  # The bucket policy is a separate resource inside s3-bucket; depending on the ARN alone would let the delivery be
+  # created before CloudWatch Logs is allowed to write.
   depends_on = [module.alb_logs]
 }

@@ -19,7 +19,7 @@ output "flow_log_bucket_arn" {
   value       = module.log_bucket["flow_log"].arn
 }
 
-output "alb_log_bucket_name" {
+output "alb_log_bucket_arn" {
   description = "Bucket for ALB access logs."
-  value       = module.log_bucket["alb_log"].bucket_name
+  value       = module.log_bucket["alb_log"].arn
 }
