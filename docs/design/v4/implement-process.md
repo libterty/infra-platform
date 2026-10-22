@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：草案，第二版，等 [`design-docs.md`](./design-docs.md) 審過才開始。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0、C1、C1r 完成（2026-10-22），下一步 C2。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -27,9 +27,9 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
-| C0 | v4 設計文件與實作流程 | 第二版，等審閱 | — |
-| C1 | module：`eks-cluster` 0.2.0、`eks-addons` 0.2.0、`eks-iam-policies` 0.2.0、`iam-role` 0.4.0、新 module `eks-workload-alarms` 0.1.0 | 未開始 | — |
-| C1r | C1 合併、發版、HCP 登記並確認讀得到 | 未開始 | — |
+| C0 | v4 設計文件與實作流程 | 完成：第二版審過並合併（#56） | `19cc525` |
+| C1 | module：`eks-cluster` 0.2.0、`eks-addons` 0.2.0、`eks-iam-policies` 0.2.0、`iam-role` 0.4.0、新 module `eks-workload-alarms` 0.1.0 | 完成（#57）：iam-role 68、eks-iam-policies 48、eks-workload-alarms 22、eks-cluster 132、eks-addons 116 個 run 全過；4 個本地 chart 經 helm lint 與 template；4 個突變都被測試抓到；`validate.sh` 會跑 `tests/check-*.sh` | `bd6650b` |
+| C1r | C1 合併、發版、HCP 登記並確認讀得到 | 完成：5 個 tag 與 GitHub Release；`eks-workload-alarms` 已登記；HCP 上 5 個新版本從消費端抓下來跟 tag 相同 | `995bb05` |
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 未開始 | — |
 | C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 未開始 | — |
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 未開始 | — |
@@ -64,6 +64,12 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 ### C1r：發版
 
 照 [`../../guides/releasing-modules.md`](../../guides/releasing-modules.md)：合併 stack、release PR 逐一看 diff（同時有多個 release PR 時照〈同時有多個 release PR〉的步驟）、確認 tag 與 GitHub Release。新 module 照 [`../../guides/hcp-registry-setup.md`](../../guides/hcp-registry-setup.md) §3 登記，§4 從消費端抓一次確認版本與內容。
+
+C1 的結果：
+
+- 4 個 module 由 subagent 在獨立 worktree 照 TDD 做，主 agent 逐一重跑 `validate.sh`、review diff、做突變測試後才收進 branch。
+- LB Controller 3.6.1 的官方 policy 跟 3.6.0 一字不差；`eks-iam-policies` 預設改 3.6.1，3.6.0 仍可指定。
+- release PR 的 CHANGELOG 多了一條 `**eks:** v4 C1 module changes for example3`：PR 標題是 Conventional Commit 格式，merge commit 的內文帶到它，release-please 把它算進每個 module。重建 release PR 的 branch 時刪掉；`releasing-modules.md` 補上提醒。
 
 ### C2：複製
 
