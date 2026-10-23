@@ -40,23 +40,21 @@ module "xray_transaction_search" {
 - `aws/spans` 的保留期：log group 由 X-Ray 自己建，要改保留期就在 log group 出現後另外設。
 - Application Signals 的 discovery 與 service-linked role。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `indexing_percentage` | `number` | `1` | 否 | 建索引的 span 比例，0–100；1 免費 |
-| `resource_policy_name` | `string` | `"xray-transaction-search"` | 否 | 讓 X-Ray 寫入 span 的 CloudWatch Logs resource policy 名稱，同帳號同 region 內唯一，不可為空白 |
+| `indexing_percentage` | `number` | `1` | 否 | 建索引（trace summary）的 span 比例，0–100。`1` 免費，調高另外計費。 |
+| `resource_policy_name` | `string` | `"xray-transaction-search"` | 否 | 讓 X-Ray 寫入 span 的 CloudWatch Logs resource policy 名稱，同帳號、同 region 內必須唯一，不可為空白。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `spans_log_group_name` | `string` | X-Ray 寫入 span 的 log group，固定是 `aws/spans` |
-| `indexing_percentage` | `number` | `Default` indexing rule 的比例 |
+| 名稱 | 說明 |
+|---|---|
+| `spans_log_group_name` | X-Ray 寫入 span 的 log group，固定是 `aws/spans`；第一個 span 進來後就必須存在。 |
+| `indexing_percentage` | `Default` indexing rule 的建索引比例。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

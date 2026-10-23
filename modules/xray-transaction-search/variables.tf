@@ -1,7 +1,7 @@
 variable "indexing_percentage" {
   type        = number
   default     = 1
-  description = "Percentage of ingested spans indexed as trace summaries. 1 is free; higher values are billed."
+  description = "建索引（trace summary）的 span 比例，0–100。`1` 免費，調高另外計費。"
 
   validation {
     condition     = var.indexing_percentage >= 0 && var.indexing_percentage <= 100
@@ -12,7 +12,7 @@ variable "indexing_percentage" {
 variable "resource_policy_name" {
   type        = string
   default     = "xray-transaction-search"
-  description = "Name of the CloudWatch Logs resource policy that lets X-Ray write spans. Unique per account and region."
+  description = "讓 X-Ray 寫入 span 的 CloudWatch Logs resource policy 名稱，同帳號、同 region 內必須唯一，不可為空白。"
 
   validation {
     condition     = length(trimspace(var.resource_policy_name)) > 0
