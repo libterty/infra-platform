@@ -28,9 +28,6 @@ override_module {
       stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
       db_name                        = "app"
       stream_shard_count             = "1"
-      ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-      api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
-      worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
       import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
@@ -62,8 +59,7 @@ run "publishes_exactly_the_keys_the_late_stacks_read" {
       "alarm_topic_arn", "signing_private_key_secret_arn", "signing_public_key_secret_arn", "agent_runtimes",
       "ecr_repository_urls", "vpc_id", "alb_sg_id", "app_sg_id", "agent_sg_id", "bastion_sg_id",
       "db_proxy_endpoint", "db_secret_arn", "rate_limit_redis_endpoint", "stream_redis_endpoint", "db_name", "stream_shard_count",
-      "ecs_execution_role_arn", "api_task_role_arn", "worker_task_role_arn", "import_extract_role_arn",
-      "import_load_role_arn", "agent_runtime_role_arn",
+      "import_extract_role_arn", "import_load_role_arn", "agent_runtime_role_arn",
       "eks_api_sg_id", "eks_cluster_role_arn", "eks_node_role_arn", "api_pod_role_arn", "worker_pod_role_arn",
       "lb_controller_role_arn", "keda_role_arn", "cloudwatch_agent_role_arn", "node_sg_id",
     ])
@@ -117,9 +113,6 @@ run "rejects_an_empty_string_value" {
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
         db_name                        = "app"
         stream_shard_count             = "1"
-        ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-        api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
-        worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
@@ -169,9 +162,6 @@ run "rejects_a_single_subnet" {
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
         db_name                        = "app"
         stream_shard_count             = "1"
-        ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-        api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
-        worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
@@ -221,9 +211,6 @@ run "rejects_an_agent_runtimes_value_that_is_not_json" {
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
         db_name                        = "app"
         stream_shard_count             = "1"
-        ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-        api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
-        worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
@@ -273,9 +260,6 @@ run "rejects_ecr_repository_urls_that_are_not_an_object" {
         stream_redis_endpoint          = "st.example.cache.amazonaws.com:6379"
         db_name                        = "app"
         stream_shard_count             = "1"
-        ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-        api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api"
-        worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker"
         import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"

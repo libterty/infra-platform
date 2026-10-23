@@ -24,10 +24,6 @@ override_module {
   outputs = {
     strings = {
       vpc_id                         = "vpc-0123456789abcdef0"
-      app_sg_id                      = "sg-0123456789abcdef0"
-      ecs_execution_role_arn         = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-      api_task_role_arn              = "arn:aws:iam::111111111111:role/example-dev-api-task"
-      worker_task_role_arn           = "arn:aws:iam::111111111111:role/example-dev-worker-task"
       signing_private_key_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"
       signing_public_key_secret_arn  = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
       db_proxy_endpoint              = "example-dev-proxy.proxy-abc.ap-northeast-1.rds.amazonaws.com"
@@ -42,8 +38,7 @@ override_module {
       })
     }
     lists = {
-      app_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
-      services       = ["api", "worker", "import-extract", "import-load"]
+      services = ["api", "worker", "import-extract", "import-load"]
     }
   }
 }

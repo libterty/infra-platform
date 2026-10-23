@@ -55,8 +55,8 @@ run "dev_has_seven_roles_including_eval_batch" {
   command = plan
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eval_batch", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
-    error_message = "dev gets the six service roles (one per Lambda function), the eval-batch role and the seven EKS roles (ECS roles stay until phase C7)"
+    condition     = toset(keys(local.roles)) == toset(["import_extract", "import_load", "agent_runtime", "eval_batch", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
+    error_message = "dev gets the three service roles (one per Lambda function and the Runtime), the eval-batch role and the seven EKS roles"
   }
 }
 
@@ -69,7 +69,7 @@ run "sit_has_no_eval_batch_role" {
   }
 
   assert {
-    condition     = toset(keys(local.roles)) == toset(["ecs_execution", "api_task", "worker_task", "import_extract", "import_load", "agent_runtime", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
+    condition     = toset(keys(local.roles)) == toset(["import_extract", "import_load", "agent_runtime", "eks_cluster", "eks_node", "api_pod", "worker_pod", "lb_controller", "keda", "cloudwatch_agent"])
     error_message = "eval_batch exists only when env is dev"
   }
 
@@ -99,7 +99,7 @@ run "sit_does_not_need_an_eval_batch_model" {
   }
 
   assert {
-    condition     = length(module.role) == 13
+    condition     = length(module.role) == 10
     error_message = "Without eval_batch there is nothing to name a model for"
   }
 }
@@ -109,9 +109,6 @@ run "role_names_follow_the_prefix" {
 
   assert {
     condition = { for k, r in local.roles : k => r.name } == {
-      ecs_execution    = "example-dev-ecs-execution"
-      api_task         = "example-dev-api-task"
-      worker_task      = "example-dev-worker-task"
       import_extract   = "example-dev-import-extract"
       import_load      = "example-dev-import-load"
       agent_runtime    = "example-dev-agent-runtime"
@@ -145,9 +142,6 @@ run "every_role_trusts_one_service_in_this_account_only" {
 
   assert {
     condition = { for k, r in local.roles : k => one(r.trust.service_principals) } == {
-      ecs_execution    = "ecs-tasks.amazonaws.com"
-      api_task         = "ecs-tasks.amazonaws.com"
-      worker_task      = "ecs-tasks.amazonaws.com"
       import_extract   = "lambda.amazonaws.com"
       import_load      = "lambda.amazonaws.com"
       agent_runtime    = "bedrock-agentcore.amazonaws.com"
@@ -180,12 +174,6 @@ run "wildcard_resources_are_the_known_exceptions_only" {
         for s in statements : "${role}/${s.Sid}" if contains(flatten([s.Resource]), "*")
       ]
       ])) == toset([
-      "ecs_execution/EcrLoginToken",
-      "api_task/TraceSegments",
-      "api_task/EcsExec",
-      "worker_task/TraceSegments",
-      "worker_task/EcsExec",
-      "worker_task/PutCustomMetrics",
       "import_extract/VpcNetworkInterfaces",
       "import_load/VpcNetworkInterfaces",
       "agent_runtime/EcrLoginToken",
@@ -194,7 +182,7 @@ run "wildcard_resources_are_the_known_exceptions_only" {
       "worker_pod/TraceSegments",
       "worker_pod/PutCustomMetrics",
     ])
-    error_message = "Resource * is only for actions AWS does not scope by resource: ecr:GetAuthorizationToken, X-Ray, ssmmessages, EC2 network interfaces, and PutMetricData (limited by a namespace condition)"
+    error_message = "Resource * is only for actions AWS does not scope by resource: ecr:GetAuthorizationToken, X-Ray, EC2 network interfaces, and PutMetricData (limited by a namespace condition)"
   }
 
   assert {
@@ -230,7 +218,7 @@ run "the_private_key_secret_is_for_the_api_only" {
 
   assert {
     condition = contains(
-      flatten([for s in local.statements.api_task : s.Resource if s.Sid == "ReadSecrets"]),
+      flatten([for s in local.statements.api_pod : s.Resource if s.Sid == "ReadSecrets"]),
       "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl",
     )
     error_message = "The api signs tokens, so it reads the private key secret"
@@ -238,14 +226,14 @@ run "the_private_key_secret_is_for_the_api_only" {
 
   assert {
     condition = alltrue([
-      for role in ["worker_task", "import_extract", "import_load", "agent_runtime", "ecs_execution"] :
+      for role in ["worker_pod", "import_extract", "import_load", "agent_runtime"] :
       !contains(flatten([for s in local.statements[role] : s.Resource]), "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl")
     ])
     error_message = "No other role may read the private key secret"
   }
 
   assert {
-    condition     = toset(flatten([for s in local.statements.worker_task : s.Resource if s.Sid == "ReadSecrets"])) == toset(["arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000", "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"])
+    condition     = toset(flatten([for s in local.statements.worker_pod : s.Resource if s.Sid == "ReadSecrets"])) == toset(["arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:rds!cluster-0000", "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"])
     error_message = "The worker reads the database secret and the public key only"
   }
 }
@@ -255,7 +243,7 @@ run "secrets_are_decrypted_only_through_secrets_manager_with_the_named_key" {
 
   assert {
     condition = alltrue([
-      for role in ["api_task", "worker_task", "import_load", "agent_runtime"] : anytrue([
+      for role in ["api_pod", "worker_pod", "import_load", "agent_runtime"] : anytrue([
         for s in local.statements[role] : s.Sid == "KmsDecryptViaSecretsManager" &&
         s.Resource == ["arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"] &&
         s.Condition.StringEquals["kms:ViaService"] == "secretsmanager.ap-northeast-1.amazonaws.com"
@@ -265,15 +253,17 @@ run "secrets_are_decrypted_only_through_secrets_manager_with_the_named_key" {
   }
 }
 
-run "execution_role_pulls_the_ecs_repositories_only" {
+run "no_role_pulls_the_api_and_worker_images" {
   command = plan
 
   assert {
-    condition = flatten([for s in local.statements.ecs_execution : s.Resource if s.Sid == "PullImages"]) == [
-      "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api",
-      "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker",
-    ]
-    error_message = "The ECS execution role pulls the api and worker images, not the Lambda or Runtime images"
+    condition = !anytrue(flatten([
+      for role, statements in local.statements : [
+        for s in statements : contains(flatten([s.Resource]), "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-api") ||
+        contains(flatten([s.Resource]), "arn:aws:ecr:ap-northeast-1:111111111111:repository/example-worker")
+      ]
+    ]))
+    error_message = "The EKS nodes pull the api and worker images with AmazonEC2ContainerRegistryPullOnly; no role of this stack grants them"
   }
 }
 
@@ -300,7 +290,7 @@ run "api_may_invoke_only_the_runtimes_of_this_env" {
   command = plan
 
   assert {
-    condition = flatten([for s in local.statements.api_task : s.Resource if s.Sid == "InvokeAgentRuntime"]) == [
+    condition = flatten([for s in local.statements.api_pod : s.Resource if s.Sid == "InvokeAgentRuntime"]) == [
       "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-*",
       "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-*/runtime-endpoint/*",
     ]
@@ -426,7 +416,7 @@ run "without_runtimes_no_statement_has_an_empty_resource_list" {
   }
 
   assert {
-    condition     = !anytrue(flatten([for s in local.statements.api_task : s.Sid == "InvokeAgentRuntime"]))
+    condition     = !anytrue(flatten([for s in local.statements.api_pod : s.Sid == "InvokeAgentRuntime"]))
     error_message = "The api has no Runtime to invoke"
   }
 }
@@ -455,21 +445,9 @@ run "a_missing_repository_is_reported_by_name" {
 
 # ---- publishing ----
 
-run "publishes_the_thirteen_role_arns" {
+run "publishes_the_ten_role_arns" {
   command = plan
 
-  override_module {
-    target  = module.role["ecs_execution"]
-    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-ecs-execution" }
-  }
-  override_module {
-    target  = module.role["api_task"]
-    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-api-task" }
-  }
-  override_module {
-    target  = module.role["worker_task"]
-    outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-worker-task" }
-  }
   override_module {
     target  = module.role["import_extract"]
     outputs = { arn = "arn:aws:iam::111111111111:role/example-dev-import-extract" }
@@ -517,9 +495,6 @@ run "publishes_the_thirteen_role_arns" {
 
   assert {
     condition = local.published_strings == {
-      ecs_execution_role_arn    = "arn:aws:iam::111111111111:role/example-dev-ecs-execution"
-      api_task_role_arn         = "arn:aws:iam::111111111111:role/example-dev-api-task"
-      worker_task_role_arn      = "arn:aws:iam::111111111111:role/example-dev-worker-task"
       import_extract_role_arn   = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn      = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn    = "arn:aws:iam::111111111111:role/example-dev-agent-runtime"
@@ -536,9 +511,6 @@ run "publishes_the_thirteen_role_arns" {
 
   assert {
     condition = module.ssm_publish.names == {
-      ecs_execution_role_arn    = "/example/dev/iam/ecs_execution_role_arn"
-      api_task_role_arn         = "/example/dev/iam/api_task_role_arn"
-      worker_task_role_arn      = "/example/dev/iam/worker_task_role_arn"
       import_extract_role_arn   = "/example/dev/iam/import_extract_role_arn"
       import_load_role_arn      = "/example/dev/iam/import_load_role_arn"
       agent_runtime_role_arn    = "/example/dev/iam/agent_runtime_role_arn"
@@ -550,7 +522,7 @@ run "publishes_the_thirteen_role_arns" {
       keda_role_arn             = "/example/dev/iam/keda_role_arn"
       cloudwatch_agent_role_arn = "/example/dev/iam/cloudwatch_agent_role_arn"
     }
-    error_message = "ssm-publish must write the thirteen role keys under the iam path"
+    error_message = "ssm-publish must write the ten role keys under the iam path"
   }
 }
 
@@ -561,7 +533,7 @@ run "the_roles_that_apply_guardrails_also_get_the_guardrail_profile" {
 
   assert {
     condition = alltrue([
-      for r in ["api_task", "agent_runtime"] :
+      for r in ["api_pod", "agent_runtime"] :
       contains(flatten([for s in local.statements[r] : s.Resource if s.Sid == "ApplyGuardrail"]), "arn:aws:bedrock:*:111111111111:guardrail-profile/apac.guardrail.v1:0")
     ])
     error_message = "A STANDARD tier guardrail is evaluated through a cross-region profile, which needs its own resource in the ApplyGuardrail grant; the region is a wildcard because AWS picks it"
@@ -569,14 +541,14 @@ run "the_roles_that_apply_guardrails_also_get_the_guardrail_profile" {
 
   assert {
     condition = alltrue([
-      for r in ["api_task", "agent_runtime"] :
+      for r in ["api_pod", "agent_runtime"] :
       contains(flatten([for s in local.statements[r] : s.Resource if s.Sid == "ApplyGuardrail"]), "arn:aws:bedrock:ap-northeast-1:111111111111:guardrail/*")
     ])
     error_message = "The guardrails themselves stay granted"
   }
 
   assert {
-    condition     = !anytrue([for r in ["ecs_execution", "worker_task", "import_extract", "import_load"] : anytrue([for s in local.statements[r] : s.Sid == "ApplyGuardrail"])])
+    condition     = !anytrue([for r in ["worker_pod", "import_extract", "import_load"] : anytrue([for s in local.statements[r] : s.Sid == "ApplyGuardrail"])])
     error_message = "Only the roles that call ApplyGuardrail get the grant"
   }
 }
@@ -651,17 +623,19 @@ run "eks_cluster_and_node_roles_use_the_auto_mode_managed_policies" {
   }
 }
 
-run "pod_roles_keep_the_task_permissions_without_ecs_exec" {
+run "nothing_of_ecs_is_left" {
   command = plan
 
   assert {
-    condition     = local.statements.api_pod == [for s in local.statements.api_task : s if s.Sid != "EcsExec"]
-    error_message = "api_pod has the api_task permissions minus ECS Exec"
+    condition     = !anytrue([for k, r in local.roles : contains(r.trust.service_principals, "ecs-tasks.amazonaws.com")])
+    error_message = "No role is trusted by ECS tasks any more (design v4 §8.1)"
   }
 
   assert {
-    condition     = local.statements.worker_pod == [for s in local.statements.worker_task : s if s.Sid != "EcsExec"]
-    error_message = "worker_pod has the worker_task permissions minus ECS Exec"
+    condition = !anytrue(flatten([
+      for role, statements in local.statements : [for s in statements : [for a in s.Action : startswith(a, "ssmmessages:")]]
+    ]))
+    error_message = "ECS Exec is gone; kubectl exec is governed by the EKS access entries"
   }
 }
 

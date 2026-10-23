@@ -10,7 +10,7 @@ locals {
   auto_mode = {
     node_role_name = regex("[^/]+$", module.shared.strings["eks_node_role_arn"])
     node_classes = {
-      # api and worker: Pods get the app group, the same rules as the ECS tasks of example2.
+      # api and worker: Pods get the app group, the same rules example2 gives its ECS tasks.
       app = {
         subnet_selector_terms             = local.node_subnet_terms
         security_group_selector_terms     = local.node_group_terms

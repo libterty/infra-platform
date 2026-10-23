@@ -19,9 +19,9 @@ locals {
   import_bucket_arn = "arn:aws:s3:::${local.name_prefix}-import-${local.account_id}"
   eval_bucket_arn   = "arn:aws:s3:::${local.name_prefix}-eval-batch-${local.account_id}"
 
-  # Services whose images ECS pulls with the execution role. The Lambda functions and the Runtimes pull their own.
-  ecs_services         = ["api", "worker"]
-  ecs_repository_arns  = [for s in local.ecs_services : lookup(local.ecr_arns, s, "")]
+  # Workloads that run on EKS. The nodes pull their images (AmazonEC2ContainerRegistryPullOnly on the node role); the
+  # Lambda functions and the Runtimes pull their own.
+  pod_workloads        = ["api", "worker"]
   runtime_repositories = [for r in local.runtimes : lookup(local.ecr_arns, r, "")]
 
   metric_namespace = "${title(var.project)}/${var.env}"
@@ -47,12 +47,6 @@ locals {
     Sid      = "TraceSegments"
     Effect   = "Allow"
     Action   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
-    Resource = "*"
-  }
-  ecs_exec_statement = {
-    Sid      = "EcsExec"
-    Effect   = "Allow"
-    Action   = ["ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel"]
     Resource = "*"
   }
   lambda_logs_statements = {
@@ -93,25 +87,9 @@ locals {
 
   base_statements = merge(
     {
-      ecs_execution = [
-        {
-          Sid      = "PullImages"
-          Effect   = "Allow"
-          Action   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
-          Resource = local.ecs_repository_arns
-        },
-        local.ecr_login_statement,
-        {
-          # The log groups are created by the application stack; ecs-service names them /ecs/<service name>.
-          Sid      = "WriteServiceLogs"
-          Effect   = "Allow"
-          Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-          Resource = ["${local.logs_arn_prefix}:log-group:/ecs/${local.name_prefix}-*:*"]
-        },
-      ]
-
       # The api signs tokens with the private key and verifies them with the public key.
-      api_task = concat(
+      # Pods of api and worker get their role through Pod Identity (eks-cluster).
+      api_pod = concat(
         length(local.runtime_arns) == 0 ? [] : [
           {
             Sid      = "InvokeAgentRuntime"
@@ -130,12 +108,11 @@ locals {
           },
           local.decrypt_secrets_statement,
           local.trace_statement,
-          local.ecs_exec_statement,
         ],
       )
 
       # The worker only verifies, so it gets the public key and never the private one.
-      worker_task = [
+      worker_pod = [
         {
           Sid      = "ReadSecrets"
           Effect   = "Allow"
@@ -152,7 +129,6 @@ locals {
           Condition = { StringEquals = { "cloudwatch:namespace" = local.metric_namespace } }
         },
         local.trace_statement,
-        local.ecs_exec_statement,
       ]
 
       # import-extract is started by an upload: it reads the uploaded file, writes the extracted result and embeds it.
@@ -297,10 +273,6 @@ data "aws_kms_alias" "secretsmanager" {
 
 locals {
   statements = merge(local.base_statements, {
-    # Pods of the EKS version: the task permissions minus ECS Exec (kubectl exec is governed by access entries).
-    api_pod    = [for s in local.base_statements.api_task : s if s.Sid != "EcsExec"]
-    worker_pod = [for s in local.base_statements.worker_task : s if s.Sid != "EcsExec"]
-
     # These get managed policies or the eks-iam-policies documents only.
     eks_cluster      = []
     eks_node         = []

@@ -10,10 +10,6 @@ locals {
 
   shared_input_strings = {
     vpc_id                         = "infra/vpc_id"
-    app_sg_id                      = "infra/app_sg_id"
-    ecs_execution_role_arn         = "infra/ecs_execution_role_arn"
-    api_task_role_arn              = "infra/api_task_role_arn"
-    worker_task_role_arn           = "infra/worker_task_role_arn"
     signing_private_key_secret_arn = "infra/signing_private_key_secret_arn"
     signing_public_key_secret_arn  = "infra/signing_public_key_secret_arn"
     db_proxy_endpoint              = "infra/db_proxy_endpoint"
@@ -26,8 +22,7 @@ locals {
   }
 
   shared_input_lists = {
-    app_subnet_ids = "infra/app_subnet_ids"
-    services       = "infra/services"
+    services = "infra/services"
   }
 }
 
