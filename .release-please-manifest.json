@@ -16,7 +16,7 @@
   "modules/iam-role-policy": "0.1.1",
   "modules/kms-key": "0.1.1",
   "modules/lambda-function": "0.1.0",
-  "modules/log-delivery": "0.2.0",
+  "modules/log-delivery": "0.2.1",
   "modules/log-group": "0.1.0",
   "modules/log-metric-alarm": "0.2.0",
   "modules/metric-alarm": "0.1.0",
