@@ -1,0 +1,88 @@
+{{- $s := .Values.scaling }}
+# The KEDA operator reads CloudWatch with its own Pod Identity role (eks-cluster, design v4 K7).
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ .Release.Name }}-aws
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  podIdentity:
+    provider: aws
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ .Release.Name }}
+  minReplicaCount: {{ $s.min_replicas }}
+  maxReplicaCount: {{ $s.max_replicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.scaleDown.stabilizationWindowSeconds }}
+          policies:
+            - type: Pods
+              value: {{ .Values.scaleDown.podsPerPeriod }}
+              periodSeconds: {{ .Values.scaleDown.periodSeconds }}
+  triggers:
+  {{- if include "app.isApi" . }}
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: {{ $s.cpu_target_percent | toString | quote }}
+    # RequestCountPerTarget is already per target, so Value, not AverageValue.
+    - type: aws-cloudwatch
+      metricType: Value
+      authenticationRef:
+        name: {{ .Release.Name }}-aws
+      metadata:
+        awsRegion: {{ $s.region | quote }}
+        namespace: "AWS/ApplicationELB"
+        metricName: "RequestCountPerTarget"
+        dimensionName: "TargetGroup;LoadBalancer"
+        dimensionValue: {{ printf "%s;%s" $s.target_group_arn_suffix $s.alb_arn_suffix | quote }}
+        metricStat: "Sum"
+        metricStatPeriod: "60"
+        metricCollectionTime: "180"
+        targetMetricValue: {{ $s.requests_per_target | toString | quote }}
+        minMetricValue: "0"
+    # Long-lived streams barely move the request count; open connections per replica catch them.
+    - type: aws-cloudwatch
+      metricType: AverageValue
+      authenticationRef:
+        name: {{ .Release.Name }}-aws
+      metadata:
+        awsRegion: {{ $s.region | quote }}
+        namespace: "AWS/ApplicationELB"
+        metricName: "ActiveConnectionCount"
+        dimensionName: "LoadBalancer"
+        dimensionValue: {{ $s.alb_arn_suffix | quote }}
+        metricStat: "Sum"
+        metricStatPeriod: "60"
+        metricCollectionTime: "180"
+        targetMetricValue: {{ $s.streams_per_replica | toString | quote }}
+        minMetricValue: "0"
+  {{- else }}
+    # Same backlog metric example2 scales on; a missing metric counts as no load, and postdeploy alarms on it.
+    - type: aws-cloudwatch
+      metricType: AverageValue
+      authenticationRef:
+        name: {{ .Release.Name }}-aws
+      metadata:
+        awsRegion: {{ $s.region | quote }}
+        namespace: {{ $s.metric_namespace | quote }}
+        metricName: {{ $s.metric_name | quote }}
+        dimensionName: {{ $s.dimension_name | quote }}
+        dimensionValue: {{ $s.dimension_value | quote }}
+        metricStat: "Maximum"
+        metricStatPeriod: "60"
+        metricCollectionTime: "300"
+        targetMetricValue: {{ $s.backlog_per_replica | toString | quote }}
+        minMetricValue: "0"
+  {{- end }}
