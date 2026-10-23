@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/sns-alarm-topic-v0.1.0...sns-alarm-topic-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **sns-alarm-topic:** rewrite the input and output descriptions in Chinese ([cd7f1ee](https://github.com/libterty/infra-platform/commit/cd7f1ee0bb46d7bcf303c608ecfa83a831b7692a))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
