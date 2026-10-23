@@ -69,12 +69,13 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 
 ## 範本
 
-這裡有兩份專案 infra 範本，都是完整的 Terraform stack 目錄，複製到專案 repo 就能用。兩份的規則相同：stack 只呼叫 module，跨 stack 只透過 SSM 傳值。
+這裡有三份專案 infra 範本，都是完整的 Terraform stack 目錄，複製到專案 repo 就能用。三份的規則相同：stack 只呼叫 module，跨 stack 只透過 SSM 傳值。
 
 | 範本 | 差異 |
 | --- | --- |
 | [`templates/project-infra/`](./templates/project-infra/infra/README.md) | 9 個 stack，環境是 `dev`、`prod`。IAM 拆成 `iam-base`、`iam-app` 兩個 stack，資料庫獨立成 `data`。`agent`（AgentCore 與 Bedrock）預設關閉。支援客戶自管資源模式 |
 | [`templates/example2/`](./templates/example2/infra/README.md) | 11 個 stack，環境是 `dev`、`sit`。資料庫、IAM、ALB、AgentCore、ECS、bastion 與告警各自一個 stack。另有 `bridge` stack，把前段 stack 的值轉寫到後段讀取的共用前綴底下，這個前綴也可以改由外部發布。附 `stacks.sh` 與 SSM 合約檢查腳本 |
+| [`templates/example3/`](./templates/example3/infra/README.md) | example2 的 EKS 版，13 個 stack。api 與 worker 跑在 EKS Auto Mode，由 CI 用 Helm 部署：Terraform 建叢集與平台元件，再把部署需要的值發布到 SSM；附範例 chart、SSM 轉 values 的腳本，以及預設關閉的 canary 與斷路器 |
 
 ## 不同團隊怎麼用
 
@@ -82,7 +83,7 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 | ------------- | ---------------------------------------------------------------------------------------- |
 | platform team | 擁有 `modules/`、`.github/`、`scripts/`、`docs/adr/`；維護 module 介面、CI、發版 |
 | core app team | 目前沒有。AP 層的共用元件之後比照本 repo 的發版模式另開 repo                                   |
-| 專案 app team | 複製 `templates/project-infra/` 或 `templates/example2/` 到自己的 repo，釘版本引用 module |
+| 專案 app team | 複製 `templates/project-infra/`、`templates/example2/` 或 `templates/example3/` 到自己的 repo，釘版本引用 module |
 | 專案 FDE team | 用 `scripts/vendor-modules.sh` 把指定 tag 的 module 交付給客戶                         |
 
 團隊邊界寫在 [`.github/CODEOWNERS`](./.github/CODEOWNERS)，team slug 目前是佔位符。
@@ -119,7 +120,7 @@ commit 用 Conventional Commits：`<type>(<scope>): <subject>`，scope 寫 modul
 | 架構決策                                                                                             | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md)、[0004 HCP registry](./docs/adr/0004-hcp-terraform-private-registry.md) |
 | 怎麼引用 module、HCP 認證、升版、git 備案                                                                | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md)                                                                                                                                                                                     |
 | 怎麼把 module 登記到 HCP Terraform private registry | [`docs/guides/hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md) |
-| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md) 與 [`templates/example2/infra/`](./templates/example2/infra/README.md)                                                                                |
+| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md)、[`templates/example2/infra/`](./templates/example2/infra/README.md) 與 [`templates/example3/infra/`](./templates/example3/infra/README.md)                                                                                |
 | 怎麼改 module、semver、release-please、第一次手動打 tag                                              | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md)                                                                                                                                                                                     |
 | ADOT sidecar、X-Ray 權限與抽樣、log 告警                                                             | [`docs/guides/observability.md`](./docs/guides/observability.md)                                                                                                                                                                                             |
 | LLM 與 AgentCore：Runtime、guardrail、Memory、Gateway、Knowledge Base（Aurora pgvector）怎麼接進範本 | [`docs/guides/llm-agentcore.md`](./docs/guides/llm-agentcore.md)                                                                                                                                                                                             |
