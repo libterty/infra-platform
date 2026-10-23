@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/lb-traffic-breaker-v0.1.0...lb-traffic-breaker-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **lb-traffic-breaker:** rewrite the input and output descriptions in Chinese ([3a58f5c](https://github.com/libterty/infra-platform/commit/3a58f5c13d4f267d7a9f5c9b58ca05dd0f4b865b))
+
 ## 0.1.0 (2026-10-21)
 
 
