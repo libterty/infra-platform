@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/elasticache-redis-v0.1.0...elasticache-redis-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **elasticache-redis:** rewrite the input and output descriptions in Chinese ([bbfa87a](https://github.com/libterty/infra-platform/commit/bbfa87a1a41eb9b21ef2c1fdb578fc7c8b035815))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
