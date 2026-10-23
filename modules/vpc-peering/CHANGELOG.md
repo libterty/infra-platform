@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/vpc-peering-v0.1.0...vpc-peering-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **vpc-peering:** rewrite the input and output descriptions in Chinese ([4a11b97](https://github.com/libterty/infra-platform/commit/4a11b973b84f2fc0d11ea2d938391b728c1e94dc))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
