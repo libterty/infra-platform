@@ -2,7 +2,7 @@
 
 給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
-這份以 `project-infra` 範本為準。repo 另有一份拆法不同的範本 `templates/example2/`（11 個 stack，環境是 `dev`、`sit`），複製與改值的做法一樣，細節看它自己的 `infra/README.md`。
+這份以 `project-infra` 範本為準。repo 另有兩份拆法不同的範本：`templates/example2/`（11 個 stack，環境是 `dev`、`sit`）與它的 EKS 版 `templates/example3/`（13 個 stack）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
 
 這份講「怎麼做、為什麼」；stack 清單、SSM 合約表、單一決定點、流量規格表的完整內容在範本自己的 `templates/project-infra/infra/README.md`，複製出去之後就是專案的 `infra/README.md`，這裡不重複。
 
