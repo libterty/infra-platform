@@ -38,7 +38,7 @@
   "modules/ec2-instance": "0.1.0",
   "modules/lb-traffic-breaker": "0.1.0",
   "modules/eks-iam-policies": "0.2.0",
-  "modules/iam-oidc-provider": "0.1.0",
+  "modules/iam-oidc-provider": "0.1.1",
   "modules/eks-workload-alarms": "0.1.0",
   "modules/xray-transaction-search": "0.1.0"
 }
