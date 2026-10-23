@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  description = "Filter and alarm names are <name_prefix>-<key with _ replaced by ->."
+  description = "filter 與 alarm 的名稱前綴，名稱是 `<name_prefix>-<key 的 _ 換成 ->`。小寫字母開頭，2–101 個小寫英數字或連字號。"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,100}$", var.name_prefix))
     error_message = "name_prefix must be lowercase letters, digits or hyphens."
@@ -9,12 +9,12 @@ variable "name_prefix" {
 
 variable "log_group_name" {
   type        = string
-  description = "Log group the metric filters read from."
+  description = "metric filter 讀取的 log group 名稱。"
 }
 
 variable "namespace" {
   type        = string
-  description = "Custom metric namespace, e.g. Alpha/dev. Must not start with AWS/."
+  description = "自訂指標的 namespace，例如 `Alpha/dev`。1–255 字元，不可以 `AWS/` 開頭。"
   validation {
     condition     = can(regex("^[A-Za-z0-9._/#:-]{1,255}$", var.namespace)) && !startswith(var.namespace, "AWS/")
     error_message = "namespace must be 1-255 valid characters and must not start with AWS/."
@@ -37,7 +37,7 @@ variable "alarms" {
     treat_missing_data  = optional(string, "notBreaching")
   }))
   default     = {}
-  description = "Alarm key => log pattern and alarm settings. Keys must be snake_case. description says what the alarm means and what to check first. Needs sns_topic_arns when non-empty."
+  description = "key（snake_case）對應一組 metric filter 加 alarm；非空時必須給 `sns_topic_arns`，key 不可與 `metrics` 重複。欄位見〈`alarms` 欄位〉。"
   validation {
     condition     = alltrue([for k, v in var.alarms : can(regex("^[a-z][a-z0-9_]*$", k)) && length(trimspace(v.pattern)) > 0 && length(trimspace(v.description)) > 0])
     error_message = "Keys must be snake_case; pattern and description must not be empty."
@@ -62,7 +62,7 @@ variable "metrics" {
     default_value = optional(number, 0)
   }))
   default     = {}
-  description = "Metric key => log pattern. Creates only the metric filter, no alarm, for dashboards or alarms managed elsewhere. Keys must be snake_case and must not appear in alarms."
+  description = "只建 metric filter、不建 alarm 的項目，給 dashboard 或在別處管理的告警用。key（snake_case）對應 `pattern`（必填，不可為空白）、`metric_name`（必填），以及 `metric_value`（預設 `\"1\"`）、`default_value`（預設 `0`）；key 不可與 `alarms` 重複。`alarms`、`metrics`、`sns_topic_arns` 不可全空。"
   validation {
     condition     = alltrue([for k, v in var.metrics : can(regex("^[a-z][a-z0-9_]*$", k)) && length(trimspace(v.pattern)) > 0])
     error_message = "Keys must be snake_case; pattern must not be empty."
@@ -81,7 +81,7 @@ variable "metrics" {
 variable "sns_topic_arns" {
   type        = list(string)
   default     = []
-  description = "Topics for alarm_actions and ok_actions. Required when alarms is non-empty."
+  description = "`alarms` 非空時必填，至少一個。SNS topic ARN，同時用於每個 alarm 的 `alarm_actions` 與 `ok_actions`；只給 `metrics` 時可不給。"
   validation {
     condition     = length(var.alarms) == 0 || length(var.sns_topic_arns) > 0
     error_message = "Give at least one SNS topic ARN when alarms is non-empty."
@@ -95,5 +95,5 @@ variable "sns_topic_arns" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the alarms. Name is added by the module."
+  description = "alarm 的 tag；`Name` 由 module 加上（metric filter 不支援 tag）。"
 }
