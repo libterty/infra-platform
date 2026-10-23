@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C5 完成（2026-10-23），下一步 C6。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C6 完成（2026-10-23），下一步 C7。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -35,7 +35,7 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 完成：eks-cluster 22 個 run、bridge 16 個 run 全過；example3 12 個 stack 與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；example2 無變動 | — |
 | C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 完成：#67 合併；Release run 遇到 GitHub 事件失敗 4 次，恢復後重跑成功；#69 發版，HCP 上的 0.3.0 從消費端抓下來跟 tag 相同 | — |
 | C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 完成：eks-addons 16 個 run 加 tfvars 2 個全過；example3 13 個 stack（356 個 run）與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；helm 3.3.0 的 lock 由使用者產生；example2 無變動 | — |
-| C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
+| C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 完成：application 30 個 run、`check-deploy-values.sh` 通過；example3 13 個 stack（360 個 run）與 `check-ssm-contract.sh` 通過；12 個突變都被抓到；example2 無變動 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
 | C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
 
@@ -147,6 +147,12 @@ C5 的結果：
 - `bridge` 加入新 key，舊 key 也先保留。
 
 驗收：同 C3；`helm lint`、`helm template` 通過；新 key 的 JSON 欄位有 `jsondecode` 斷言。
+
+C6 的結果：
+
+- `application`：ECS 照舊（design C6-1），多發布 9 個部署合約 key（C6-2）；`api_environment_json`、`worker_environment_json` 斷言等於 ECS task 的環境變數，而且不含 secret 值。`bridge` 不用改：`application` 讀的樹 B key 沒有變。
+- `templates/example3/deploy/`：`values-from-ssm.sh` 與 `charts/app`（C6-3、C6-4、C6-5）。chart 的 ScaledObject 照 design §9；`aws-cloudwatch` 的參數名稱對照 KEDA 2.21 文件。
+- 測試：TDD，先寫 `application.tftest.hcl` 的新 run 與 `check-deploy-values.sh` 看到失敗再實作。突變 12 個：ServiceAccount 改用 release 名稱、TargetGroupBinding 帶 `networking`、Deployment 寫死 `replicas`、DNS 少 TCP、RequestCountPerTarget 改 AverageValue、拿掉 namespace 檢查、worker 收 ingress、多認一個合約版本、不檢查缺 key、讀沒發布的 key、DNS 位址錯、少 keepalive sysctl。第一輪有 3 個沒被抓到（子字串比對、沒斷言 `metricType: Value`、缺 key 由 jq 先失敗），補了斷言後都抓到。
 
 ### C7：loadbalancer、postdeploy、拿掉 ECS
 

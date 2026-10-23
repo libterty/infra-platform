@@ -295,3 +295,13 @@ VPC 或可連通的網路要滿足：
 | C5-4 | `system` NodePool 帶 `CriticalAddonsOnly:NoSchedule`（跟 Auto Mode 內建的 system pool 相同），LB Controller 與 KEDA 用 `karpenter.sh/nodepool=system` 加 toleration 排上去。CPU 上限 `app` 100、`system` 16，tfvars 可調 |
 | C5-5 | `nat_mode` 在 `eks-addons` 也有一份，加進 `check-ssm-contract.sh` 的共用設定比對：`per_az` 時 system NetworkPolicy 的 AWS API 放行 `0.0.0.0/0`，`none` 時只放行 app subnet（interface endpoint 所在） |
 | C5-6 | helm provider 的 `aws eks get-token` 在 `deploy_role_arn` 有值時帶 `--role-arn`；跑這個 stack 的身分必須是 `eks-cluster` 的 `addons_apply_principal_arn` |
+
+## 附錄：C6 實作時的決定（2026-10-23）
+
+| # | 決定 |
+|---|---|
+| C6-1 | C6 是純新增：ECS service 與舊 key 照舊，`application` 多發布部署合約；C7 把 `postdeploy` 切到新 key 後，才一起拿掉 ECS（使用者選定） |
+| C6-2 | 部署合約的 key：`app_port`、`vpc_cidr`、`api_target_group_arn`、`api_image_repository`、`worker_image_repository`、`api_environment_json`、`worker_environment_json`、`api_scaling_json`、`worker_scaling_json`。擴縮參數收成每個工作負載一個 JSON，欄位在 `application` 的 `terraform test` 用 `jsondecode` 斷言。`api_scaling_json` 帶 target group 的 suffix，所以 `application` 多讀 `loadbalancer/target_group_arn_suffixes` |
+| C6-3 | 附 `deploy/values-from-ssm.sh`：用 `aws ssm get-parameters-by-path` 讀 `eks-cluster` 與 `application`，輸出 chart 的 values（JSON）。不認得的 `contract_version`、缺 key 都直接失敗並寫出 key 名稱。測試是 `application/tests/check-deploy-values.sh`：假的 `aws` 加 `helm lint`／`helm template`，並比對腳本讀的 key 都有被發布（使用者選定） |
+| C6-4 | 範例 chart 一個 release 只部署一個工作負載（`component: api` 或 `worker`），canary 再部署一個 release（§6.1）。ServiceAccount 名稱照 SSM，`serviceAccount.create: false` 讓第二個 release 共用；release namespace 跟 SSM 的 `app_namespace` 不同時 chart 直接失敗 |
+| C6-5 | `app` 的 NetworkPolicy：api 只收 VPC CIDR 來的 `app_port`（SG 再收窄到 ALB）；egress 是 DNS（service CIDR 的 `.10`，UDP 與 TCP 53）、VPC 內的 5432 與 6379、任意目的地的 443（AWS API）、Pod Identity agent 的 80。kubelet 探測是否受 NetworkPolicy 影響列為待驗證 |
