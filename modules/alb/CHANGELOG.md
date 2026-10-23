@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/libterty/infra-platform/compare/alb-v0.5.0...alb-v0.5.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **alb:** rewrite the input and output descriptions in Chinese ([78eddb8](https://github.com/libterty/infra-platform/commit/78eddb87364de284310bb635e39923aeecfba916))
+
 ## [0.5.0](https://github.com/libterty/infra-platform/compare/alb-v0.4.0...alb-v0.5.0) (2026-10-21)
 
 
