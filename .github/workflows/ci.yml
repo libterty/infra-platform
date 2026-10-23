@@ -51,11 +51,19 @@ jobs:
           key: tf-plugins-${{ runner.os }}-${{ hashFiles('**/versions.tf', '**/.terraform.lock.hcl') }}
           restore-keys: tf-plugins-${{ runner.os }}-
 
+      # tflint 的 aws ruleset，由 scripts/validate.sh 的 tflint --init 安裝。
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/tflint-plugins
+          key: tflint-plugins-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
+
       - name: Validate
         env:
           # owners team token（Personal 方案不能建唯讀 team），30 天到期。只給這一步。
           # 風險與補償措施見 docs/guides/hcp-registry-setup.md〈CI 的 token〉。
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+          # tflint --init 從 GitHub 下載 aws ruleset；不給 token 時跟同一個 runner IP 共用每小時 60 次的匿名額度。
+          GITHUB_TOKEN: ${{ github.token }}
         # PR 只驗證改動影響得到的目錄（改到共用檔案時仍是全部）；push、排程、手動觸發一律全量。
         run: |
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
