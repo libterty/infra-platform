@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/security-group-v0.1.0...security-group-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **security-group:** rewrite the input and output descriptions in Chinese ([d8f25da](https://github.com/libterty/infra-platform/commit/d8f25da46587f306b9666d24b4237c84b1f13e48))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
