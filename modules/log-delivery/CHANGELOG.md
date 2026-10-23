@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/log-delivery-v0.2.0...log-delivery-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **log-delivery:** rewrite the input and output descriptions in Chinese ([930658b](https://github.com/libterty/infra-platform/commit/930658b654a0698702e48e61be1f89d2e68a5791))
+
 ## [0.2.0](https://github.com/libterty/infra-platform/compare/log-delivery-v0.1.1...log-delivery-v0.2.0) (2026-10-21)
 
 
