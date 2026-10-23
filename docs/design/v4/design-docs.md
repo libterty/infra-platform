@@ -1,7 +1,7 @@
 # infra-platform v4 設計文件：example3（example2 的 EKS 版）
 
-> 狀態：設計草案，第二版。§3.1 是使用者拍板的決策；§3.2 的 K1–K8 與 §9 的 W1–W4 已經使用者審閱並定案（2026-10-22）。審過才進實作，步驟見 [`implement-process.md`](./implement-process.md)。
-> 範圍：把 `templates/example2` 複製成 `templates/example3`，在 example3 裡把 ECS 換成 EKS。example2 維持 ECS，一行都不改。這次只寫設計，不寫程式碼。
+> 狀態：已實作（2026-10-23，C0–C8，見 [`implement-process.md`](./implement-process.md)）。§3.1 是使用者拍板的決策；§3.2 的 K1–K8 與 §9 的 W1–W4 經使用者審閱定案；文末附錄是實作時的決定。範本只做過離線的靜態驗證，§11 的事要在真實帳號確認。
+> 範圍：把 `templates/example2` 複製成 `templates/example3`，在 example3 裡把 ECS 換成 EKS。example2 維持 ECS，一行都不改。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「v3 §x」指 [`../v3/design-docs.md`](../v3/design-docs.md)。example2 的路徑都在 `templates/example2/infra/terraform/` 底下，下文省略這段前綴。
 > AWS 與 KEDA 的行為是 2026-10-22 查證的結果，來源列在 §12。標「未確認」的要在實作或真實環境驗證。
 

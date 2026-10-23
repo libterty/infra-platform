@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C7 完成（2026-10-23），下一步 C8。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C8 全部完成（2026-10-23）。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -37,7 +37,7 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 完成：eks-addons 16 個 run 加 tfvars 2 個全過；example3 13 個 stack（356 個 run）與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；helm 3.3.0 的 lock 由使用者產生；example2 無變動 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 完成：application 30 個 run、`check-deploy-values.sh` 通過；example3 13 個 stack（360 個 run）與 `check-ssm-contract.sh` 通過；12 個突變都被抓到；example2 無變動 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 完成：example3 13 個 stack（362 個 run）、`check-ssm-contract.sh`、`check-deploy-values.sh` 通過；14 個突變都被抓到；example3 沒有 ECS module、key 與 `ecs-tasks.amazonaws.com`；example2 無變動 | — |
-| C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
+| C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 完成：README 改寫；example3 全目錄保密比對通過；全量 `validate.sh` 通過；兩張驗證表在 README〈驗證〉 | — |
 
 ## 每個 Phase 的做法與驗收
 
@@ -180,3 +180,9 @@ C7 的結果（設計見 design C7-1 到 C7-6）：
   - **雲端整合待驗證**（要真實帳號，這個里程碑不做）：node 加入叢集、DNS（實際 resolver、UDP 與 TCP 53）、Pod Identity 取得憑證與 secret、TargetGroupBinding 註冊 target 以及刪除後保留 target group、KEDA 依三個指標擴縮與縮容、CloudWatch 採集涵蓋 `app` 與 `system` node、每條告警能觸發、no-NAT 時的 endpoint 路徑、canary 權重與斷路器的完整流程。
 
 驗收：全量通過；使用者審過 README 與兩張驗證表。
+
+C8 的結果：
+
+- `templates/example3/infra/README.md` 整份改寫：跟 example2 的差異、執行環境與前提（design §7）、EKS 合約與部署合約（含 Type 與 JSON 欄位）、CI 部署流程、canary 與斷路器的操作步驟（design §6.1）、IP 預算（K2）、destroy 前要先處理的事、已知限制（design §11 加上沿用 example2 的項目）、兩張驗證表。
+- 保密：example3 全目錄跑 9 組去機密 pattern，命中的只有佔位 id 與 Kubernetes 的 API group；來源字串反向比對，example3 比 example2 多出來的只有 `aws:SourceAccount`、`RequestCountPerTarget`、`TargetGroup` 這類 AWS 公開名稱。
+- 驗證紀錄：靜態驗證通過與雲端整合待驗證兩張表放在 README 的〈驗證〉，不另外建檔，避免兩份不同步。
