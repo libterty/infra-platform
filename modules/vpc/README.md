@@ -99,34 +99,32 @@ subnets = {
 
 IPv6、private NAT、Transit Gateway 與 VPC peering 的路由、NACL、送 CloudWatch Logs 的 flow log（要多一個 IAM role）、流量規格 preset。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | VPC 名稱，2–48 字元小寫英數與連字號；各資源 `Name` tag 的前綴 |
-| `cidr` | `string` | 無 | 是 | VPC 的 IPv4 網路位址，`/16` 到 `/24` |
-| `azs` | `list(string)` | 無 | 是 | 2–4 個不重複的 AZ；順序決定輸出 list 的順序與 single NAT 的位置 |
-| `subnets` | `map(object)` | 無 | 是 | tier 名稱 => `{ type, newbits, netnum_base, cidrs, tags }`；`newbits` + `netnum_base` 與 `cidrs` 二選一；`tags` 預設 `{}`，只套在該 tier 的 subnet，不可含 `Name` |
-| `nat_mode` | `string` | `"single"` | 否 | `none`、`single`、`per_az` |
-| `gateway_endpoints` | `set(string)` | `["s3"]` | 否 | `s3`、`dynamodb` |
-| `flow_log` | `object` | `null` | 否 | `{ destination_arn, traffic_type }`，S3 only；`traffic_type` 預設 `ALL` |
-| `tags` | `map(string)` | `{}` | 否 | 額外 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | VPC 名稱，也是各資源 `Name` tag 的前綴。2–48 字元，限小寫英數字與 `-`，以字母開頭。 |
+| `cidr` | `string` | 無 | 是 | VPC 的 IPv4 網路位址，`/16` 到 `/24`，必須是網路位址本身（例如 `10.20.0.0/20`）。 |
+| `azs` | `list(string)` | 無 | 是 | 2–4 個不重複的 AZ。順序決定輸出 list 的順序，`single` NAT 放在第一個 AZ。 |
+| `subnets` | `map(object)` | 無 | 是 | tier 名稱（限 `snake_case`）對應切法。欄位：`type`（`public`、`private`、`isolated`，最多一個 `public` tier）、`newbits` 加 `netnum_base`（自動切）或 `cidrs`（AZ 對應 CIDR，key 要涵蓋每個 AZ），兩者擇一；`tags`（預設 `{}`，只套在這個 tier 的 subnet，不可含 `Name`）。 |
+| `nat_mode` | `string` | `"single"` | 否 | 要建幾個 NAT：`none` 不建 NAT；`single` 在第一個 AZ 建一個；`per_az` 每個 AZ 各建一個。 |
+| `gateway_endpoints` | `set(string)` | `[ "s3" ]` | 否 | 要建的 gateway endpoint，限 `s3`、`dynamodb`；關聯到所有 private 與 isolated tier 的 route table。 |
+| `flow_log` | `object` | `null` | 否 | 送到 S3 的 flow log，`null` 時不建。欄位：`destination_arn`（S3 bucket ARN，可帶 `/prefix`，只支援 S3）、`traffic_type`（`ACCEPT`、`REJECT`、`ALL`，預設 `ALL`）。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `vpc_id` | `string` | VPC ID |
-| `vpc_cidr` | `string` | VPC CIDR |
-| `azs` | `list(string)` | 原樣回傳 `azs` |
-| `subnet_ids` | `map(list(string))` | tier => 依 `azs` 順序的 subnet id |
-| `subnet_cidrs` | `map(list(string))` | 同上，CIDR |
-| `route_table_ids` | `map(list(string))` | 同上，route table id |
-| `nat_gateway_ids` | `list(string)` | 依 `azs` 順序；`none` 時為 `[]`，`single` 時只有 1 個 |
+| 名稱 | 說明 |
+|---|---|
+| `vpc_id` | VPC ID。 |
+| `vpc_cidr` | VPC CIDR。 |
+| `azs` | 原樣回傳 `azs`；其他輸出的 list 都照這個順序。 |
+| `subnet_ids` | tier 對應 subnet ID 的 map，值是依 `azs` 順序的 list。 |
+| `subnet_cidrs` | tier 對應 subnet CIDR 的 map，值是依 `azs` 順序的 list。 |
+| `route_table_ids` | tier 對應 route table ID 的 map，值是依 `azs` 順序的 list。 |
+| `nat_gateway_ids` | 依 `azs` 順序的 NAT gateway ID list；`none` 時是 `[]`，`single` 時只有 1 個。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

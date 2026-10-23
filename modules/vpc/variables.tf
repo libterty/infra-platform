@@ -1,5 +1,5 @@
 variable "name" {
-  description = "VPC name; also the Name tag prefix of every resource."
+  description = "VPC 名稱，也是各資源 `Name` tag 的前綴。2–48 字元，限小寫英數字與 `-`，以字母開頭。"
   type        = string
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,47}$", var.name))
@@ -8,7 +8,7 @@ variable "name" {
 }
 
 variable "cidr" {
-  description = "VPC IPv4 network address, /16 to /24."
+  description = "VPC 的 IPv4 網路位址，`/16` 到 `/24`，必須是網路位址本身（例如 `10.20.0.0/20`）。"
   type        = string
   validation {
     condition = (
@@ -22,7 +22,7 @@ variable "cidr" {
 }
 
 variable "azs" {
-  description = "2 to 4 AZs. The order sets the order of output lists and the AZ of a single NAT."
+  description = "2–4 個不重複的 AZ。順序決定輸出 list 的順序，`single` NAT 放在第一個 AZ。"
   type        = list(string)
   validation {
     condition     = length(var.azs) >= 2 && length(var.azs) <= 4 && length(distinct(var.azs)) == length(var.azs)
@@ -31,7 +31,7 @@ variable "azs" {
 }
 
 variable "subnets" {
-  description = "Tier name => layout. Give either newbits + netnum_base (auto split) or cidrs (az => cidr), never both. Optional tags are applied to that tier's subnets only."
+  description = "tier 名稱（限 `snake_case`）對應切法。欄位：`type`（`public`、`private`、`isolated`，最多一個 `public` tier）、`newbits` 加 `netnum_base`（自動切）或 `cidrs`（AZ 對應 CIDR，key 要涵蓋每個 AZ），兩者擇一；`tags`（預設 `{}`，只套在這個 tier 的 subnet，不可含 `Name`）。"
   type = map(object({
     type        = string # public | private | isolated
     newbits     = optional(number)
@@ -66,7 +66,7 @@ variable "subnets" {
 }
 
 variable "nat_mode" {
-  description = "none creates no NAT; single puts one in the first AZ; per_az puts one in each AZ."
+  description = "要建幾個 NAT：`none` 不建 NAT；`single` 在第一個 AZ 建一個；`per_az` 每個 AZ 各建一個。"
   type        = string
   default     = "single"
   validation {
@@ -76,7 +76,7 @@ variable "nat_mode" {
 }
 
 variable "gateway_endpoints" {
-  description = "Gateway endpoints, associated with every private and isolated tier route table."
+  description = "要建的 gateway endpoint，限 `s3`、`dynamodb`；關聯到所有 private 與 isolated tier 的 route table。"
   type        = set(string)
   default     = ["s3"]
   validation {
@@ -86,7 +86,7 @@ variable "gateway_endpoints" {
 }
 
 variable "flow_log" {
-  description = "Flow log to S3; null creates none."
+  description = "送到 S3 的 flow log，`null` 時不建。欄位：`destination_arn`（S3 bucket ARN，可帶 `/prefix`，只支援 S3）、`traffic_type`（`ACCEPT`、`REJECT`、`ALL`，預設 `ALL`）。"
   type = object({
     destination_arn = string                  # S3 bucket ARN, optionally with /prefix
     traffic_type    = optional(string, "ALL") # ACCEPT | REJECT | ALL
@@ -102,7 +102,7 @@ variable "flow_log" {
 }
 
 variable "tags" {
-  description = "Extra tags; the module adds Name."
+  description = "額外的 tag；`Name` 由 module 加上。"
   type        = map(string)
   default     = {}
 }
