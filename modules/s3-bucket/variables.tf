@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Bucket name."
+  description = "bucket 名稱，3–63 字元，小寫英數字與連字號，不可含 `.` 或 `--`。"
 
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.name)) && !strcontains(var.name, "--")
@@ -11,13 +11,13 @@ variable "name" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "null uses SSE-S3 (AES256). With vended_logs or vpc_flow_logs the key must be customer managed and its key policy must let delivery.logs.amazonaws.com use it."
+  description = "`null` 用 SSE-S3（`AES256`）；有給就用 SSE-KMS。`log_delivery` 含 `vended_logs` 或 `vpc_flow_logs` 時必須是客戶管理的 key，而且 key policy 要允許 `delivery.logs.amazonaws.com` 使用。"
 }
 
 variable "expiration_days" {
   type        = number
   default     = null
-  description = "Days after which objects expire, 1-3650. null means 90. Must stay null when never_expire is true."
+  description = "物件過期天數，1–3650；`null` 當成 90。`never_expire = true` 時必須是 `null`。"
 
   validation {
     condition     = var.expiration_days == null ? true : (var.expiration_days >= 1 && var.expiration_days <= 3650)
@@ -29,7 +29,7 @@ variable "never_expire" {
   type        = bool
   default     = false
   nullable    = false
-  description = "Keep objects until they are deleted explicitly: the lifecycle rule has no expiration. For content such as a knowledge base corpus; not for log buckets."
+  description = "不設過期，物件保留到被明確刪除，lifecycle rule 沒有 expiration。給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。"
 
   validation {
     condition     = !(var.never_expire && var.expiration_days != null)
@@ -45,7 +45,7 @@ variable "never_expire" {
 variable "log_delivery" {
   type        = set(string)
   default     = []
-  description = "Log sources allowed to write: vended_logs (CloudWatch Logs vended delivery from this account, e.g. ALB, NLB or S3 access logs set up with log-delivery) and vpc_flow_logs."
+  description = "允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`。"
 
   validation {
     condition     = alltrue([for v in var.log_delivery : contains(["vended_logs", "vpc_flow_logs"], v)])
@@ -58,7 +58,7 @@ variable "versioning" {
     noncurrent_expiration_days = optional(number, 30)
   })
   default     = null
-  description = "null leaves versioning off. An object enables versioning, expires noncurrent versions after noncurrent_expiration_days (1-3650) and removes expired delete markers. Cannot be combined with log_delivery."
+  description = "`null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與非空的 `log_delivery` 互斥。"
 
   validation {
     condition     = var.versioning == null ? true : (var.versioning.noncurrent_expiration_days >= 1 && var.versioning.noncurrent_expiration_days <= 3650)
@@ -74,7 +74,7 @@ variable "versioning" {
 variable "expiration_prefix" {
   type        = string
   default     = null
-  description = "Limit the expiration rule to keys under this prefix. null applies it to the whole bucket."
+  description = "目前版本的過期規則只套用在這個 prefix 底下（1–1024 字元）；`null` 套用整個 bucket。"
 
   validation {
     condition     = var.expiration_prefix == null ? true : (length(var.expiration_prefix) >= 1 && length(var.expiration_prefix) <= 1024)
@@ -90,7 +90,7 @@ variable "lambda_notifications" {
     filter_suffix = optional(string)
   }))
   default     = {}
-  description = "Notification id => Lambda function to invoke on bucket events. The caller must grant s3.amazonaws.com permission to invoke each function (with source_account and source_arn) before this is applied. Empty creates no notification resource."
+  description = "notification id 對應 bucket 事件要呼叫的 Lambda。欄位：`function_arn`（必須是 Lambda function ARN）、`events`（至少一個，預設 `s3:ObjectCreated:*`）、`filter_prefix`、`filter_suffix`。呼叫端要先給 `s3.amazonaws.com` 呼叫每個 function 的權限（帶 `source_account` 與 `source_arn`）再 apply。空的就不建 notification。"
 
   validation {
     condition     = alltrue([for n in values(var.lambda_notifications) : can(regex("^arn:aws[a-z-]*:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9_-]+(:[A-Za-z0-9_$-]+)?$", n.function_arn))])
@@ -106,11 +106,11 @@ variable "lambda_notifications" {
 variable "force_destroy" {
   type        = bool
   default     = false
-  description = "Allow destroying a non-empty bucket."
+  description = "是否允許刪除非空的 bucket。"
 }
 
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the bucket. Name is added by the module."
+  description = "bucket 的 tag；`Name` 由 module 加上。"
 }

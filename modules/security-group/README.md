@@ -51,25 +51,23 @@ module "sg" {
 - 不管「沒有憑證時 ALB SG 不准對 `0.0.0.0/0` 開 80」：這需要知道哪個 SG 是 ALB、有沒有憑證，屬於 network stack 的檢查。這裡只提供通用的底線 `allow_internet`。
 - 不收 icmp 等其他協定。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `vpc_id` | `string` | 無 | 是 | 這一組 SG 所在的 VPC |
-| `security_groups` | `map(object({ name, description }))` | 無 | 是 | key => SG；至少一個，key 為 snake_case |
-| `rules` | `map(object)` | `{}` | 否 | key => 規則；欄位見上方「規則怎麼寫」，`security_group`、`type`、`description` 必填 |
-| `tags` | `map(string)` | `{}` | 否 | SG 與規則的 tag；SG 另加 `Name`，值是 SG 名稱；規則的 `Name` 是規則 key |
+| `vpc_id` | `string` | 無 | 是 | 這次呼叫的所有 SG 所在的 VPC。 |
+| `security_groups` | `map(object)` | 無 | 是 | key 對應一個 SG，規則用這個 key 指稱 SG。至少一個，key 為 snake\_case。欄位：`name`、`description`。 |
+| `rules` | `map(object)` | `{}` | 否 | 規則 key 對應一條規則。key 是穩定的 `for_each` key，照規則允許的內容命名。`security_group`、`type`、`description` 必填；`peer_group`、`peer_group_id`、`cidr_ipv4`、`prefix_list_id` 每條規則剛好給一個。欄位見〈規則怎麼寫〉。 |
+| `tags` | `map(string)` | `{}` | 否 | SG 與規則的 tag。SG 另加 `Name`，值是 SG 名稱；規則的 `Name` 是規則 key。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `security_group_ids` | `map(string)` | SG ID，key 同 `security_groups` |
-| `security_group_arns` | `map(string)` | SG ARN，key 同 `security_groups` |
+| 名稱 | 說明 |
+|---|---|
+| `security_group_ids` | SG ID，key 同 `security_groups`。 |
+| `security_group_arns` | SG ARN，key 同 `security_groups`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

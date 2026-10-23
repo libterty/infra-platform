@@ -1,5 +1,5 @@
 variable "ssm_prefix" {
-  description = "SSM path prefix for one environment, in the form /<project>/<env>."
+  description = "一個環境的 SSM 路徑前綴，格式 `/<project>/<env>`。`<project>` 小寫字母開頭，可含數字與連字號；`<env>` 小寫字母開頭，可含數字。"
   type        = string
 
   validation {
@@ -9,7 +9,7 @@ variable "ssm_prefix" {
 }
 
 variable "stack" {
-  description = "Producing stack name; becomes the path segment after the prefix."
+  description = "產出這些值的 stack 名稱，會成為前綴後面的那一段路徑。小寫字母開頭，可含數字與連字號。"
   type        = string
 
   validation {
@@ -19,7 +19,7 @@ variable "stack" {
 }
 
 variable "strings" {
-  description = "Scalar values published as String parameters, keyed by parameter key. Values must be 1-4096 chars; wrap optional values in JSON."
+  description = "以 `String` 參數發布的純量值，key 為參數 key（snake_case），值 1–4096 字元。可有可無的值請包成 JSON。"
   type        = map(string)
   default     = {}
 
@@ -30,7 +30,7 @@ variable "strings" {
 }
 
 variable "lists" {
-  description = "List values published as StringList parameters (comma-joined), keyed by parameter key. Keys must not repeat any key in strings."
+  description = "以 `StringList` 參數（逗號串接）發布的清單，key 為參數 key（snake_case），不可跟 `strings` 的 key 重複。清單不可為空，元素不可為空字串或含逗號。"
   type        = map(list(string))
   default     = {}
 

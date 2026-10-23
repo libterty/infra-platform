@@ -32,26 +32,24 @@ module "alarm_topic" {
 - 不建 KMS key。key 屬於 `foundation` stack，這裡只收 ARN。
 - 不做 Lambda、https、Slack、Chatbot 訂閱。要的話用輸出的 `topic_arn` 自己加。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | topic 名稱，1–256 字元，限英數字、連字號、底線 |
-| `email_subscriptions` | `list(string)` | `[]` | 否 | 要訂閱的 email；每一筆都要是 email 格式 |
-| `kms_master_key_id` | `string` | `null` | 否 | 自管 KMS key 的 ARN；不可為 `alias/aws/sns` |
-| `tags` | `map(string)` | `{}` | 否 | topic 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | topic 名稱，1–256 字元，限英數字、連字號、底線。 |
+| `email_subscriptions` | `list(string)` | `[]` | 否 | 要訂閱告警的 email，每一筆都要是 email 格式。收件人確認訂閱之後才收得到告警。 |
+| `kms_master_key_id` | `string` | `null` | 否 | 客戶管理 KMS key 的 ARN，不可為 `alias/aws/sns`；key policy 要允許 `cloudwatch.amazonaws.com` 使用。`null` 不加密。 |
+| `tags` | `map(string)` | `{}` | 否 | topic 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `topic_arn` | `string` | topic ARN，給告警的 `alarm_actions`、`ok_actions` 用 |
-| `topic_name` | `string` | topic 名稱 |
-| `subscription_arns` | `map(string)` | email 訂閱的 ARN，key 為 email |
+| 名稱 | 說明 |
+|---|---|
+| `topic_arn` | 告警 topic 的 ARN，給告警的 `alarm_actions`、`ok_actions` 用。 |
+| `topic_name` | 告警 topic 的名稱。 |
+| `subscription_arns` | email 訂閱的 ARN，key 為 email。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

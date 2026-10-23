@@ -38,27 +38,25 @@ lifecycle policy 兩條規則：
 - 因為 tag 不可變，同一個 tag 不能重推；重新部署要換新的 tag。
 - 不支援 repository policy（跨帳號拉映像）、replication、pull-through cache、enhanced scanning（Inspector）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 完整 repository 名稱，2–256 字元；小寫字母、數字，以 `.`、`_`、`-` 分隔，可用 `/` 分層 |
-| `kms_key_arn` | `string` | `null` | 否 | 加密用的客戶管理金鑰；`null` 用 `AES256` |
-| `lifecycle_rules` | `object({ untagged_expire_days = optional(number, 7), keep_count = optional(number, 50) })` | `{}` | 否 | 兩個值都須至少為 1 |
-| `tags` | `map(string)` | `{}` | 否 | 額外 tag，module 只另外加 `Name` |
+| `name` | `string` | 無 | 是 | 完整的 repository 名稱，2–256 字元。小寫字母與數字，以 `.`、`_`、`-` 分隔，可用 `/` 分層。 |
+| `kms_key_arn` | `string` | `null` | 否 | 映像加密用的客戶管理金鑰；`null` 用 `AES256`。既有 repository 改這個值會重建 repository，裡面的映像會被刪掉。 |
+| `lifecycle_rules` | `object` | `{}` | 否 | 映像的保留規則。欄位：`untagged_expire_days`（未加 tag 的映像幾天後刪除，預設 7）、`keep_count`（最多保留幾個映像，預設 50），兩個都至少為 1。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；module 只另外加 `Name`。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `repository_url` | `string` | repository URL，不含 tag |
-| `arn` | `string` | repository ARN |
-| `name` | `string` | repository 名稱 |
-| `registry_id` | `string` | registry 所屬的帳號 ID |
+| 名稱 | 說明 |
+|---|---|
+| `repository_url` | repository URL，不含 tag。 |
+| `arn` | repository 的 ARN。 |
+| `name` | repository 名稱。 |
+| `registry_id` | repository 所在 registry 的帳號 ID。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

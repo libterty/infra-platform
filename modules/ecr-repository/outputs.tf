@@ -1,19 +1,19 @@
 output "repository_url" {
-  description = "Repository URL, without a tag."
+  description = "repository URL，不含 tag。"
   value       = aws_ecr_repository.this.repository_url
 }
 
 output "arn" {
-  description = "Repository ARN."
+  description = "repository 的 ARN。"
   value       = aws_ecr_repository.this.arn
 }
 
 output "name" {
-  description = "Repository name."
+  description = "repository 名稱。"
   value       = aws_ecr_repository.this.name
 }
 
 output "registry_id" {
-  description = "Account ID of the registry that holds the repository."
+  description = "repository 所在 registry 的帳號 ID。"
   value       = aws_ecr_repository.this.registry_id
 }

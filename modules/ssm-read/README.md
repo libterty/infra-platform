@@ -47,24 +47,22 @@ locals {
 - 不遞迴讀整個路徑（`aws_ssm_parameters_by_path` 會讓實際讀了哪些參數變得看不出來）。
 - `<stack>/<key>` 的規則跟 `ssm-publish` 一致：stack 是小寫字母開頭、可含數字與連字號，key 是 snake_case。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `ssm_prefix` | `string` | 無 | 是 | `/<project>/<env>`，跟 `ssm-publish` 相同 |
-| `strings` | `map(string)` | `{}` | 否 | 本地名稱 => `<stack>/<key>`，讀 `String` 參數 |
-| `lists` | `map(string)` | `{}` | 否 | 本地名稱 => `<stack>/<key>`，讀 `StringList` 參數 |
+| `ssm_prefix` | `string` | 無 | 是 | `/<project>/<env>`，跟 `ssm-publish` 相同。 |
+| `strings` | `map(string)` | `{}` | 否 | 本地名稱對應 `<stack>/<key>`，讀 `String` 參數。 |
+| `lists` | `map(string)` | `{}` | 否 | 本地名稱對應 `<stack>/<key>`，讀 `StringList` 參數。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `strings` | `map(string)` | 字串值，key 為本地名稱 |
-| `lists` | `map(list(string))` | 以逗號切開的清單，key 為本地名稱 |
+| 名稱 | 說明 |
+|---|---|
+| `strings` | `String` 參數的值，key 為本地名稱。 |
+| `lists` | `StringList` 參數以逗號切開的清單，key 為本地名稱。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

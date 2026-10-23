@@ -60,25 +60,23 @@ locals {
 - `strings` 與 `lists` 的 key 不能重複，因為兩者會寫到同一個路徑。
 - `ssm_prefix` 的 `<env>` 段只能是小寫字母與數字，不能有連字號。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `ssm_prefix` | `string` | 無 | 是 | `/<project>/<env>`；`<project>` 小寫字母開頭，可含數字與連字號，`<env>` 小寫字母開頭，可含數字 |
-| `stack` | `string` | 無 | 是 | 產出值的 stack 名稱，小寫字母開頭，可含數字與連字號 |
-| `strings` | `map(string)` | `{}` | 否 | 以 `String` 發布的值；key 為 snake_case，值 1–4096 字元 |
-| `lists` | `map(list(string))` | `{}` | 否 | 以 `StringList` 發布的值；key 為 snake_case，list 不可為空，元素不可為空字串或含逗號 |
+| `ssm_prefix` | `string` | 無 | 是 | 一個環境的 SSM 路徑前綴，格式 `/<project>/<env>`。`<project>` 小寫字母開頭，可含數字與連字號；`<env>` 小寫字母開頭，可含數字。 |
+| `stack` | `string` | 無 | 是 | 產出這些值的 stack 名稱，會成為前綴後面的那一段路徑。小寫字母開頭，可含數字與連字號。 |
+| `strings` | `map(string)` | `{}` | 否 | 以 `String` 參數發布的純量值，key 為參數 key（snake\_case），值 1–4096 字元。可有可無的值請包成 JSON。 |
+| `lists` | `map(list(string))` | `{}` | 否 | 以 `StringList` 參數（逗號串接）發布的清單，key 為參數 key（snake\_case），不可跟 `strings` 的 key 重複。清單不可為空，元素不可為空字串或含逗號。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `names` | `map(string)` | 參數名稱，key 為參數 key |
-| `arns` | `map(string)` | 參數 ARN，key 為參數 key；apply 前是 unknown |
+| 名稱 | 說明 |
+|---|---|
+| `names` | 已發布的參數名稱，key 為參數 key。 |
+| `arns` | 已發布的參數 ARN，key 為參數 key；apply 前是 unknown。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
