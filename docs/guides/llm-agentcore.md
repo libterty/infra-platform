@@ -304,7 +304,7 @@ aws logs describe-log-groups --log-group-name-prefix aws/spans \
 # 預期有 aws/spans
 ```
 
-沒開時照 AWS 文件〈Enable Transaction Search〉：先給 `xray.amazonaws.com` 寫入 CloudWatch Logs 的 resource policy，再 `aws xray update-trace-segment-destination --destination CloudWatchLogs`。這是帳號加 region 層的設定，範本不管。
+沒開時用 [`xray-transaction-search`](../../modules/xray-transaction-search/README.md) module 開：它建 `xray.amazonaws.com` 寫入 CloudWatch Logs 的 resource policy、把 destination 設成 `CloudWatchLogs`、設定 indexing 比例。這是帳號加 region 層的設定，每個帳號、每個 region 只由一處呼叫（帳號 baseline 或平台 stack），範本的 stack 不呼叫。
 
 `log-delivery` 會在 Runtime 重建、ARN 換了的時候讓 delivery 跟著替換，避免刪 source 時撞 `ConflictException`、apply 卡在半途。source 的資源與 CWL 目的地的 log group 都必須在同一個帳號，或在 `allowed_account_ids` 裡（範本不傳），否則 plan 擋。CWL 目的地需要的 log group resource policy 由 CloudWatch 在建 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
 

@@ -42,6 +42,7 @@ module "xray" {
 - 帳號層級的 `Default` sampling rule：AWS 內建，不能用 Terraform 建，也不改它。
 - X-Ray 加密設定（`aws_xray_encryption_config`）：一個帳號只有一份，不適合放在專案 module。
 - Resource Policy。
+- Transaction Search（span 進 `aws/spans`、indexing 比例）：帳號加 region 層的設定，用 [`xray-transaction-search`](../xray-transaction-search/README.md)。
 - IAM：寫入與抽樣權限由 `iam-app` 給 task role。
 
 ## 輸入
