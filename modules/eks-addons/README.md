@@ -96,6 +96,17 @@ Karpenter 的 node role 就是 `eks-cluster` 的 `karpenter.node_role_arn` 那�
 
 `default_node_class` 與 `default_node_pool` **兩個都有值**才會安裝本地 chart `karpenter-defaults`。其中一個是 `null` 就不裝，想自己管 NodePool 時就這樣關掉。它們是 `karpenter` 物件裡的欄位，所以 `karpenter = null` 時不可能有這些設定。
 
+兩者的欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `default_node_class.node_role_name` | `string` | 必填 | Karpenter node 的 IAM role 名稱，不是 ARN |
+| `default_node_class.subnet_discovery_tag` | `map(string)` | 必填 | 用 tag 選 subnet，至少一個 tag 且 key 不可為空，例如 `{ "karpenter.sh/discovery" = "alpha-dev" }` |
+| `default_node_class.security_group_discovery_tag` | `map(string)` | 必填 | 用 tag 選 security group，規則同上 |
+| `default_node_class.ami_alias` | `string` | `al2023@latest` | `al2023@latest` 或 `al2023@<版本>`，最多 30 字元（見下方） |
+| `default_node_pool.cpu_limit` | `number` | `100` | NodePool 的 `limits.cpu`，要大於 0 |
+| `default_node_pool.capacity_types` | `list(string)` | `["on-demand"]` | 只接受 `on-demand`、`spot`，不可為空或重複 |
+
 本地 chart 建的資源（API 版本與欄位依 Karpenter v1.15.0 的 CRD 與官方範例核對）：
 
 | 資源 | API | 內容 |
@@ -293,38 +304,71 @@ CI 部署應用程式用的權限不在這個 module，在 `eks-cluster` 的 `ac
 - metrics-server（用 `eks-cluster` 的 EKS add-on，設計文件 J6）。
 - 其他 Helm chart、Gateway API、ArgoCD、監控元件。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `cluster_name` | `string` | 無 | 是 | EKS 叢集名稱 |
-| `region` | `string` | 無 | 是 | 叢集所在 region，傳給 LB Controller |
-| `vpc_id` | `string` | 無 | 是 | 叢集的 VPC ID，傳給 LB Controller（hop limit 1 時它讀不到 IMDS） |
-| `load_balancer_controller` | `object({ chart_version, service_account, replica_count, values })` | `null` | 否 | 預設 `3.6.1`、`aws-load-balancer-controller`、`2`、`{}`；namespace 固定 `kube-system`；`null` 不裝 |
-| `karpenter` | `object({ chart_version, namespace, service_account, interruption_queue_name, values, default_node_class, default_node_pool })` | `null` | 否 | 預設 `1.15.0`、`kube-system`、`karpenter`；`interruption_queue_name` 必填；`null` 不裝 |
-| `karpenter.default_node_class` | `object({ node_role_name, subnet_discovery_tag, security_group_discovery_tag, ami_alias })` | `null` | 否 | `node_role_name` 是 IAM role 名稱；兩個 tag 是 `map(string)`（至少一個）；`ami_alias` 預設 `al2023@latest` |
-| `karpenter.default_node_pool` | `object({ cpu_limit, capacity_types })` | `null` | 否 | `cpu_limit` 預設 `100`（要大於 0）；`capacity_types` 預設 `["on-demand"]`，只接受 `on-demand`、`spot`；與 `default_node_class` 都有值才安裝 `karpenter-defaults` |
-| `auto_mode` | `object({ node_role_name, node_classes, node_pools })` | `null` | 否 | NodeClass／NodePool（local chart `auto-mode-nodes`）；`node_classes` 的欄位：`subnet_selector_terms`、`security_group_selector_terms`、`pod_subnet_selector_terms`、`pod_security_group_selector_terms`（兩個 pod 欄位要一起設）、`network_policy`（預設 `DefaultDeny`）、`network_policy_event_logs`（預設 `Disabled`）；`node_pools` 的欄位：`node_class`、`taints`、`labels`、`capacity_types`、`instance_categories`、`architectures`、`cpu_limit`；有值時 LB Controller 的 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false` |
-| `network_policy` | `object({ service_cidr, api_server_cidrs, aws_api_cidrs })` | `null` | 否 | 啟用 NetworkPolicy controller 並建 system 的 NetworkPolicy（local chart `system-network-policy`）；三個欄位都必填 |
-| `system_placement` | `object({ node_selector, tolerations })` | `null` | 否 | 套到 LB Controller 與 KEDA；`node_selector` 預設 `{}`，`tolerations` 預設 `[]` |
-| `keda` | `object({ chart_version, namespace, service_account, values })` | `null` | 否 | 預設 `2.21.0`、`keda`、`keda-operator`、`{}`；`null` 不裝 |
-| `cloudwatch_observability` | `object({ chart_version, namespace, service_account, container_logs, application_signals, values })` | `null` | 否 | 預設 `6.7.0`、`amazon-cloudwatch`、`cloudwatch-agent`、`true`、`false`、`{}`；`null` 不裝 |
-| `argo_rollouts` | `object({ chart_version, namespace, values })` | `null` | 否 | 預設 `2.43.8`、`argo-rollouts`、`{}`；`null` 不裝 |
-| `app_namespaces` | `map(object({ labels }))` | `{}` | 否 | key 是 namespace 名稱，`labels` 預設 `{}`；空的不裝 |
-| `aggregate_crd_roles` | `bool` | `false` | 否 | 把 TargetGroupBinding（有裝 LB Controller 時）與 KEDA 的 CRD（有裝 KEDA 時）權限併進內建的 view、edit、admin，讓 namespace scope 的 Edit 或 Admin 能管理（見〈CI 用 Helm 部署應用程式的權限〉） |
-| `chart_repository_overrides` | `map(string)` | `{}` | 否 | key 是 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值是 `https://` 或 `oci://` URL |
-
-預設 repository：LB Controller `https://aws.github.io/eks-charts`（chart `aws-load-balancer-controller`）、Karpenter `oci://public.ecr.aws/karpenter`（chart `karpenter`）、Argo Rollouts `https://argoproj.github.io/argo-helm`（chart `argo-rollouts`）、KEDA `https://kedacore.github.io/charts`（chart `keda`）、CloudWatch 採集 `https://aws-observability.github.io/helm-charts`（chart `amazon-cloudwatch-observability`）。
+| `cluster_name` | `string` | 無 | 是 | EKS cluster 名稱，傳給 AWS Load Balancer Controller 與 Karpenter。1–100 字元，限英數字、`-`、`_`，首字元須為英數字。 |
+| `region` | `string` | 無 | 是 | cluster 所在 region，例如 `ap-northeast-1`。傳給 AWS Load Balancer Controller：hop limit 為 1 時它讀不到 IMDS，所以明確傳入。 |
+| `vpc_id` | `string` | 無 | 是 | cluster 的 VPC ID，格式像 `vpc-0123456789abcdef0`。傳給 AWS Load Balancer Controller：hop limit 為 1 時它讀不到 IMDS，所以明確傳入。 |
+| `load_balancer_controller` | `object` | `null` | 否 | AWS Load Balancer Controller 的 release，namespace 固定 `kube-system`；`null` 不裝。欄位：`chart_version`（預設 `3.6.1`，精確版本）、`service_account`（預設 `aws-load-balancer-controller`）、`replica_count`（預設 `2`，至少 1 的整數）、`values`（預設 `{}`，併進 chart values，衝突時以前面的欄位為準）。IAM role 不在這裡建，service account 的 Pod Identity association 在 `eks-cluster`。設了 `auto_mode` 時 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false`，`values` 改不回來。 |
+| `karpenter` | `object` | `null` | 否 | Karpenter controller 的 release；`null` 不裝。欄位：`chart_version`（預設 `1.15.0`，精確版本）、`namespace`（預設 `kube-system`）、`service_account`（預設 `karpenter`）、`interruption_queue_name`（必填，SQS queue 名稱，不是 URL 或 ARN，即 `eks-cluster` 的輸出 `karpenter_interruption_queue_name`）、`values`（預設 `{}`）、`default_node_class` 與 `default_node_pool`（預設 `null`，兩個都有值才裝本地 chart `karpenter-defaults`；`default_node_pool = {}` 表示用預設限制）。這兩個的欄位見〈Karpenter 的預設 NodePool 與 EC2NodeClass〉。 |
+| `argo_rollouts` | `object` | `null` | 否 | Argo Rollouts 的 release；`null` 不裝。欄位：`chart_version`（預設 `2.43.8`，精確版本）、`namespace`（預設 `argo-rollouts`）、`values`（預設 `{}`，併進 chart values）。CloudWatch 指標分析要的 role 與 Pod Identity association 在 `eks-cluster` 建。 |
+| `app_namespaces` | `map(object)` | `{}` | 否 | 用本地 chart `app-namespaces` 建的應用程式 namespace，key 是 namespace 名稱（RFC 1123 label，不能是 `default` 或 `kube-` 開頭），欄位 `labels` 預設 `{}`；空 map 不裝。掛 Edit access policy 的 CI role 建不了 namespace，所以在這裡建。 |
+| `auto_mode` | `object` | `null` | 否 | EKS Auto Mode 的 NodeClass 與 NodePool（本地 chart `auto-mode-nodes`，`eks.amazonaws.com/v1` NodeClass 與 `karpenter.sh/v1` NodePool）；`null` 不裝。有值時也會把 AWS Load Balancer Controller 的 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false`。欄位見〈`auto_mode` 欄位〉。 |
+| `network_policy` | `object` | `null` | 否 | 啟用 NetworkPolicy controller（`kube-system` 的 ConfigMap `amazon-vpc-cni` 設 `enable-network-policy-controller`），並替這個 module 有裝的元件建 system NetworkPolicy（本地 chart `system-network-policy`）；`null` 兩者都不做。欄位都必填，CIDR 由呼叫端給：`service_cidr`（cluster 的 IPv4 service CIDR，DNS 是它的 `.10`）、`api_server_cidrs`（control plane ENI 所在 subnet，不可為空，不接受 `0.0.0.0/0`）、`aws_api_cidrs`（VPC interface endpoint 所在 subnet，不可為空；只有經 NAT 連 AWS API 時才用 `["0.0.0.0/0"]`）。規則見〈NetworkPolicy 與 system 的放行規則〉。 |
+| `system_placement` | `object` | `null` | 否 | AWS Load Balancer Controller 與 KEDA（該跑在 system node pool 的 Deployment）的 node selector 與 toleration；`null` 不改它們的排程。寫在 chart values 最上層，跟元件 `values` 同名的 key 衝突時以這裡為準。欄位：`node_selector`（預設 `{}`，key 不可為空）、`tolerations`（預設 `[]`，每項的 `key`、`operator`、`value`、`effect` 都選填；`operator` 為 `Equal` 或 `Exists`，`effect` 為 `NoSchedule`、`PreferNoSchedule` 或 `NoExecute`）。CloudWatch 採集不套用，它的 DaemonSet 要涵蓋每個 node。 |
+| `keda` | `object` | `null` | 否 | KEDA 的 release（chart `kedacore/keda`）；`null` 不裝。欄位：`chart_version`（預設 `2.21.0`，精確版本）、`namespace`（預設 `keda`）、`service_account`（預設 `keda-operator`，operator 的 service account，CloudWatch scaler 的 Pod Identity association 建在它上面，在 `eks-cluster`）、`values`（預設 `{}`，併進 chart values，衝突時以 `system_placement` 與 service account 為準）。 |
+| `cloudwatch_observability` | `object` | `null` | 否 | Amazon CloudWatch Observability 的 release（chart `amazon-cloudwatch-observability`）；`null` 不裝。Container Insights（enhanced observability）固定開。欄位：`chart_version`（預設 `6.7.0`，精確版本）、`namespace`（預設 `amazon-cloudwatch`）、`service_account`（預設 `cloudwatch-agent`，CloudWatch agent 與 Fluent Bit 共用，一個 Pod Identity association 涵蓋兩者）、`container_logs`（預設 `true`，開 Fluent Bit）、`application_signals`（預設 `false`）、`values`（預設 `{}`，併進 chart values，衝突時以前面的欄位為準）。chart 預設容忍所有 taint，刻意保留。 |
+| `aggregate_crd_roles` | `bool` | `false` | 否 | 把應用程式 chart 會建的自訂資源權限併進內建的 `view`、`edit`、`admin` role，讓 namespace scope 的 Edit 或 Admin（例如掛 `AmazonEKSEditPolicy` 的 CI role）能管理：有裝 AWS Load Balancer Controller 時用本地 chart `crd-role-aggregation` 加 TargetGroupBinding；有裝 KEDA 時用 KEDA chart 的 `rbac.aggregateToDefaultRoles` 加 ScaledObject、TriggerAuthentication 等 KEDA 資源。見〈CI 用 Helm 部署應用程式的權限〉。 |
+| `chart_repository_overrides` | `map(string)` | `{}` | 否 | 各元件的 chart repository URL，例如 private cluster 的 ECR mirror。key 只能是 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值要是 `https://` 或 `oci://` URL。預設 repository 見〈預設 chart repository〉。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `releases` | 每個已安裝 release 的 `name`、`namespace` 與 chart `version`，key 是元件：`load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`、`crd_role_aggregation`。沒裝的元件不會出現。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `releases` | `map(object({ name, namespace, version }))` | 每個已安裝 release 的名稱、namespace 與 chart 版本。key 是 `load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`、`crd_role_aggregation`；沒裝的元件不會出現 |
+## `auto_mode` 欄位
+
+`auto_mode` 的欄位（用法見〈Auto Mode 的 NodeClass 與 NodePool〉）：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `node_role_name` | `string` | 必填 | node role 的 IAM role 名稱（不是 ARN），`eks-cluster` 要先替它建 EC2 access entry |
+| `node_classes` | `map(object)` | 必填 | 至少一個；key 是 NodeClass 名稱（RFC 1123 label），不能叫 `default` |
+| `node_pools` | `map(object)` | 必填 | 至少一個；key 是 NodePool 名稱（RFC 1123 label） |
+
+`node_classes` 每項的欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `subnet_selector_terms` | `list(object)` | 必填 | 至少一個 selector term |
+| `security_group_selector_terms` | `list(object)` | 必填 | 至少一個 selector term |
+| `pod_subnet_selector_terms` | `list(object)` | `[]` | 跟 `pod_security_group_selector_terms` 要一起設或一起留空 |
+| `pod_security_group_selector_terms` | `list(object)` | `[]` | Pod SG 是 NodeClass 層級的設定，同一個 NodeClass 的 Pod 共用 |
+| `network_policy` | `string` | `DefaultDeny` | `DefaultDeny` 或 `DefaultAllow` |
+| `network_policy_event_logs` | `string` | `Disabled` | `Enabled` 或 `Disabled` |
+
+selector term 是 `{ id = "..." }` 或 `{ tags = { ... } }`，只能給一種，`tags` 不可為空。subnet 的 `id` 格式像 `subnet-0123456789abcdef0`，security group 的 `id` 格式像 `sg-0123456789abcdef0`。
+
+`node_pools` 每項的欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `node_class` | `string` | 必填 | 必須是 `node_classes` 的 key |
+| `taints` | `list(object)` | `[]` | 每項 `key`（不可為空）、`value`（選填）、`effect`（`NoSchedule`、`PreferNoSchedule`、`NoExecute`） |
+| `labels` | `map(string)` | `{}` | 節點 label |
+| `capacity_types` | `list(string)` | `["on-demand"]` | `on-demand`、`spot`，不可為空或重複 |
+| `instance_categories` | `list(string)` | `[]` | 例如 `c`、`m`、`r`（1–4 個小寫字母）；空的代表不限 |
+| `architectures` | `list(string)` | `["amd64"]` | `amd64`、`arm64`，不可為空或重複 |
+| `cpu_limit` | `number` | `100` | NodePool 的 `limits.cpu`，要大於 0 |
+
+## 預設 chart repository
+
+預設 repository：LB Controller `https://aws.github.io/eks-charts`（chart `aws-load-balancer-controller`）、Karpenter `oci://public.ecr.aws/karpenter`（chart `karpenter`）、Argo Rollouts `https://argoproj.github.io/argo-helm`（chart `argo-rollouts`）、KEDA `https://kedacore.github.io/charts`（chart `keda`）、CloudWatch 採集 `https://aws-observability.github.io/helm-charts`（chart `amazon-cloudwatch-observability`）。
 
 ## 測試
 

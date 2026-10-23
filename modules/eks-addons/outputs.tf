@@ -14,6 +14,6 @@ locals {
 }
 
 output "releases" {
-  description = "Name, namespace and chart version of each installed release, keyed by component (load_balancer_controller, karpenter, karpenter_defaults, argo_rollouts, app_namespaces, auto_mode_nodes, system_network_policy, keda, cloudwatch_observability, crd_role_aggregation). Components that are not installed are absent."
+  description = "每個已安裝 release 的 `name`、`namespace` 與 chart `version`，key 是元件：`load_balancer_controller`、`karpenter`、`karpenter_defaults`、`argo_rollouts`、`app_namespaces`、`auto_mode_nodes`、`system_network_policy`、`keda`、`cloudwatch_observability`、`crd_role_aggregation`。沒裝的元件不會出現。"
   value       = { for k, r in local.releases : k => { name = r.name, namespace = r.namespace, version = r.version } }
 }
