@@ -15,7 +15,7 @@ issue 只能用表單開：
 
 ## 開發環境
 
-需要 terraform 1.15.8、tflint 0.64.0、bash 與 jq，不需要 AWS 憑證。tflint 的 aws ruleset 是 plugin，第一次跑 `scripts/validate.sh` 時會從 GitHub 下載到 `.cache/tflint-plugins`；遇到 GitHub API 額度限制時設定 `GITHUB_TOKEN`。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要驗證範本就要先用該 organization 成員的帳號 `terraform login`。
+需要 terraform 1.15.8、tflint 0.64.0、terraform-docs 0.24.x（`brew install terraform-docs`）、bash 與 jq，不需要 AWS 憑證。tflint 的 aws ruleset 是 plugin，第一次跑 `scripts/validate.sh` 時會從 GitHub 下載到 `.cache/tflint-plugins`；遇到 GitHub API 額度限制時設定 `GITHUB_TOKEN`。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要驗證範本就要先用該 organization 成員的帳號 `terraform login`。
 
 ```bash
 scripts/validate.sh                      # 全部
@@ -61,7 +61,8 @@ fix(iam-role): reject allow statements with NotResource
 
 ## 語言
 
-- `.tf` 與 `.tftest.hcl` 裡的註解、`description`、`error_message` 只用英文，不中英混雜，不放 icon。註解只寫程式碼看不出來的原因。
+- 變數與 output 的 `description` 用台灣繁體中文，識別字放進反引號；README 的輸入／輸出表由 terraform-docs 從 description 產生。
+- `.tf` 與 `.tftest.hcl` 裡的註解與 `error_message` 只用英文，不放 icon。註解只寫程式碼看不出來的原因。
 - `README.md`、`CHANGELOG.md` 與 `docs/` 底下的文件用台灣繁體中文。
 
 ## 授權

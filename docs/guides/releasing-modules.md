@@ -8,8 +8,8 @@
 
 1. 開分支，只改一個 module 的目錄（例如 `modules/ecs-service/`）。release-please 依路徑判斷 commit 屬於哪個 module；如果一個 commit 動到兩個 module，它會同時寫進兩邊的 CHANGELOG。
 2. 照 TDD 寫：先寫 `tests/` 的 run（至少一個因為條件不成立而失敗），再改實作到全過。每條 validation 正反兩個方向各一個 run。
-3. `.tf` 與 `.tftest.hcl` 裡的註解、`description`、`error_message` 只用英文，不中英混雜，不放 icon；註解只寫程式碼看不出來的原因。`README.md`、`CHANGELOG.md` 用台灣繁體中文。
-4. 介面有變就同步改 `README.md` 的輸入輸出表（目前手寫，之後改由 terraform-docs 產生）與 `examples/`。
+3. 變數與 output 的 `description` 用台灣繁體中文，識別字、欄位名稱、列舉值與 `<name>` 這類樣式放進反引號；單一變數的約束、範圍、預設行為、相依條件寫進 description。`.tf` 與 `.tftest.hcl` 裡的註解與 `error_message` 只用英文，不放 icon；註解只寫程式碼看不出來的原因。`README.md`、`CHANGELOG.md` 用台灣繁體中文。
+4. 介面或 description 有變，就重新產生 `README.md` 的輸入輸出表（`terraform-docs -c .terraform-docs.yml modules/<module>`，只改 `BEGIN_TF_DOCS`／`END_TF_DOCS` 之間），並同步改 `examples/`。表格不要手改，`scripts/validate.sh` 的 S11 會擋。
 5. 本機驗證，不需要 AWS 憑證：
 
 ```bash
@@ -43,7 +43,8 @@ module 用到 aws 以外的 provider（例如 `eks-addons` 的 helm）時：
 |---|---|---|---|
 | MAJOR | 消費端必須改程式碼，或 plan 出現 replace／destroy | 刪除或改名變數、output；新增沒有預設值的必填變數；收緊 validation；改 resource address 卻沒有 `moved`；改會觸發 replace 的預設值；提高 provider 大版本下限 | `feat!:` 或 body 寫 `BREAKING CHANGE:` |
 | MINOR | 消費端不用改程式碼，plan 可能有 in-place 變更或新增資源 | 新增有預設值、且預設維持原行為的變數；新增 output；放寬 validation；調整告警門檻預設 | `feat:` |
-| PATCH | 換版後 plan 零差異 | 修 bug 且不改介面；用 `moved` 重構 address；改 description、README、測試 | `fix:`、`refactor:`、`docs:`、`test:` |
+| PATCH | 換版後 plan 零差異 | 修 bug 且不改介面；用 `moved` 重構 address；要讓 registry 顯示新的 description 或 README | `fix:` |
+| 不發版 | 只進 `main`，等這個 module 下一次 `feat:`／`fix:` 一起發 | 改 README、測試、重構但不急著發 | `docs:`、`refactor:`、`test:`、`chore:` |
 
 三條補充：
 

@@ -20,6 +20,9 @@ concurrency:
 env:
   TF_VERSION: "1.15.8"
   TFLINT_VERSION: "v0.64.0"
+  TERRAFORM_DOCS_VERSION: "v0.24.0"
+  # terraform-docs 只發 sha256、沒有簽章，所以把 linux-amd64 的 hash 寫死在這裡比對。
+  TERRAFORM_DOCS_SHA256: "9005daf969de0b50134493a2c00078b49f5f5b39d021cda7c89bf4d4f3d776d3"
 
 jobs:
   validate:
@@ -50,6 +53,16 @@ jobs:
           path: .cache/plugins
           key: tf-plugins-${{ runner.os }}-${{ hashFiles('**/versions.tf', '**/.terraform.lock.hcl') }}
           restore-keys: tf-plugins-${{ runner.os }}-
+
+      # S11 用 terraform-docs 檢查 module README 的輸入／輸出表。
+      - name: Install terraform-docs
+        run: |
+          f="terraform-docs-${TERRAFORM_DOCS_VERSION}-linux-amd64.tar.gz"
+          curl -sSfLo "$RUNNER_TEMP/$f" "https://github.com/terraform-docs/terraform-docs/releases/download/${TERRAFORM_DOCS_VERSION}/$f"
+          echo "${TERRAFORM_DOCS_SHA256}  $RUNNER_TEMP/$f" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/terraform-docs"
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP/terraform-docs" terraform-docs
+          echo "$RUNNER_TEMP/terraform-docs" >> "$GITHUB_PATH"
 
       # tflint 的 aws ruleset，由 scripts/validate.sh 的 tflint --init 安裝。
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
