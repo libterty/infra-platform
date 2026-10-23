@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/metric-alarm-v0.1.0...metric-alarm-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **metric-alarm:** rewrite the input and output descriptions in Chinese ([5de9067](https://github.com/libterty/infra-platform/commit/5de906764999ac2bdbe5c9b4a40d98752083f033))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
