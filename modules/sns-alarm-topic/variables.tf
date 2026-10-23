@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Topic name, 1-256 letters, digits, hyphens or underscores."
+  description = "topic 名稱，1–256 字元，限英數字、連字號、底線。"
   type        = string
 
   validation {
@@ -9,7 +9,7 @@ variable "name" {
 }
 
 variable "email_subscriptions" {
-  description = "Email addresses to subscribe. Each recipient must confirm the subscription before alarms arrive."
+  description = "要訂閱告警的 email，每一筆都要是 email 格式。收件人確認訂閱之後才收得到告警。"
   type        = list(string)
   default     = []
 
@@ -20,7 +20,7 @@ variable "email_subscriptions" {
 }
 
 variable "kms_master_key_id" {
-  description = "Customer managed KMS key ARN; its key policy must let cloudwatch.amazonaws.com use it. null leaves the topic unencrypted."
+  description = "客戶管理 KMS key 的 ARN，不可為 `alias/aws/sns`；key policy 要允許 `cloudwatch.amazonaws.com` 使用。`null` 不加密。"
   type        = string
   default     = null
 
@@ -31,7 +31,7 @@ variable "kms_master_key_id" {
 }
 
 variable "tags" {
-  description = "Tags for the topic; Name is added automatically."
+  description = "topic 的 tag；`Name` 由 module 加上。"
   type        = map(string)
   default     = {}
 }
