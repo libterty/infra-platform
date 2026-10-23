@@ -6,7 +6,7 @@
 
 ## module
 
-共 41 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 42 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -31,6 +31,7 @@
 | 觀測性           | `log-metric-alarm`          | 從 log 產生指標，可選接告警                                                            | [![log-metric-alarm](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=log-metric-alarm-v*&label=)](https://github.com/libterty/infra-platform/releases?q=log-metric-alarm-v) |
 | 觀測性 | `metric-alarm` | 任意 CloudWatch 指標或 metric math 的告警 | [![metric-alarm](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=metric-alarm-v*&label=)](https://github.com/libterty/infra-platform/releases?q=metric-alarm-v) |
 | 觀測性           | `xray`                      | X-Ray sampling rule 與 group                                                       | [![xray](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=xray-v*&label=)](https://github.com/libterty/infra-platform/releases?q=xray-v) |
+| 觀測性 | `xray-transaction-search` | 帳號層開啟 X-Ray Transaction Search：span 進 `aws/spans`、indexing 比例；每個帳號加 region 只呼叫一次 | [![xray-transaction-search](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=xray-transaction-search-v*&label=)](https://github.com/libterty/infra-platform/releases?q=xray-transaction-search-v) |
 | 共用基礎         | `kms-key`                   | 對稱式 KMS key、key policy、alias                                                  | [![kms-key](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=kms-key-v*&label=)](https://github.com/libterty/infra-platform/releases?q=kms-key-v) |
 | 共用基礎         | `ecr-repository`            | ECR repository 與 lifecycle policy                                                 | [![ecr-repository](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecr-repository-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecr-repository-v) |
 | 共用基礎         | `s3-bucket`                 | S3 bucket：封鎖公開存取、加密、生命週期、只允許 TLS，可選 versioning 與 Lambda 通知                       | [![s3-bucket](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=s3-bucket-v*&label=)](https://github.com/libterty/infra-platform/releases?q=s3-bucket-v) |

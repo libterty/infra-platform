@@ -45,6 +45,7 @@
     "modules/vpc-interface-endpoints": { "release-type": "terraform-module", "component": "vpc-interface-endpoints" },
     "modules/vpc-peering": { "release-type": "terraform-module", "component": "vpc-peering" },
     "modules/waf-web-acl": { "release-type": "terraform-module", "component": "waf-web-acl" },
-    "modules/xray": { "release-type": "terraform-module", "component": "xray" }
+    "modules/xray": { "release-type": "terraform-module", "component": "xray" },
+    "modules/xray-transaction-search": { "release-type": "terraform-module", "component": "xray-transaction-search", "initial-version": "0.1.0" }
   }
 }
