@@ -14,7 +14,7 @@
   "modules/elasticache-redis": "0.1.0",
   "modules/iam-role": "0.4.0",
   "modules/iam-role-policy": "0.1.0",
-  "modules/kms-key": "0.1.0",
+  "modules/kms-key": "0.1.1",
   "modules/lambda-function": "0.1.0",
   "modules/log-delivery": "0.2.0",
   "modules/log-group": "0.1.0",
