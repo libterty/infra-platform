@@ -237,6 +237,7 @@ VPC 或可連通的網路要滿足：
 11. **Kubernetes 版本**：placeholder 用 1.36（C4-3）。
 15. **CI 的 `AmazonEKSEditPolicy` 能不能建 CRD**：查 chart 原始碼確認，LB Controller 3.6.1 沒有併進 edit 的 ClusterRole，KEDA 2.21.0 有但預設關閉。`eks-addons` 0.3.0 的 `aggregate_crd_roles` 補上（C5-1）；Auto Mode 的 `edit` aggregation 實際生效要在真實叢集確認。
 16. **secrets 加密的 grant**：EKS 建叢集時由執行 apply 的身分建立 KMS grant，這個身分要有該 key 的 `kms:CreateGrant`、`kms:DescribeKey`。
+17. **Container Insights 的 application log group**：由 Fluent Bit 自動建立（`auto_create_group`），保留期是永久；`postdeploy` 的 log 告警要在它存在之後才 apply 得過（`eks-addons` 裝好採集元件、有任何 container log 之後）。filter 依 chart 6.7.0 的 Fluent Bit 設定寫成 `$.log_processed.event` 加 `$.kubernetes.*`，實際格式要在真實叢集確認（取代第 10 點）。
 12. **保密**：example3 是從 example2 複製，只能帶 example2 已有的字串；每個 phase 都做來源字串的反向比對（[`../v2/integration-playbook.md`](../v2/integration-playbook.md)）。
 
 ## 12. 來源
@@ -305,3 +306,14 @@ VPC 或可連通的網路要滿足：
 | C6-3 | 附 `deploy/values-from-ssm.sh`：用 `aws ssm get-parameters-by-path` 讀 `eks-cluster` 與 `application`，輸出 chart 的 values（JSON）。不認得的 `contract_version`、缺 key 都直接失敗並寫出 key 名稱。測試是 `application/tests/check-deploy-values.sh`：假的 `aws` 加 `helm lint`／`helm template`，並比對腳本讀的 key 都有被發布（使用者選定） |
 | C6-4 | 範例 chart 一個 release 只部署一個工作負載（`component: api` 或 `worker`），canary 再部署一個 release（§6.1）。ServiceAccount 名稱照 SSM，`serviceAccount.create: false` 讓第二個 release 共用；release namespace 跟 SSM 的 `app_namespace` 不同時 chart 直接失敗 |
 | C6-5 | `app` 的 NetworkPolicy：api 只收 VPC CIDR 來的 `app_port`（SG 再收窄到 ALB）；egress 是 DNS（service CIDR 的 `.10`，UDP 與 TCP 53）、VPC 內的 5432 與 6379、任意目的地的 443（AWS API）、Pod Identity agent 的 80。kubelet 探測是否受 NetworkPolicy 影響列為待驗證 |
+
+## 附錄：C7 實作時的決定（2026-10-23）
+
+| # | 決定 |
+|---|---|
+| C7-1 | C7 一層做完：loadbalancer 的 canary、postdeploy 換告警、拿掉 ECS（使用者選定） |
+| C7-2 | 斷路器的 Lambda image 放在 containerimage 建的 `traffic-breaker` repository（tfvars 的 `services`）；Lambda 的 role 在 `loadbalancer` 用 `iam-role` 建，權限只給三條加權 api rule 的 `ModifyRule`／`AddTags`。放在 `iam` 會循環：`iam` 先跑，拿不到 rule ARN（使用者選定） |
+| C7-3 | `canary = { weight, breaker = { image_tag, error_rate_percent, min_requests, min_healthy_hosts } }`。`weight > 0` 一定要有 `breaker`；`breaker` 每條加權 rule 一個（`api-stream`、`api-quota`、`api-admin`），`dev_page` 不加權。target group key 是 `api-canary`（target group 名稱不能有底線） |
+| C7-4 | `api_canary_target_group_arn` 只在開了 canary 時發布，而且只給 CI 讀，所以放在 `canary_strings`，不在 `published_strings`，`check-ssm-contract.sh` 看不到；`check-deploy-values.sh` 另外比對。`values-from-ssm.sh --canary` 綁 canary target group、`serviceAccount.create: false`、KEDA 的 TargetGroup 維度改成 canary 的 |
+| C7-5 | `postdeploy` 用 `eks-workload-alarms`，工作負載名稱與 container 名稱是 release 名稱 `api`、`worker`（`values-from-ssm.sh` 的用法寫明）。ECS 的 dashboard 與「到達上限」告警不再有：§10 沒有列，KEDA 會改變副本數 |
+| C7-6 | `application` 拿掉 ECS module 與 ECS 專屬的變數（image tag 由 CI 決定，CPU／記憶體在 chart，`api_scheduled_scaling` 沒有對應，ECS Exec 沒有了）與舊 key（含 `api_max_capacity`、`worker_max_capacity`，已經在擴縮 JSON 裡）。`iam` 拿掉三個 ECS role，`api_pod`、`worker_pod` 直接定義權限；`bridge` 拿掉三個 ECS key |
