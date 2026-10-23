@@ -5,7 +5,7 @@
   "modules/alb": "0.5.0",
   "modules/bedrock-guardrail": "0.1.2",
   "modules/bedrock-inference-profile": "0.1.1",
-  "modules/bedrock-knowledge-base": "0.1.1",
+  "modules/bedrock-knowledge-base": "0.1.2",
   "modules/ec2-bastion": "0.1.0",
   "modules/ecr-repository": "0.1.1",
   "modules/ecs-cluster": "0.1.0",

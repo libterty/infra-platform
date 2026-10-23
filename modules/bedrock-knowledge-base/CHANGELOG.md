@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/libterty/infra-platform/compare/bedrock-knowledge-base-v0.1.1...bedrock-knowledge-base-v0.1.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **bedrock-knowledge-base:** rewrite the input and output descriptions in Chinese ([1734332](https://github.com/libterty/infra-platform/commit/173433202ba626003cff6805f25bc59a653ac913))
+
 ## 0.1.1（2026-10-16）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
