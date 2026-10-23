@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/log-group-v0.1.0...log-group-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **log-group:** rewrite the input and output descriptions in Chinese ([f66f998](https://github.com/libterty/infra-platform/commit/f66f9981459876761cca171be4d50f24ace65a44))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
