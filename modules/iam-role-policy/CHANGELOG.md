@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/iam-role-policy-v0.1.0...iam-role-policy-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **iam-role-policy:** rewrite the input and output descriptions in Chinese ([bcd8904](https://github.com/libterty/infra-platform/commit/bcd890447fe6e7769512b110421435daf8e9da8d))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
