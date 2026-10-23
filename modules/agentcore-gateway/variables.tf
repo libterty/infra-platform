@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Gateway name."
+  description = "Gateway 名稱。英數字與單一 `-`（不可連續 `--`，頭尾不可是 `-`），最多 100 字元。"
 
   validation {
     condition     = can(regex("^[0-9A-Za-z]([0-9A-Za-z-]{0,98}[0-9A-Za-z])?$", var.name)) && !strcontains(var.name, "--")
@@ -11,12 +11,12 @@ variable "name" {
 variable "description" {
   type        = string
   default     = null
-  description = "Gateway description."
+  description = "Gateway 的說明。"
 }
 
 variable "role_arn" {
   type        = string
-  description = "Gateway service role. Lambda targets are invoked with this role, so it needs lambda:InvokeFunction on them."
+  description = "Gateway 的 service role ARN，可以帶 path。Lambda target 用這支 role 呼叫，所以它要有那些 Lambda 的 `lambda:InvokeFunction`。"
 
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role(/[A-Za-z0-9+=,.@_-]+)*/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
@@ -33,7 +33,7 @@ variable "authorizer" {
   })
   default     = { type = "AWS_IAM" }
   nullable    = false
-  description = "Inbound authorization. AWS_IAM (SigV4) or CUSTOM_JWT; NONE is not accepted."
+  description = "入站驗證。欄位：`type`（必填，`AWS_IAM`（SigV4）或 `CUSTOM_JWT`，不收 `NONE`）、`discovery_url`、`allowed_audience`、`allowed_clients`（後兩者預設 `[]`，不可有空字串或只有空白的項目）。`CUSTOM_JWT` 時 `discovery_url` 必填，要 `https://` 開頭、以 `/.well-known/openid-configuration` 結尾，`allowed_audience`、`allowed_clients` 至少一個非空；`AWS_IAM` 時這三個都不可給。"
 
   validation {
     condition     = contains(["AWS_IAM", "CUSTOM_JWT"], var.authorizer.type)
@@ -72,13 +72,13 @@ variable "mcp" {
   })
   default     = {}
   nullable    = false
-  description = "MCP protocol settings. search_type = SEMANTIC turns on tool search; null leaves it off."
+  description = "MCP 協定設定。欄位：`supported_versions`（預設 `[\"2025-03-26\"]`）、`search_type`（給 `SEMANTIC` 開啟工具搜尋；預設 `null`，不送、不開）。"
 }
 
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key ARN for the gateway. null uses an AWS owned key."
+  description = "Gateway 加密用的自管 KMS key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，multi-region key 可以，不收 alias 與單獨的 key id）。`null` 時用 AWS 擁有的 key。"
 
   validation {
     condition     = var.kms_key_arn == null ? true : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
@@ -90,7 +90,7 @@ variable "allowed_account_ids" {
   type        = set(string)
   default     = []
   nullable    = false
-  description = "Accounts other than the current one that Lambda targets may live in. Empty means every Lambda target must be in the current account. tool_schema_s3_uri carries no account and is not checked."
+  description = "目前帳號以外、Lambda target 可以在的帳號（12 位數字）。空的時候所有 Lambda target 都必須在目前帳號。`tool_schema_s3_uri`（不含帳號）與 MCP server target 不檢查。"
 
   validation {
     condition     = alltrue([for a in var.allowed_account_ids : can(regex("^[0-9]{12}$", a))])
@@ -119,7 +119,7 @@ variable "targets" {
   }))
   default     = {}
   nullable    = false
-  description = "Targets keyed by target name. type is lambda or mcp_server. A lambda target takes lambda_arn and exactly one of tool_schema_s3_uri and tools (flat properties only; nested schemas go through S3). An mcp_server target takes only an https endpoint."
+  description = "Gateway target，key 是 target 名稱（規則同 `name`），`type` 是 `lambda` 或 `mcp_server`。欄位見〈`targets` 欄位〉。"
 
   validation {
     condition = alltrue([for k, t in var.targets :
@@ -182,5 +182,5 @@ variable "targets" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the gateway. Name is added."
+  description = "套用到 Gateway 的 tag，另外加 `Name`。"
 }

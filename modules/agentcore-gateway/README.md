@@ -63,32 +63,47 @@ module "gateway" {
 - `private_endpoint`（VPC Lattice）、interceptor、policy engine、`exception_level`。
 - IAM：Gateway role 與它的權限由呼叫端（範本的 `iam-base`／`iam-app`）處理。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | Gateway 名稱。英數與單一 `-`，最多 100 字 |
-| `description` | `string` | `null` | 否 | Gateway 說明 |
-| `role_arn` | `string` | 無 | 是 | Gateway 的 service role ARN，可以帶 path。Lambda target 用這支 role 呼叫 |
-| `authorizer` | `object` | `{ type = "AWS_IAM" }` | 否 | `type`：`AWS_IAM` 或 `CUSTOM_JWT`。`CUSTOM_JWT` 時 `discovery_url` 必填、`allowed_audience`／`allowed_clients` 至少一個非空；`allowed_audience`／`allowed_clients` 不可有空字串或只有空白的項目；`AWS_IAM` 時這三個不可給 |
-| `mcp` | `object` | `{}` | 否 | `supported_versions`（預設 `["2025-03-26"]`）、`search_type`（`SEMANTIC` 開啟工具搜尋；預設 `null`，不送） |
-| `kms_key_arn` | `string` | `null` | 否 | 加密用的 customer managed key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，不收 alias 與單獨的 key id，multi-region key 可以）；`null` 用 AWS 管的 key |
-| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、Lambda target 可以在的帳號（12 位數字）。空的時候所有 Lambda target 都必須在目前帳號；`tool_schema_s3_uri` 與 MCP server target 不檢查 |
-| `targets` | `map(object)` | `{}` | 否 | key 是 target 名稱（規則同 `name`）。`type`：`lambda` 或 `mcp_server`；`description` 選填。`lambda`：`lambda_arn` 必填，`tool_schema_s3_uri`（`s3://bucket/key`）與 `tools` 恰好一個，不可給 `endpoint`。`tools` 每個元素有 `name`（同 target 內不重複）、`description`（不可空白）、`properties`（map，key 是屬性名稱；`type` 只收 `string`、`number`、`integer`、`boolean`、`object`、`array`，`description` 選填，`required` 預設 `false`）。`mcp_server`：`endpoint` 必填且是 `https://`，不可給 Lambda 的欄位 |
-| `tags` | `map(string)` | `{}` | 否 | 套用到 Gateway 的 tag，另外加 `Name` |
+| `name` | `string` | 無 | 是 | Gateway 名稱。英數字與單一 `-`（不可連續 `--`，頭尾不可是 `-`），最多 100 字元。 |
+| `description` | `string` | `null` | 否 | Gateway 的說明。 |
+| `role_arn` | `string` | 無 | 是 | Gateway 的 service role ARN，可以帶 path。Lambda target 用這支 role 呼叫，所以它要有那些 Lambda 的 `lambda:InvokeFunction`。 |
+| `authorizer` | `object` | `{ "type": "AWS_IAM" }` | 否 | 入站驗證。欄位：`type`（必填，`AWS_IAM`（SigV4）或 `CUSTOM_JWT`，不收 `NONE`）、`discovery_url`、`allowed_audience`、`allowed_clients`（後兩者預設 `[]`，不可有空字串或只有空白的項目）。`CUSTOM_JWT` 時 `discovery_url` 必填，要 `https://` 開頭、以 `/.well-known/openid-configuration` 結尾，`allowed_audience`、`allowed_clients` 至少一個非空；`AWS_IAM` 時這三個都不可給。 |
+| `mcp` | `object` | `{}` | 否 | MCP 協定設定。欄位：`supported_versions`（預設 `["2025-03-26"]`）、`search_type`（給 `SEMANTIC` 開啟工具搜尋；預設 `null`，不送、不開）。 |
+| `kms_key_arn` | `string` | `null` | 否 | Gateway 加密用的自管 KMS key ARN（`arn:…:kms:<region>:<帳號>:key/<key id>`，multi-region key 可以，不收 alias 與單獨的 key id）。`null` 時用 AWS 擁有的 key。 |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、Lambda target 可以在的帳號（12 位數字）。空的時候所有 Lambda target 都必須在目前帳號。`tool_schema_s3_uri`（不含帳號）與 MCP server target 不檢查。 |
+| `targets` | `map(object)` | `{}` | 否 | Gateway target，key 是 target 名稱（規則同 `name`），`type` 是 `lambda` 或 `mcp_server`。欄位見〈`targets` 欄位〉。 |
+| `tags` | `map(string)` | `{}` | 否 | 套用到 Gateway 的 tag，另外加 `Name`。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `gateway_id` | Gateway id。 |
+| `gateway_arn` | Gateway ARN，`bedrock-agentcore:InvokeGateway` 的 resource。 |
+| `gateway_url` | Gateway 的 MCP 端點 URL。 |
+| `target_ids` | key 同 `targets` 的 map，值是 target id。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `gateway_id` | `string` | Gateway id |
-| `gateway_arn` | `string` | Gateway ARN，`bedrock-agentcore:InvokeGateway` 的 resource |
-| `gateway_url` | `string` | Gateway 的 MCP 端點 URL |
-| `target_ids` | `map(string)` | target id，key 為 `targets` 的 key |
+## `targets` 欄位
+
+`targets` 的每個值：
+
+| 欄位 | 型別 | 預設 | 適用 | 說明 |
+|---|---|---|---|---|
+| `type` | `string` | 無（必填） | 全部 | `lambda` 或 `mcp_server` |
+| `description` | `string` | `null` | 全部 | target 說明 |
+| `lambda_arn` | `string` | `null` | `lambda` | Lambda function ARN，`lambda` 時必填 |
+| `tool_schema_s3_uri` | `string` | `null` | `lambda` | tool schema 的位置，`s3://bucket/key`。跟 `tools` 恰好給一個；巢狀 schema 走這條 |
+| `tools` | `list(object)` | `null` | `lambda` | 直接寫的 tool 清單，跟 `tool_schema_s3_uri` 恰好給一個且不可為空；只支援平面的 `properties` |
+| `endpoint` | `string` | `null` | `mcp_server` | MCP server 的 `https://` 端點，`mcp_server` 時必填 |
+
+- `lambda` target 不可給 `endpoint`；`mcp_server` target 不可給 `lambda_arn`、`tool_schema_s3_uri`、`tools`。
+- `tools` 每個元素有 `name`（同一個 target 內不重複）、`description`（不可空白）、`properties`（map，key 是屬性名稱，預設 `{}`）。
+- `properties` 的每個值：`type`（只收 `string`、`number`、`integer`、`boolean`、`object`、`array`）、`description`（選填）、`required`（預設 `false`）。
 
 ## 測試
 

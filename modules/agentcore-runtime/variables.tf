@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Runtime name. Letters, digits and underscores only; AgentCore rejects hyphens."
+  description = "Runtime 名稱。字母開頭，只能用字母、數字、`_`（AgentCore 不收 `-`），最多 48 字元。"
   type        = string
   validation {
     # 48 chars follows the AWS documentation; not tested against the API.
@@ -9,13 +9,13 @@ variable "name" {
 }
 
 variable "description" {
-  description = "Optional runtime description."
+  description = "Runtime 說明，選填。"
   type        = string
   default     = null
 }
 
 variable "role_arn" {
-  description = "Execution role ARN the runtime assumes. Created outside this module."
+  description = "Runtime assume 的 execution role ARN，可以帶 path；role 在 module 外建立。"
   type        = string
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role(/[A-Za-z0-9+=,.@_-]+)*/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
@@ -24,7 +24,7 @@ variable "role_arn" {
 }
 
 variable "container_uri" {
-  description = "ECR image with an explicit tag or digest. Terraform owns the tag: change it here and apply. The registry must be in the current account or in allowed_account_ids."
+  description = "ECR 映像，要有明確 tag（不能是 `latest`，不分大小寫）或 `sha256` digest。tag 由 Terraform 管：在這裡改 tag 再 apply。registry 帳號必須是目前帳號，或在 `allowed_account_ids` 裡。"
   type        = string
   validation {
     condition     = can(regex("^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/[a-z0-9._/-]+(:[A-Za-z0-9_.-]{1,128}|@sha256:[0-9a-f]{64})$", var.container_uri)) && !endswith(lower(var.container_uri), ":latest")
@@ -33,7 +33,7 @@ variable "container_uri" {
 }
 
 variable "allowed_account_ids" {
-  description = "Accounts other than the current one whose ECR registry container_uri may point to. Empty means the image must be in the current account."
+  description = "目前帳號以外、`container_uri` 可以使用的 ECR registry 帳號（12 位數字）。空的時候映像必須在目前帳號。"
   type        = set(string)
   default     = []
   nullable    = false
@@ -44,7 +44,7 @@ variable "allowed_account_ids" {
 }
 
 variable "network" {
-  description = "VPC by default. PUBLIC must be written out; it bypasses security groups and VPC endpoints."
+  description = "網路設定，預設 VPC 模式。欄位：`mode`（`VPC` 或 `PUBLIC`，預設 `VPC`；`PUBLIC` 要明寫，會繞過 security group 與 VPC endpoint）、`subnet_ids`（預設 `[]`；`VPC` 時至少 2 個且不重複）、`security_group_ids`（預設 `[]`；`VPC` 時 1–5 個且不重複）。`PUBLIC` 時 `subnet_ids`、`security_group_ids` 都必須是空的。"
   type = object({
     mode               = optional(string, "VPC")
     subnet_ids         = optional(list(string), [])
@@ -76,7 +76,7 @@ variable "network" {
 }
 
 variable "session_lifecycle" {
-  description = "Session lifecycle in seconds. Always sent as a pair: the API replaces the whole lifecycle configuration, so a missing value silently falls back to the AWS default. A longer idle timeout does not reduce cold starts; it holds more sessions against the account quota."
+  description = "session 生命週期，單位秒。欄位：`idle_session_timeout`（預設 900）、`max_lifetime`（預設 28800），兩者都在 60–1209600，且 `idle_session_timeout` 不大於 `max_lifetime`。兩個值一律成對送出：API 會整組取代設定，少送一個就會默默回到 AWS 預設。idle timeout 拉長不會減少冷啟動，只會佔用更多帳號的 session 配額。"
   type = object({
     idle_session_timeout = optional(number, 900)
     max_lifetime         = optional(number, 28800)
@@ -100,7 +100,7 @@ variable "session_lifecycle" {
 }
 
 variable "protocol" {
-  description = "Server protocol of the container: HTTP, MCP or A2A."
+  description = "容器的 server protocol：`HTTP`、`MCP` 或 `A2A`。"
   type        = string
   default     = "HTTP"
   nullable    = false
@@ -111,7 +111,7 @@ variable "protocol" {
 }
 
 variable "environment_variables" {
-  description = "Plain environment variables. Put secrets in Secrets Manager and pass only the ARN here. Names that look like secrets are rejected unless they end in _ARN and the value is an ARN."
+  description = "一般環境變數；空的時候不送。secret 放 Secrets Manager，這裡只放 ARN。名稱看起來像 secret 的會被擋下，除非名稱以 `_ARN` 結尾且值是 ARN（規則見〈注意〉）。"
   type        = map(string)
   default     = {}
   nullable    = false
@@ -126,7 +126,7 @@ variable "environment_variables" {
 }
 
 variable "jwt_authorizer" {
-  description = "Inbound JWT authorizer. null keeps the default IAM (SigV4) inbound auth."
+  description = "入站 JWT 驗證；`null` 時維持預設的 IAM（SigV4）入站驗證。欄位：`discovery_url`（必填，`https://` 開頭、以 `/.well-known/openid-configuration` 結尾）、`allowed_audience`、`allowed_clients`（預設 `[]`，兩者至少一個非空，且不能有空字串或只有空白的項目）。"
   type = object({
     discovery_url    = string
     allowed_audience = optional(set(string), [])
@@ -151,7 +151,7 @@ variable "jwt_authorizer" {
 }
 
 variable "request_header_allowlist" {
-  description = "Request headers passed through to the container. Empty sends no header configuration. Headers that carry caller credentials or request signing data are rejected; Authorization is allowed only with jwt_authorizer, where AgentCore has already validated the token."
+  description = "轉給容器的 request header；空的時候不送 header 設定。不收帶呼叫端憑證或簽章的 header（`Cookie`、`Proxy-Authorization`、`Host`、`X-Amz-Security-Token`、`X-Amz-Date`，不分大小寫）；`Authorization` 只在設了 `jwt_authorizer` 時可以轉，那時 AgentCore 已經驗過 token。"
   type        = set(string)
   default     = []
   nullable    = false
@@ -165,7 +165,7 @@ variable "request_header_allowlist" {
 }
 
 variable "tags" {
-  description = "Extra tags; Name is set by the module."
+  description = "額外的 tag；`Name` 由 module 加上。"
   type        = map(string)
   default     = {}
 }

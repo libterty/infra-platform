@@ -87,33 +87,42 @@ module "knowledge_base" {
 - 資料庫帳號與它的 secret：專案的 migration 與流程負責。
 - IAM：KB role 的權限在 `iam-app`。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | KB 的完整名稱。字母、數字、`-`、`_`，頭尾是字母或數字，最長 100 字 |
-| `description` | `string` | `null` | 否 | KB 的說明 |
-| `role_arn` | `string` | 無 | 是 | Bedrock KB service role 的 ARN（範本由 `iam-base` 建），可帶 path，每段不能是空的；module 不建 IAM |
-| `embedding_model_arn` | `string` | 無 | 是 | 嵌入模型的 foundation-model ARN，不能含 `*` |
-| `embedding_dimensions` | `number` | 無 | 是 | 向量維度，正整數，必須等於表的 `vector(N)` |
-| `aurora` | `object` | 無 | 是 | 欄位：`cluster_arn`（Aurora cluster ARN，必須在目前的帳號與 region）、`credentials_secret_arn`（KB 專用帳號的 Secrets Manager secret 的完整 ARN，含 6 字元尾碼，必須在目前的帳號與 region，值是 `{"username","password"}`，**不要給 master secret**）、`database_name`（小寫識別字）、`table_name`（`<schema>.<table>` 或 `<table>`，每段小寫識別字）、`field_mapping`（選填，見下） |
-| `aurora.field_mapping` | `object` | `{}` | 否 | `primary_key_field`（預設 `id`）、`vector_field`（預設 `embedding`）、`text_field`（預設 `chunks`）、`metadata_field`（預設 `metadata`）、`custom_metadata_field`（預設 `null`，不送）。都是小寫識別字、彼此不重複 |
-| `data_sources` | `map(object)` | `{}` | 否 | key 為 data source 名稱。欄位：`bucket_arn`（S3 bucket ARN，必填）、`inclusion_prefixes`（預設空集合，不能以 `/` 開頭）、`bucket_owner_account_id`（必填，12 位數字，必須是目前的帳號或列在 `allowed_account_ids`）、`data_deletion_policy`（`RETAIN` 或 `DELETE`，預設 `RETAIN`）、`chunking`（`strategy` 為 `FIXED_SIZE` 或 `NONE`，預設 `FIXED_SIZE`；`max_tokens` 預設 300、大於 0；`overlap_percentage` 預設 20、1–99） |
-| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、允許擁有 data source bucket 的帳號（12 位數字）。空集合表示只收同帳號的 bucket |
-| `kms_key_arn` | `string` | `null` | 否 | data source ingestion 暫存資料的 KMS key ARN（`key/<uuid>`，不收 alias 與 `*`）；`null` 用 AWS 管的 key |
-| `tags` | `map(string)` | `{}` | 否 | 套用到 KB 的 tag，另外自動加 `Name` |
+| `name` | `string` | 無 | 是 | KB 的完整名稱。字母、數字、`-`、`_`，頭尾是字母或數字，最多 100 字元。 |
+| `description` | `string` | `null` | 否 | KB 的說明。 |
+| `role_arn` | `string` | 無 | 是 | Bedrock KB service role ARN（範本由 `iam-base` 建），可以帶 path，但每段不能是空的。這個 module 不建 IAM。 |
+| `embedding_model_arn` | `string` | 無 | 是 | 嵌入模型的 foundation-model ARN，不能含 `*`。 |
+| `embedding_dimensions` | `number` | 無 | 是 | 向量維度，正整數，必須等於表裡向量欄的 `vector(N)`。 |
+| `aurora` | `object` | 無 | 是 | Aurora PostgreSQL 向量儲存，表與欄位由專案的 migration 建。欄位：`cluster_arn`（Aurora cluster ARN，不收 DB instance ARN）、`credentials_secret_arn`（KB 專用資料庫帳號的 secret 完整 ARN，含 6 字元尾碼，值是 `{"username","password"}`，**不要給 master secret**）、`database_name`（小寫識別字）、`table_name`（`<schema>.<table>` 或 `<table>`，每段小寫識別字）、`field_mapping`（選填，預設 `{}`；五個欄位名稱與預設見〈部署前要先完成的事〉的對照表，都是小寫識別字、彼此不重複，`custom_metadata_field` 預設 `null`，不送）。`cluster_arn` 與 `credentials_secret_arn` 必須在目前的帳號與 region。 |
+| `data_sources` | `map(object)` | `{}` | 否 | S3 data source，key 是 data source 名稱（規則同 `name`）。欄位見〈`data_sources` 欄位〉。 |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、允許擁有 data source bucket 的帳號（12 位數字）。空集合表示只收同帳號的 bucket。 |
+| `kms_key_arn` | `string` | `null` | 否 | data source ingestion 暫存資料（server-side encryption）用的 KMS key ARN（`key/<uuid>` 或 `key/mrk-<32 碼>`，不收 alias 與 `*`）。`null` 時用 AWS 管理的 key。 |
+| `tags` | `map(string)` | `{}` | 否 | 套用到 KB 的 tag，另外自動加 `Name`；data source 沒有 tag。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `knowledge_base_id` | KB id，給應用程式呼叫 `Retrieve` 與 `StartIngestionJob` 用。 |
+| `knowledge_base_arn` | KB ARN，給 IAM 權限用。 |
+| `data_source_ids` | key 同 `data_sources` 的 map，值是 data source id。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `knowledge_base_id` | `string` | KB 的 id，給應用程式呼叫 `Retrieve` 與 `StartIngestionJob` 用 |
-| `knowledge_base_arn` | `string` | KB 的 ARN，給 IAM 權限用 |
-| `data_source_ids` | `map(string)` | data source 的 id，key 為 `data_sources` 的 key |
+## `data_sources` 欄位
+
+`data_sources` 的每個值：
+
+| 欄位 | 型別 | 預設 | 必填 | 說明 |
+|---|---|---|---|---|
+| `bucket_arn` | `string` | 無 | 是 | S3 bucket ARN |
+| `inclusion_prefixes` | `set(string)` | `[]` | 否 | 只讀這些 prefix，不能以 `/` 開頭；空集合時不送，表示整個 bucket |
+| `bucket_owner_account_id` | `string` | 無 | 是 | bucket 擁有者帳號（12 位數字），必須是目前的帳號或列在 `allowed_account_ids` |
+| `data_deletion_policy` | `string` | `"RETAIN"` | 否 | `RETAIN` 或 `DELETE`；`RETAIN` 在刪掉 data source 時保留向量 |
+| `chunking` | `object` | `{}` | 否 | 欄位：`strategy`（`FIXED_SIZE` 或 `NONE`，預設 `FIXED_SIZE`）、`max_tokens`（預設 300，大於 0）、`overlap_percentage`（預設 20，1–99） |
 
 ## 測試
 

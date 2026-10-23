@@ -1,24 +1,24 @@
 output "runtime_arn" {
-  description = "Agent runtime ARN."
+  description = "Runtime ARN。"
   value       = aws_bedrockagentcore_agent_runtime.this.agent_runtime_arn
 }
 
 output "runtime_id" {
-  description = "Agent runtime ID."
+  description = "Runtime ID。"
   value       = aws_bedrockagentcore_agent_runtime.this.agent_runtime_id
 }
 
 output "runtime_name" {
-  description = "Agent runtime name."
+  description = "Runtime 名稱。"
   value       = aws_bedrockagentcore_agent_runtime.this.agent_runtime_name
 }
 
 output "runtime_version" {
-  description = "Agent runtime version; changes on every update."
+  description = "Runtime 版本，每次更新都會變。"
   value       = aws_bedrockagentcore_agent_runtime.this.agent_runtime_version
 }
 
 output "workload_identity_arn" {
-  description = "Workload identity ARN AWS creates for the runtime; null when none is reported."
+  description = "AWS 為 Runtime 建立的 workload identity ARN；沒有回報時是 `null`。"
   value       = try(aws_bedrockagentcore_agent_runtime.this.workload_identity_details[0].workload_identity_arn, null)
 }
