@@ -8,7 +8,7 @@
   "modules/bedrock-knowledge-base": "0.1.2",
   "modules/ec2-bastion": "0.1.0",
   "modules/ecr-repository": "0.1.1",
-  "modules/ecs-cluster": "0.1.0",
+  "modules/ecs-cluster": "0.1.1",
   "modules/ecs-service": "0.2.0",
   "modules/ecs-service-alarms": "0.1.0",
   "modules/elasticache-redis": "0.1.1",
