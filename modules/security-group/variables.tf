@@ -1,6 +1,6 @@
 variable "vpc_id" {
   type        = string
-  description = "VPC that every security group in this call belongs to."
+  description = "這次呼叫的所有 SG 所在的 VPC。"
   validation {
     condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
     error_message = "vpc_id must look like vpc-0123456789abcdef0."
@@ -12,7 +12,7 @@ variable "security_groups" {
     name        = string
     description = string
   }))
-  description = "Key => security group. Rules refer to groups by this key."
+  description = "key 對應一個 SG，規則用這個 key 指稱 SG。至少一個，key 為 snake_case。欄位：`name`、`description`。"
   validation {
     condition     = length(var.security_groups) > 0 && alltrue([for k in keys(var.security_groups) : can(regex("^[a-z][a-z0-9_]*$", k))])
     error_message = "Give at least one security group; keys must be snake_case."
@@ -34,7 +34,7 @@ variable "rules" {
     allow_internet = optional(bool, false)
   }))
   default     = {}
-  description = "Rule key => rule. Keys are stable for_each keys; name them after what the rule allows. Exactly one of peer_group, peer_group_id, cidr_ipv4, prefix_list_id per rule."
+  description = "規則 key 對應一條規則。key 是穩定的 `for_each` key，照規則允許的內容命名。`security_group`、`type`、`description` 必填；`peer_group`、`peer_group_id`、`cidr_ipv4`、`prefix_list_id` 每條規則剛好給一個。欄位見〈規則怎麼寫〉。"
 
   validation {
     condition     = alltrue([for r in values(var.rules) : contains(keys(var.security_groups), r.security_group)])
@@ -86,5 +86,5 @@ variable "rules" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for every security group and rule; Name is added by the module."
+  description = "SG 與規則的 tag。SG 另加 `Name`，值是 SG 名稱；規則的 `Name` 是規則 key。"
 }
