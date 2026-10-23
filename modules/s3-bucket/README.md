@@ -70,32 +70,30 @@ module "kb_corpus" {
 
 replication、object lock、bucket 本身的 access logging（要開就用 `log-delivery`，source 給這個 bucket 的 ARN、`log_type = "S3_SERVER_ACCESS_LOGS"`）、Lambda 以外的 event notification（SQS、SNS、EventBridge）、CORS、跨帳號寫入，以及允許其他 principal 寫入的 bucket policy。上傳後自動觸發 ingestion 由應用程式處理；上傳的人或 CI 用自己的 IAM 權限寫入。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | bucket 名稱，3–63 字元，小寫英數與連字號，不可含 `.` 或 `--` |
-| `kms_key_arn` | `string` | `null` | 否 | `null` 用 SSE-S3；有給用 SSE-KMS。收 log 時必須是客戶管理的 key，key policy 要允許 `delivery.logs.amazonaws.com` |
-| `expiration_days` | `number` | `null` | 否 | 物件過期天數，1–3650；null 當成 90。`never_expire = true` 時必須是 null |
-| `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除；給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。null 當成 `false` |
-| `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`vended_logs`（`log-delivery` 送來的 vended log）、`vpc_flow_logs` |
-| `versioning` | `object({ noncurrent_expiration_days = optional(number, 30) })` | `null` | 否 | 有給就開 versioning，舊版本在 `noncurrent_expiration_days`（1–3650）天後過期並清掉過期的 delete marker；與非空的 `log_delivery` 互斥 |
-| `expiration_prefix` | `string` | `null` | 否 | 目前版本過期只套用在這個 prefix（1–1024 字元）；`null` 套用整個 bucket |
-| `lambda_notifications` | `map(object({ function_arn, events = optional(list(string), ["s3:ObjectCreated:*"]), filter_prefix = optional(string), filter_suffix = optional(string) }))` | `{}` | 否 | notification id 對要呼叫的 Lambda；`function_arn` 必須是 Lambda function ARN，`events` 至少一個；空的就不建 notification |
-| `force_destroy` | `bool` | `false` | 否 | 是否允許刪除非空 bucket |
-| `tags` | `map(string)` | `{}` | 否 | bucket 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | bucket 名稱，3–63 字元，小寫英數字與連字號，不可含 `.` 或 `--`。 |
+| `kms_key_arn` | `string` | `null` | 否 | `null` 用 SSE-S3（`AES256`）；有給就用 SSE-KMS。`log_delivery` 含 `vended_logs` 或 `vpc_flow_logs` 時必須是客戶管理的 key，而且 key policy 要允許 `delivery.logs.amazonaws.com` 使用。 |
+| `expiration_days` | `number` | `null` | 否 | 物件過期天數，1–3650；`null` 當成 90。`never_expire = true` 時必須是 `null`。 |
+| `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除，lifecycle rule 沒有 expiration。給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。 |
+| `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`。 |
+| `versioning` | `object` | `null` | 否 | `null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與非空的 `log_delivery` 互斥。 |
+| `expiration_prefix` | `string` | `null` | 否 | 目前版本的過期規則只套用在這個 prefix 底下（1–1024 字元）；`null` 套用整個 bucket。 |
+| `lambda_notifications` | `map(object)` | `{}` | 否 | notification id 對應 bucket 事件要呼叫的 Lambda。欄位：`function_arn`（必須是 Lambda function ARN）、`events`（至少一個，預設 `s3:ObjectCreated:*`）、`filter_prefix`、`filter_suffix`。呼叫端要先給 `s3.amazonaws.com` 呼叫每個 function 的權限（帶 `source_account` 與 `source_arn`）再 apply。空的就不建 notification。 |
+| `force_destroy` | `bool` | `false` | 否 | 是否允許刪除非空的 bucket。 |
+| `tags` | `map(string)` | `{}` | 否 | bucket 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `bucket_name` | `string` | bucket 名稱 |
-| `arn` | `string` | bucket ARN |
-| `bucket_regional_domain_name` | `string` | bucket 的 regional domain name |
+| 名稱 | 說明 |
+|---|---|
+| `bucket_name` | bucket 名稱。 |
+| `arn` | bucket 的 ARN。 |
+| `bucket_regional_domain_name` | bucket 的 regional domain name。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
