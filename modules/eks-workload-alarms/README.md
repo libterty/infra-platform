@@ -56,31 +56,29 @@ module "alarms" {
 - 不含 HPA／KEDA 的告警，也不建 dashboard 與 IAM。
 - 不分嚴重度與 topic 路由。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 告警名稱前綴，小寫英數字與連字號 |
-| `cluster_name` | `string` | 無 | 是 | EKS cluster 名稱（`ClusterName` 維度） |
-| `namespace` | `string` | 無 | 是 | Kubernetes namespace，需符合 DNS label |
-| `workload_name` | `string` | 無 | 是 | Deployment 名稱（`PodName` 維度） |
-| `container_name` | `string` | 無 | 是 | 容器名稱（OOM 告警的 `ContainerName` 維度） |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警與恢復通知的 SNS topic；至少一個 |
-| `load_balancer` | `object({ alb_arn_suffix, target_group_arn_suffix })` | `null` | 否 | 給了才建 ALB target 告警 |
-| `restart_threshold` | `number` | `0` | 否 | 5 分鐘內重啟次數超過這個值就告警，不可為負 |
-| `alarm_config` | 巢狀 `object` | `{}` | 否 | `alb.{target_5xx_ratio_threshold, latency_p95_threshold_ms, healthy_host_min}`，每個欄位都有預設 |
-| `tags` | `map(string)` | `{}` | 否 | 告警的 tag |
+| `name` | `string` | 無 | 是 | 告警名稱前綴，通常用工作負載名稱；告警命名為 `<name>-<key>`。小寫字母開頭，限小寫英數字與連字號，2–201 字元。 |
+| `cluster_name` | `string` | 無 | 是 | EKS cluster 名稱，當作 Container Insights 的 `ClusterName` 維度。不可為空。 |
+| `namespace` | `string` | 無 | 是 | 工作負載所在的 Kubernetes namespace（`Namespace` 維度）。須符合 DNS label：小寫英數字與連字號，最多 63 字元。 |
+| `workload_name` | `string` | 無 | 是 | Deployment 名稱；Container Insights 把它放在 `PodName` 維度。不可為空。 |
+| `container_name` | `string` | 無 | 是 | pod 裡的容器名稱，當作 OOM 告警的 `ContainerName` 維度。不可為空。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 接收告警與恢復通知（`alarm_actions`、`ok_actions`）的 SNS topic ARN，至少一個：沒人收的告警等於沒有告警。 |
+| `load_balancer` | `object` | `null` | 否 | ALB 的 CloudWatch 維度；給了才建 ALB target 告警，`null` 時不建。欄位：`alb_arn_suffix`（`app/<name>/<id>`）、`target_group_arn_suffix`（`targetgroup/<name>/<id>`），都要用 ARN 後綴，不是完整 ARN。 |
+| `restart_threshold` | `number` | `0` | 否 | 5 分鐘內容器重啟次數超過這個值，`restarts` 告警就觸發。不可為負。 |
+| `alarm_config` | `object` | `{}` | 否 | ALB 告警門檻覆寫，每個欄位都有預設。`alb` 欄位：`target_5xx_ratio_threshold`（預設 `0.01`，不可為負）、`latency_p95_threshold_ms`（預設 `800`，須大於 0）、`healthy_host_min`（預設 `1`，不可為負）。 |
+| `tags` | `map(string)` | `{}` | 否 | 每個告警的 tag。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `alarm_arns` | `map(string)` | 告警 ARN，key 同上表 |
-| `alarm_names` | `map(string)` | 告警名稱，key 同上表 |
+| 名稱 | 說明 |
+|---|---|
+| `alarm_arns` | 告警 ARN 的 map，key 同〈告警清單〉的 key。 |
+| `alarm_names` | 告警名稱的 map，key 同〈告警清單〉的 key。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
