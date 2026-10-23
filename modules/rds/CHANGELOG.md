@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/rds-v0.2.0...rds-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **rds:** rewrite the input and output descriptions in Chinese ([5ff02e8](https://github.com/libterty/infra-platform/commit/5ff02e81c046e32af96f85837d3077949b9cb99b))
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
