@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  description = "Profile names are <name_prefix>-<key>."
+  description = "profile 名稱前綴，名稱是 `<name_prefix>-<key>`，總長不超過 64 字元。"
 }
 
 variable "profiles" {
@@ -8,7 +8,7 @@ variable "profiles" {
     copy_from   = string
     description = optional(string)
   }))
-  description = "Application inference profiles keyed by short name. copy_from is the full ARN of a foundation model or a system inference profile; an inference profile must be in the current account. An empty map creates nothing."
+  description = "application inference profile，key 是 profile 短名；給 `{}` 就什麼都不建。欄位：`copy_from`（必填，foundation model 或 system inference profile 的完整 ARN，不能含 `*`；system inference profile 必須在目前的帳號）、`description`（預設 `null`）。完整名稱限字母、數字、`:`、`.`，中間可夾一個空白、`_` 或 `-`。"
 
   validation {
     condition = alltrue([for k, v in var.profiles :
@@ -28,5 +28,5 @@ variable "profiles" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags applied to every profile; Cost Explorer splits model spend by these tags. Name is set to the profile name."
+  description = "套用到每個 profile 的 tag，Cost Explorer 依這些 tag 拆模型費用；`Name` 自動設成 profile 名稱。"
 }

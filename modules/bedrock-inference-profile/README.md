@@ -47,24 +47,22 @@ module "inference_profile" {
 - provisioned throughput。
 - IAM：呼叫 profile 的權限在範本的 `iam-app`，ARN 由 `agent` stack 的 `models` 統一組。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name_prefix` | `string` | 無 | 是 | profile 名稱前綴，名稱為 `<name_prefix>-<key>`，總長不得超過 64 字 |
-| `profiles` | `map(object)` | 無 | 是（可以是 `{}`） | key 為 profile 短名。欄位：`copy_from`（必填，foundation model 或 system inference profile 的完整 ARN，不能含 `*`；system inference profile 必須在目前的帳號）、`description`（預設 `null`） |
-| `tags` | `map(string)` | `{}` | 否 | 套用到每個 profile 的 tag，Cost Explorer 依這些 tag 拆模型費用；另外自動加 `Name`（profile 名稱） |
+| `name_prefix` | `string` | 無 | 是 | profile 名稱前綴，名稱是 `<name_prefix>-<key>`，總長不超過 64 字元。 |
+| `profiles` | `map(object)` | 無 | 是 | application inference profile，key 是 profile 短名；給 `{}` 就什麼都不建。欄位：`copy_from`（必填，foundation model 或 system inference profile 的完整 ARN，不能含 `*`；system inference profile 必須在目前的帳號）、`description`（預設 `null`）。完整名稱限字母、數字、`:`、`.`，中間可夾一個空白、`_` 或 `-`。 |
+| `tags` | `map(string)` | `{}` | 否 | 套用到每個 profile 的 tag，Cost Explorer 依這些 tag 拆模型費用；`Name` 自動設成 profile 名稱。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `arns` | `map(string)` | application inference profile 的 ARN，key 為 `profiles` 的 key；呼叫端把它當 `modelId` 傳 |
-| `ids` | `map(string)` | application inference profile 的 id，key 為 `profiles` 的 key |
+| 名稱 | 說明 |
+|---|---|
+| `arns` | key 同 `profiles` 的 map，值是 application inference profile ARN；呼叫端把它當 `modelId` 傳，費用才會歸到這個 profile。 |
+| `ids` | key 同 `profiles` 的 map，值是 application inference profile id。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
