@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Replication group id. Also names the subnet group, the parameter group and the log groups. 40 chars at most."
+  description = "replication group ID，也用來命名 subnet group、參數群組與 log group。1–40 字元，限小寫英數與連字號，字母開頭，不可連續連字號或以連字號結尾。"
   validation {
     condition     = can(regex("^[a-z]([a-z0-9-]{0,38}[a-z0-9])?$", var.name)) && !strcontains(var.name, "--")
     error_message = "name must be 1-40 chars: lowercase letters, digits and hyphens, starting with a letter, not ending with a hyphen, no consecutive hyphens."
@@ -10,12 +10,12 @@ variable "name" {
 variable "description" {
   type        = string
   default     = null
-  description = "Replication group description. Defaults to a generated text."
+  description = "replication group 的說明；`null` 時自動產生。"
 }
 
 variable "engine_version" {
   type        = string
-  description = "Redis engine version, major 6 or 7 (for example 7.1 or 6.x). The parameter group family is derived from the major version."
+  description = "Redis 引擎版本，主版本 6 或 7，例如 `7.1`、`7.0`、`6.2`、`6.x`。參數群組 family 由主版本推得。"
   validation {
     condition     = can(regex("^[67]\\.([0-9]+|x)$", var.engine_version))
     error_message = "engine_version must look like 7.1, 7.0, 6.2 or 6.x (Redis 6 or 7)."
@@ -24,7 +24,7 @@ variable "engine_version" {
 
 variable "node_type" {
   type        = string
-  description = "Node type, for example cache.r7g.large. cache.t* cannot be combined with autoscaling."
+  description = "節點類型，例如 `cache.r7g.large`。`cache.t*` 不能搭配 `autoscaling`。"
   validation {
     condition     = can(regex("^cache\\.[a-z0-9]+\\.[a-z0-9]+$", var.node_type))
     error_message = "node_type must look like cache.r7g.large."
@@ -34,7 +34,7 @@ variable "node_type" {
 variable "port" {
   type        = number
   default     = 6379
-  description = "Port the cluster listens on."
+  description = "cluster 監聽的 port，1–65535。"
   validation {
     condition     = var.port >= 1 && var.port <= 65535
     error_message = "port must be between 1 and 65535."
@@ -43,7 +43,7 @@ variable "port" {
 
 variable "subnet_ids" {
   type        = list(string)
-  description = "Subnets for the subnet group. At least 2, in different AZs, because multi-AZ is always on."
+  description = "subnet group 用的 subnet，至少 2 個、分屬不同 AZ（multi-AZ 一律開啟）。"
   validation {
     condition     = length(var.subnet_ids) >= 2
     error_message = "subnet_ids needs at least 2 subnets (multi-AZ is always on)."
@@ -52,7 +52,7 @@ variable "subnet_ids" {
 
 variable "security_group_ids" {
   type        = list(string)
-  description = "Security groups attached to the cluster. Access control relies on these and TLS, there is no AUTH token."
+  description = "掛在 cluster 上的 security group，至少 1 個。存取控制靠這些 security group 與 TLS，沒有 AUTH token。"
   validation {
     condition     = length(var.security_group_ids) >= 1
     error_message = "security_group_ids needs at least 1 security group."
@@ -62,7 +62,7 @@ variable "security_group_ids" {
 variable "num_node_groups" {
   type        = number
   default     = 1
-  description = "Initial number of shards. Ignored after creation (autoscaling owns the shard count), so changing it later has no effect."
+  description = "初始 shard 數，1–500。建好後會被忽略（shard 數交給 autoscaling），之後改它不會生效。"
   validation {
     condition     = var.num_node_groups >= 1 && var.num_node_groups <= 500
     error_message = "num_node_groups must be between 1 and 500."
@@ -72,7 +72,7 @@ variable "num_node_groups" {
 variable "replicas_per_node_group" {
   type        = number
   default     = 1
-  description = "Replicas per shard. At least 1 because automatic failover and multi-AZ are always on."
+  description = "每個 shard 的 replica 數，1–5。至少 1 個，因為 automatic failover 與 multi-AZ 一律開啟。"
   validation {
     condition     = var.replicas_per_node_group >= 1 && var.replicas_per_node_group <= 5
     error_message = "replicas_per_node_group must be between 1 and 5 (at least 1 replica: failover and multi-AZ are always on)."
@@ -82,7 +82,7 @@ variable "replicas_per_node_group" {
 variable "parameters" {
   type        = map(string)
   default     = {}
-  description = "Extra parameter group parameters. cluster-enabled is fixed to yes and cannot be set here."
+  description = "參數群組的額外參數。`cluster-enabled` 固定為 `yes`，不能在這裡設定。"
   validation {
     condition     = !contains([for k in keys(var.parameters) : lower(k)], "cluster-enabled")
     error_message = "parameters must not set cluster-enabled: this module is always cluster mode enabled."
@@ -92,7 +92,7 @@ variable "parameters" {
 variable "snapshot_retention_limit" {
   type        = number
   default     = 0
-  description = "Days to keep automatic snapshots. 0 turns snapshots off."
+  description = "自動 snapshot 保留天數，0–35；`0` 時不做 snapshot。"
   validation {
     condition     = var.snapshot_retention_limit >= 0 && var.snapshot_retention_limit <= 35
     error_message = "snapshot_retention_limit must be between 0 and 35."
@@ -102,19 +102,19 @@ variable "snapshot_retention_limit" {
 variable "apply_immediately" {
   type        = bool
   default     = false
-  description = "Apply modifications immediately instead of in the next maintenance window."
+  description = "是否立即套用修改；`false` 時等下一個維護時段。"
 }
 
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key for at-rest encryption and the two log groups. Its key policy must allow logs.<region>.amazonaws.com. Null uses the AWS managed keys."
+  description = "at-rest 加密與兩個 log group 用的 customer managed key，key policy 必須允許 `logs.<region>.amazonaws.com`。`null` 時用 AWS managed key。"
 }
 
 variable "log_retention_days" {
   type        = number
   default     = 30
-  description = "Retention in days of the slow log and engine log groups. Never-expire (0) is not accepted."
+  description = "slow log 與 engine log 兩個 log group 的保留天數，限 CloudWatch Logs 接受的值（1、3、5、7、14、30、60、90 … 3653），不接受 `0`（永久保留）。"
   validation {
     condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
     error_message = "log_retention_days must be a value CloudWatch Logs accepts (1, 3, 5, 7, 14, 30, 60, 90, ... 3653)."
@@ -128,7 +128,7 @@ variable "autoscaling" {
     target_cpu = optional(number, 70)
   })
   default     = null
-  description = "Optional shard autoscaling on primary engine CPU. Not available for cache.t* node types."
+  description = "依 primary 引擎 CPU 自動調整 shard 數；`null` 時不開，`cache.t*` 不能用。欄位：`min_shards`、`max_shards`（必填，`1 <= min_shards <= max_shards <= 500`，且 `num_node_groups` 要落在這個範圍內）、`target_cpu`（預設 `70`，大於 0、最多 100）。"
   validation {
     condition = var.autoscaling == null ? true : (
       var.autoscaling.min_shards >= 1 &&
@@ -150,7 +150,7 @@ variable "alarm_config" {
     evictions_threshold = optional(number)
   })
   default     = {}
-  description = "Alarm thresholds. memory_percent applies to DatabaseMemoryUsagePercentage of every member. The evictions alarm is created only when evictions_threshold is set."
+  description = "告警門檻。欄位：`memory_percent`（預設 `80`，大於 0、最多 100，套用到每個 member 的 `DatabaseMemoryUsagePercentage`）、`evictions_threshold`（預設 `null`，有給才建 evictions 告警，必須大於 0）。"
   validation {
     condition = (
       var.alarm_config.memory_percent > 0 && var.alarm_config.memory_percent <= 100 &&
@@ -162,7 +162,7 @@ variable "alarm_config" {
 
 variable "sns_topic_arns" {
   type        = list(string)
-  description = "SNS topics notified on alarm and on OK. Required."
+  description = "告警與恢復 OK 時通知的 SNS topic ARN，至少 1 個。"
   validation {
     condition     = length(var.sns_topic_arns) >= 1 && alltrue([for a in var.sns_topic_arns : can(regex("^arn:aws[a-z-]*:sns:", a))])
     error_message = "sns_topic_arns needs at least 1 SNS topic ARN."
@@ -172,5 +172,5 @@ variable "sns_topic_arns" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for every resource. Name is added by the module."
+  description = "每個資源的 tag；`Name` 由 module 加上。"
 }

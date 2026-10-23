@@ -61,44 +61,42 @@ module "redis" {
 - scheduled scaling 與自訂 step scaling。
 - WAF、備份到 S3 的 snapshot 匯出、自訂 maintenance／snapshot 時間窗。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | replication group id，最多 40 字元，小寫英數與連字號，字母開頭，不可連續連字號或以連字號結尾 |
-| `description` | `string` | `null` | 否 | 預設自動產生 |
-| `engine_version` | `string` | 無 | 是 | `7.1`、`7.0`、`6.2`、`6.x` 這類主版本 6 或 7 |
-| `node_type` | `string` | 無 | 是 | 例如 `cache.r7g.large` |
-| `port` | `number` | `6379` | 否 | 1–65535 |
-| `subnet_ids` | `list(string)` | 無 | 是 | 至少 2 個 |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少 1 個 |
-| `num_node_groups` | `number` | `1` | 否 | 初始 shard 數，1–500；建好後改它不會生效 |
-| `replicas_per_node_group` | `number` | `1` | 否 | 每個 shard 的 replica 數，1–5 |
-| `parameters` | `map(string)` | `{}` | 否 | 額外參數，不能設 `cluster-enabled` |
-| `snapshot_retention_limit` | `number` | `0` | 否 | 0–35 天，0 為不做 snapshot |
-| `apply_immediately` | `bool` | `false` | 否 | 是否立即套用修改 |
-| `kms_key_arn` | `string` | `null` | 否 | at-rest 加密與兩個 log group 用的 CMK |
-| `log_retention_days` | `number` | `30` | 否 | log group 保留天數，不接受 0 |
-| `autoscaling` | `object` | `null` | 否 | `min_shards`、`max_shards`、`target_cpu`（預設 70）；不能搭配 `cache.t*` |
-| `alarm_config` | `object` | `{}` | 否 | `memory_percent`（預設 80）、`evictions_threshold`（沒給不建 evictions 告警） |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 至少 1 個 SNS topic |
-| `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | replication group ID，也用來命名 subnet group、參數群組與 log group。1–40 字元，限小寫英數與連字號，字母開頭，不可連續連字號或以連字號結尾。 |
+| `description` | `string` | `null` | 否 | replication group 的說明；`null` 時自動產生。 |
+| `engine_version` | `string` | 無 | 是 | Redis 引擎版本，主版本 6 或 7，例如 `7.1`、`7.0`、`6.2`、`6.x`。參數群組 family 由主版本推得。 |
+| `node_type` | `string` | 無 | 是 | 節點類型，例如 `cache.r7g.large`。`cache.t*` 不能搭配 `autoscaling`。 |
+| `port` | `number` | `6379` | 否 | cluster 監聽的 port，1–65535。 |
+| `subnet_ids` | `list(string)` | 無 | 是 | subnet group 用的 subnet，至少 2 個、分屬不同 AZ（multi-AZ 一律開啟）。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | 掛在 cluster 上的 security group，至少 1 個。存取控制靠這些 security group 與 TLS，沒有 AUTH token。 |
+| `num_node_groups` | `number` | `1` | 否 | 初始 shard 數，1–500。建好後會被忽略（shard 數交給 autoscaling），之後改它不會生效。 |
+| `replicas_per_node_group` | `number` | `1` | 否 | 每個 shard 的 replica 數，1–5。至少 1 個，因為 automatic failover 與 multi-AZ 一律開啟。 |
+| `parameters` | `map(string)` | `{}` | 否 | 參數群組的額外參數。`cluster-enabled` 固定為 `yes`，不能在這裡設定。 |
+| `snapshot_retention_limit` | `number` | `0` | 否 | 自動 snapshot 保留天數，0–35；`0` 時不做 snapshot。 |
+| `apply_immediately` | `bool` | `false` | 否 | 是否立即套用修改；`false` 時等下一個維護時段。 |
+| `kms_key_arn` | `string` | `null` | 否 | at-rest 加密與兩個 log group 用的 customer managed key，key policy 必須允許 `logs.<region>.amazonaws.com`。`null` 時用 AWS managed key。 |
+| `log_retention_days` | `number` | `30` | 否 | slow log 與 engine log 兩個 log group 的保留天數，限 CloudWatch Logs 接受的值（1、3、5、7、14、30、60、90 … 3653），不接受 `0`（永久保留）。 |
+| `autoscaling` | `object` | `null` | 否 | 依 primary 引擎 CPU 自動調整 shard 數；`null` 時不開，`cache.t*` 不能用。欄位：`min_shards`、`max_shards`（必填，`1 <= min_shards <= max_shards <= 500`，且 `num_node_groups` 要落在這個範圍內）、`target_cpu`（預設 `70`，大於 0、最多 100）。 |
+| `alarm_config` | `object` | `{}` | 否 | 告警門檻。欄位：`memory_percent`（預設 `80`，大於 0、最多 100，套用到每個 member 的 `DatabaseMemoryUsagePercentage`）、`evictions_threshold`（預設 `null`，有給才建 evictions 告警，必須大於 0）。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警與恢復 OK 時通知的 SNS topic ARN，至少 1 個。 |
+| `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `configuration_endpoint` | `string` | cluster mode 的 configuration endpoint |
-| `port` | `number` | 連線 port |
-| `replication_group_id` | `string` | replication group id |
-| `member_clusters` | `list(string)` | AWS 回報的 member cluster id（排序後） |
-| `arn` | `string` | replication group ARN |
-| `log_group_names` | `map(string)` | `slow_log`、`engine_log` 兩個 log group 名稱 |
-| `alarm_arns` | `map(string)` | 告警名稱對應 ARN，包含 memory 與 evictions |
+| 名稱 | 說明 |
+|---|---|
+| `configuration_endpoint` | cluster mode 的 configuration endpoint。client 必須用支援 cluster mode 的 Redis client 並開 TLS。 |
+| `port` | cluster 監聽的 port（數字）。 |
+| `replication_group_id` | replication group ID。 |
+| `member_clusters` | AWS 回報的 member cluster ID 清單，已排序。 |
+| `arn` | replication group ARN。 |
+| `log_group_names` | log group 名稱的 map，key 是 `slow_log`、`engine_log`。 |
+| `alarm_arns` | 告警名稱對 ARN 的 map，包含每個 member 的 memory 告警與（有設門檻時的）evictions 告警。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

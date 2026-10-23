@@ -43,23 +43,21 @@ module "proxy_secret_access" {
 - 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`。
 - `Statement` 必須是清單（單一物件的寫法會被擋）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `role_arn` | `string` | 無 | 是 | 已存在的 role ARN，不可帶 path |
-| `policies` | `map(string)` | 無 | 是 | policy 名稱對 policy JSON 字串，至少一個 |
+| `role_arn` | `string` | 無 | 是 | 要附加 policy 的既有 role ARN，不可帶 path；role 名稱取 ARN 最後一段。 |
+| `policies` | `map(string)` | 無 | 是 | policy 名稱對 policy JSON 字串（用 `jsonencode()` 產生），至少一個。每份 JSON 的 `Statement` 必須是清單；Allow statement（沒寫 `Effect` 視為 Allow）的 Action 不可是 `*` 或以 `:*` 結尾，也不可用 `NotAction`、`NotResource`；Deny statement 不受限。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `policy_names` | `list(string)` | 已附加的 inline policy 名稱 |
-| `role_name` | `string` | 從 `role_arn` 取出的 role 名稱 |
+| 名稱 | 說明 |
+|---|---|
+| `policy_names` | 已附加的 inline policy 名稱清單。 |
+| `role_name` | 從 `role_arn` 取出的 role 名稱。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
