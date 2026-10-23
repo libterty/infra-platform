@@ -35,6 +35,7 @@ override_module {
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
       eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+      node_sg_id                     = "sg-0aaaaaaa00000006"
       eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
       eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
       api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -47,6 +48,7 @@ override_module {
       services          = ["api", "worker"]
       public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
       app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+      app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
       agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
     }
   }
@@ -63,13 +65,13 @@ run "publishes_exactly_the_keys_the_late_stacks_read" {
       "ecs_execution_role_arn", "api_task_role_arn", "worker_task_role_arn", "import_extract_role_arn",
       "import_load_role_arn", "agent_runtime_role_arn",
       "eks_api_sg_id", "eks_cluster_role_arn", "eks_node_role_arn", "api_pod_role_arn", "worker_pod_role_arn",
-      "lb_controller_role_arn", "keda_role_arn", "cloudwatch_agent_role_arn",
+      "lb_controller_role_arn", "keda_role_arn", "cloudwatch_agent_role_arn", "node_sg_id",
     ])
-    error_message = "Tree B strings must be exactly the keys read by eks-cluster, loadbalancer, agent, application, operation and postdeploy"
+    error_message = "Tree B strings must be exactly the keys read by eks-cluster, eks-addons, loadbalancer, agent, application, operation and postdeploy"
   }
 
   assert {
-    condition     = toset(keys(local.published_lists)) == toset(["services", "public_subnet_ids", "app_subnet_ids", "agent_subnet_ids"])
+    condition     = toset(keys(local.published_lists)) == toset(["services", "public_subnet_ids", "app_subnet_ids", "agent_subnet_ids", "app_subnet_cidrs"])
     error_message = "Tree B lists must be exactly the keys read by the late stacks"
   }
 }
@@ -122,6 +124,7 @@ run "rejects_an_empty_string_value" {
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
         eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        node_sg_id                     = "sg-0aaaaaaa00000006"
         eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
         eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
         api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -134,6 +137,7 @@ run "rejects_an_empty_string_value" {
         services          = ["api", "worker"]
         public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
         app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+        app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
         agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
       }
     }
@@ -172,6 +176,7 @@ run "rejects_a_single_subnet" {
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
         eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        node_sg_id                     = "sg-0aaaaaaa00000006"
         eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
         eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
         api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -184,6 +189,7 @@ run "rejects_a_single_subnet" {
         services          = ["api", "worker"]
         public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
         app_subnet_ids    = ["subnet-0bbbbbbb00000001"]
+        app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
         agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
       }
     }
@@ -222,6 +228,7 @@ run "rejects_an_agent_runtimes_value_that_is_not_json" {
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
         eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        node_sg_id                     = "sg-0aaaaaaa00000006"
         eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
         eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
         api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -234,6 +241,7 @@ run "rejects_an_agent_runtimes_value_that_is_not_json" {
         services          = ["api", "worker"]
         public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
         app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+        app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
         agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
       }
     }
@@ -272,6 +280,7 @@ run "rejects_ecr_repository_urls_that_are_not_an_object" {
         import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
         agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
         eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+        node_sg_id                     = "sg-0aaaaaaa00000006"
         eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
         eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
         api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -284,6 +293,7 @@ run "rejects_ecr_repository_urls_that_are_not_an_object" {
         services          = ["api", "worker"]
         public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
         app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+        app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
         agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
       }
     }

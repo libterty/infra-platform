@@ -290,3 +290,8 @@ VPC 或可連通的網路要滿足：
 | # | 決定 |
 |---|---|
 | C5-1 | CI 的 Edit 權限要能建 TargetGroupBinding 與 ScaledObject。`eks-addons` 升 0.3.0，新增 `aggregate_crd_roles`（預設關閉）：有裝 LB Controller 時用本地 chart `crd-role-aggregation` 建兩個帶 aggregate label 的 ClusterRole；有裝 KEDA 時用 `set` 打開 `rbac.aggregateToDefaultRoles`。在 C5 之前插入 C5m（module 修改與發版），使用者選定 |
+| C5-2 | `eks-addons` stack 讀 `eks-cluster` 的樹 A 合約（含 `contract_version`，不認得的版本在 plan 擋下）與樹 B；`bridge` 再多轉寫 `node_sg_id`、`app_subnet_cidrs` |
+| C5-3 | NodeClass 用 tag 選 subnet（`eks-node`、`eks-pod`，C3 加的），用 id 選 SG：node 是 cluster SG 加 `node` SG，`app` 的 Pod SG 是 `app` SG；`system` 沒有 Pod SG。兩個都是 `DefaultDeny` |
+| C5-4 | `system` NodePool 帶 `CriticalAddonsOnly:NoSchedule`（跟 Auto Mode 內建的 system pool 相同），LB Controller 與 KEDA 用 `karpenter.sh/nodepool=system` 加 toleration 排上去。CPU 上限 `app` 100、`system` 16，tfvars 可調 |
+| C5-5 | `nat_mode` 在 `eks-addons` 也有一份，加進 `check-ssm-contract.sh` 的共用設定比對：`per_az` 時 system NetworkPolicy 的 AWS API 放行 `0.0.0.0/0`，`none` 時只放行 app subnet（interface endpoint 所在） |
+| C5-6 | helm provider 的 `aws eks get-token` 在 `deploy_role_arn` 有值時帶 `--role-arn`；跑這個 stack 的身分必須是 `eks-cluster` 的 `addons_apply_principal_arn` |

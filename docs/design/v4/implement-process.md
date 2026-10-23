@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C4 完成（2026-10-22），下一步 C5。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C5 完成（2026-10-23），下一步 C6。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -33,8 +33,8 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 完成：`git archive` 複製 196 個追蹤中的檔案；README 只改標題、改寫中說明與驗證指令的路徑；兩個範本 22 個 stack 全部通過、`check-ssm-contract.sh` 兩邊都過；example2 無變動 | — |
 | C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 完成：network 43、iam 34 個 run 全過；example3 11 個 stack 與 `check-ssm-contract.sh` 通過；突變（pod trust 不限叢集、api_pod 保留 ECS Exec）都被抓到；example2 無變動 | — |
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 完成：eks-cluster 22 個 run、bridge 16 個 run 全過；example3 12 個 stack 與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；example2 無變動 | — |
-| C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 進行中 | — |
-| C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
+| C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 完成：#67 合併；Release run 遇到 GitHub 事件失敗 4 次，恢復後重跑成功；#69 發版，HCP 上的 0.3.0 從消費端抓下來跟 tag 相同 | — |
+| C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 完成：eks-addons 16 個 run 加 tfvars 2 個全過；example3 13 個 stack（356 個 run）與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；helm 3.3.0 的 lock 由使用者產生；example2 無變動 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
 | C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
@@ -131,6 +131,14 @@ C5m 的結果：120 個 run 全過（新增 4 個）；chart 兩種值都通過 
 - 跟使用者要 helm lock hash：給一行 `terraform providers lock -platform=darwin_arm64 -platform=linux_amd64` 指令，請使用者用 `!` 在這個 session 跑。
 
 驗收：同 C3；`mock_provider "helm"` 與 `"aws"` 的測試斷言安裝順序與 toleration。
+
+C5 的結果：
+
+- `eks-addons` stack 讀 `eks-cluster` 的合約與樹 B，設定見 design C5-2 到 C5-6。安裝順序與 CloudWatch 的 toleration 由 module 負責（`check-ordering.sh`、chart 預設值），stack 的測試斷言傳給 module 的 NodeClass、NodePool、placement、NetworkPolicy，以及實際安裝的 release 與各 controller 的 namespace。
+- 0.3.0 上 HCP 之前，先把 module 來源暫時指向 repo 路徑，在 scratchpad 的副本裡驗證；上 HCP 之後改用正式來源重跑。
+- 突變：system 加 Pod SG、少 node SG、改 `DefaultAllow`、拿掉 taint、`nat_mode` 判斷反過來、關掉 `aggregate_crd_roles`、改 KEDA namespace、node role 傳 ARN、多支援一個合約版本，9 個都被抓到。
+- `nat_mode` 不一致時 `check-ssm-contract.sh` 會失敗（以 sit 改成 `none` 實測）。
+- lock：先從 `iam` 複製 aws 6.69.0，使用者跑 `init -backend=false` 與 `providers lock -platform=darwin_arm64 -platform=linux_amd64` 加上 helm 3.3.0。
 
 ### C6：application 與範例 chart
 

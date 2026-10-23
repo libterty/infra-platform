@@ -33,6 +33,8 @@ locals {
     lb_controller_role_arn    = module.in.strings["lb_controller_role_arn"]
     keda_role_arn             = module.in.strings["keda_role_arn"]
     cloudwatch_agent_role_arn = module.in.strings["cloudwatch_agent_role_arn"]
+    # Read by eks-addons: the node security group of the NodeClasses.
+    node_sg_id = module.in.strings["node_sg_id"]
   }
 
   published_lists = {
@@ -40,6 +42,8 @@ locals {
     public_subnet_ids = module.in.lists["public_subnet_ids"]
     app_subnet_ids    = module.in.lists["app_subnet_ids"]
     agent_subnet_ids  = module.in.lists["agent_subnet_ids"]
+    # Read by eks-addons: the control-plane ENIs and the interface endpoints sit in these subnets.
+    app_subnet_cidrs = module.in.lists["app_subnet_cidrs"]
   }
 }
 
