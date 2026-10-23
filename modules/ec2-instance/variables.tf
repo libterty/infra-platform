@@ -3,7 +3,7 @@ variable "name" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   type = string
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Instance name; also its Name tag and the prefix of the alarm and data volume names."
+  description = "instance 名稱，也是 `Name` tag，以及告警與資料碟名稱的前綴。2–63 字元，限小寫英數字與連字號，字母開頭。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -21,7 +21,7 @@ variable "subnet_id" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   type = string
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Private subnet for the instance. The instance never gets a public IP."
+  description = "放 instance 的 private subnet（`subnet-…` 格式）。instance 不會拿到 public IP。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -39,7 +39,7 @@ variable "security_group_ids" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   type = list(string)
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Security groups for the instance, at least one."
+  description = "instance 的 security group（`sg-…` 格式），至少一個。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -65,7 +65,7 @@ variable "instance_profile_name" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   type = string
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Instance profile for the instance. It should carry the SSM Session Manager permissions; there is no SSH key."
+  description = "instance profile 名稱，1–128 字元，要帶 SSM Session Manager 權限；沒有 SSH key。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -83,7 +83,7 @@ variable "instance_type" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   type = string
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Instance type. Must match architecture: Graviton families (t4g, m7g, c6gn, ...) are arm64, the rest x86_64."
+  description = "instance type，例如 `t4g.small`，必須跟 `architecture` 搭配：Graviton 家族（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -113,7 +113,7 @@ variable "architecture" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = "arm64"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "arm64 or x86_64. Selects the Amazon Linux 2023 AMI when ami_id is null."
+  description = "`arm64` 或 `x86_64`。`ami_id` 為 `null` 時依這個值找 Amazon Linux 2023 AMI；給了 `ami_id` 也要一致。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -133,7 +133,7 @@ variable "ami_id" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = null
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "AMI to launch. When null, the latest Amazon Linux 2023 for architecture is looked up with a data source."
+  description = "要啟動的 AMI（`ami-…` 格式）；`null` 時用 data source 找依 `architecture` 的最新 Amazon Linux 2023。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -159,7 +159,7 @@ variable "root_volume" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = {}
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Root volume (always encrypted gp3). size is in GiB; kms_key_arn null uses the account default EBS key."
+  description = "root volume，一律是加密的 gp3。欄位：`size`（GiB，8–16384 的整數，預設 `20`）、`kms_key_arn`（KMS key ARN，不收 alias；預設 `null`，用帳號預設的 EBS key）。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -197,7 +197,7 @@ variable "ebs_volumes" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = {}
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Extra data volumes by key, always encrypted, created in the instance's AZ and attached at device_name. kms_key_arn null uses the account default EBS key."
+  description = "額外的資料碟，key（小寫英數字與連字號，字母開頭，最多 41 字元）對應一顆 volume，一律加密，建在 instance 所在的 AZ。欄位：`device_name`（必填，`/dev/sdf`–`/dev/sdp` 或 `/dev/xvdf`–`/dev/xvdp`，不可重複）、`size`（必填，GiB，1–16384 的整數）、`type`（預設 `gp3`，可為 `gp3`、`gp2`、`io1`、`io2`、`st1`、`sc1`）、`kms_key_arn`（預設 `null`，用帳號預設的 EBS key；不收 alias）。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -257,7 +257,7 @@ variable "user_data" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = null
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Cloud-init or shell script run at first boot. Stored as plain text in the state file and visible in the EC2 console: never put secrets in it. Text that looks like a secret is rejected."
+  description = "第一次開機執行的 cloud-init 或 shell script，上限 16384 bytes。以明文存在 state，也看得到在 EC2 console，不要放 secret：看起來像 secret 的明文值或私鑰會被擋下。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -285,7 +285,7 @@ variable "disable_api_termination" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = true
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Termination protection. Turn it off before terraform destroy."
+  description = "終止保護。`terraform destroy` 前要先關掉。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
 }
 # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -297,7 +297,7 @@ variable "sns_topic_arns" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = []
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "SNS topics for the StatusCheckFailed_System alarm (alarm and OK). Empty creates no alarm; this is the one exception to the repo rule that alarms need an SNS topic (D16). At most 4, since the alarm also carries the recover action."
+  description = "`StatusCheckFailed_System` 告警（alarm 與 OK）的 SNS topic ARN，最多 4 個，因為告警還帶一個 recover action。空 list 時不建告警；這是 repo「告警必須有 SNS topic」慣例的唯一例外（D16）。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   validation {
     # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
@@ -325,6 +325,6 @@ variable "tags" {
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
   default = {}
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
-  description = "Tags for the instance, its volumes and the alarm. Name is added by the module."
+  description = "instance、volume 與告警的 tag；`Name` 由 module 加上。"
   # 21848 is the base64 length of 16384 bytes, so the limit counts bytes, not characters.
 }
