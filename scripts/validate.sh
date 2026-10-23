@@ -3,7 +3,17 @@
 # Template stacks take their modules from the HCP private registry (ADR-0004), so they need a registry token
 # (terraform login, or TF_TOKEN_app_terraform_io); modules and customer repos stay offline.
 # Usage: scripts/validate.sh [dir...]   Without arguments, scans modules and templates.
+#        scripts/validate.sh --changed-since <rev>   fmt and static rules scan everything; init/validate/test/tflint
+#        only run in the directories a change since <rev> can affect (all of them when a shared file changed).
 set -euo pipefail
+
+changed_since=""
+if [ "${1:-}" = "--changed-since" ]; then
+  [ -n "${2:-}" ] || { echo "--changed-since 需要一個 git revision" >&2; exit 1; }
+  changed_since="$2"
+  shift 2
+  [ "$#" -eq 0 ] || { echo "--changed-since 不能跟目錄一起用" >&2; exit 1; }
+fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cache_root="${repo_root}/.cache"
@@ -110,6 +120,101 @@ else
       find "$r" -name '*.tf' -not -path '*/.terraform*' -exec dirname {} \; | sort -u
     )
   done
+fi
+
+# Step 1b (--changed-since): keep only the directories a change can affect.
+# Template stacks take modules from the registry, so a module change never reaches them; only local sources
+# ("./" or "../") link directories, for example a module's examples and modules/alb/examples/https -> log-delivery.
+
+# Files that no Terraform directory reads.
+is_inert_path() {
+  case "$1" in
+    docs/* | *.md | LICENSE | release-please-config.json | .release-please-manifest.json) return 0 ;;
+  esac
+  return 1
+}
+
+# Print the repo-relative directories that the .tf files directly in directory $1 reference through local sources.
+local_sources_of() {
+  local s
+  while IFS= read -r s; do
+    [ -d "$1/$s" ] && rel "$(cd "$1/$s" && pwd)"
+  done < <(awk '/^[[:space:]]*(#|\/\/)/ { next }
+    match($0, /^[[:space:]]*source[[:space:]]*=[[:space:]]*"\.\.?\/[^"]*"/) {
+      s = substr($0, RSTART, RLENGTH); sub(/^[^"]*"/, "", s); sub(/"$/, "", s); print s
+    }' "$1"/*.tf)
+  return 0
+}
+
+affected=""
+# True when repo-relative directory $1 is one of the lines of $affected.
+is_affected() {
+  case $'\n'"${affected}" in *$'\n'"$1"$'\n'*) return 0 ;; esac
+  return 1
+}
+
+select_changed_dirs() {
+  local base files f r best kept=() d s tpl
+  local dir_rels=()
+  base="$(git -C "$repo_root" merge-base "$changed_since" HEAD)" || {
+    echo "找不到 ${changed_since} 與 HEAD 的共同祖先（CI 的 checkout 需要 fetch-depth: 2）" >&2
+    return 1
+  }
+  # Committed, uncommitted and untracked changes; --no-renames lists both sides of a move.
+  files="$({
+    git -C "$repo_root" diff --name-only --no-renames "$base"
+    git -C "$repo_root" ls-files --others --exclude-standard
+  } | sort -u)"
+  for d in "${dirs[@]}"; do dir_rels+=("$(rel "$d")"); done
+
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    is_inert_path "$f" && continue
+    # The deepest directory that contains the file owns it.
+    best=""
+    for r in "${dir_rels[@]}"; do
+      case "$f" in "$r"/*) [ "${#r}" -gt "${#best}" ] && best="$r" ;; esac
+    done
+    if [ -n "$best" ]; then
+      affected+="${best}"$'\n'
+      continue
+    fi
+    case "$f" in
+      modules/*) ;; # A deleted module leaves nothing to validate.
+      templates/*/*)
+        # A file outside every stack (stacks.sh, check-ssm-contract.sh, ...) affects all stacks of its template.
+        tpl="${f#templates/}"
+        tpl="templates/${tpl%%/*}/"
+        for r in "${dir_rels[@]}"; do
+          case "$r" in "$tpl"*) affected+="${r}"$'\n' ;; esac
+        done
+        ;;
+      *)
+        echo "== 變更範圍：${f} 是共用檔案，驗證全部目錄"
+        return 0
+        ;;
+    esac
+  done <<<"$files"
+
+  for d in "${dirs[@]}"; do
+    r="$(rel "$d")"
+    if is_affected "$r"; then
+      kept+=("$d")
+      continue
+    fi
+    while IFS= read -r s; do
+      if is_affected "$s"; then
+        kept+=("$d")
+        break
+      fi
+    done < <(local_sources_of "$d")
+  done
+  echo "== 變更範圍：${changed_since} 之後的變更影響 ${#kept[@]} / ${#dirs[@]} 個目錄"
+  dirs=(${kept[@]+"${kept[@]}"})
+}
+
+if [ -n "$changed_since" ]; then
+  select_changed_dirs || exit 1
 fi
 
 failed=()
