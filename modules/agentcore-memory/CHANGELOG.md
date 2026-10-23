@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/libterty/infra-platform/compare/agentcore-memory-v0.1.1...agentcore-memory-v0.1.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **agentcore-memory:** rewrite the input and output descriptions in Chinese ([41ceeda](https://github.com/libterty/infra-platform/commit/41ceeda1a22787d9fdf3bb29637cdc61734d4046))
+
 ## 0.1.1（2026-10-16）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
