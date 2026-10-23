@@ -6,6 +6,12 @@ locals {
     # application registers the api service with the full ARN; a suffix is not enough.
     api_target_group_arn = module.alb.target_group_arns["api"]
   }
+
+  # Only with a canary, and read by CI only (deploy/values-from-ssm.sh --canary), so it is not in published_strings
+  # and check-ssm-contract.sh does not see it.
+  canary_strings = var.canary == null ? {} : {
+    api_canary_target_group_arn = module.alb.target_group_arns["api-canary"]
+  }
 }
 
 module "ssm_publish" {
@@ -15,5 +21,5 @@ module "ssm_publish" {
 
   ssm_prefix = local.ssm_prefix
   stack      = "loadbalancer"
-  strings    = local.published_strings
+  strings    = merge(local.published_strings, local.canary_strings)
 }

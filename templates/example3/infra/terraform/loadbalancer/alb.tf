@@ -9,11 +9,34 @@ locals {
     api_admin  = { priority = 30, path = "/api/admin" }
   }
 
+  # With a canary the api rules forward to both target groups by weight; the breaker rewrites only these rules.
+  api_target = var.canary == null ? { target_group = "api", forward = null } : {
+    target_group = null
+    forward = {
+      targets = {
+        stable = { target_group = "api", target_group_arn = null, weight = 100 - var.canary.weight }
+        canary = { target_group = "api-canary", target_group_arn = null, weight = var.canary.weight }
+      }
+      stickiness_duration = null
+    }
+  }
+
+  api_target_group = {
+    port                 = var.app_port
+    deregistration_delay = var.deregistration_delay
+    health_check         = { path = "/health" }
+  }
+  target_groups = merge(
+    { api = local.api_target_group },
+    var.canary == null ? {} : { "api-canary" = local.api_target_group },
+  )
+
   listener_rules = merge(
     {
       for k, r in local.api_routes : k => {
         priority      = r.priority
-        target_group  = "api"
+        target_group  = local.api_target.target_group
+        forward       = local.api_target.forward
         path_patterns = [r.path, "${r.path}/*"]
         host_headers  = var.origin_verify_host_headers
         # The alb module defaults to false: without this the rule would silently skip the header condition.
@@ -24,6 +47,7 @@ locals {
       dev_page = {
         priority              = 100
         target_group          = "api"
+        forward               = null
         path_patterns         = ["/dev/page", "/dev/page/*"]
         host_headers          = []
         require_origin_verify = false
@@ -57,14 +81,8 @@ module "alb" {
   web_acl        = { arn = module.waf.web_acl_arn }
   sns_topic_arns = [module.shared.strings["alarm_topic_arn"]]
 
-  vpc_id = module.shared.strings["vpc_id"]
-  target_groups = {
-    api = {
-      port                 = var.app_port
-      deregistration_delay = var.deregistration_delay
-      health_check         = { path = "/health" }
-    }
-  }
+  vpc_id         = module.shared.strings["vpc_id"]
+  target_groups  = local.target_groups
   listener_rules = local.listener_rules
 
   origin_verify_header_name  = var.origin_verify_header_name

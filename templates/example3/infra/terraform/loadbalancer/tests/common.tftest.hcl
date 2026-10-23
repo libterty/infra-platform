@@ -15,9 +15,10 @@ override_module {
   target = module.shared
   outputs = {
     strings = {
-      vpc_id          = "vpc-0123456789abcdef0"
-      alb_sg_id       = "sg-0123456789abcdef0"
-      alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      vpc_id              = "vpc-0123456789abcdef0"
+      alb_sg_id           = "sg-0123456789abcdef0"
+      alarm_topic_arn     = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      ecr_repository_urls = "{}"
     }
     lists = {
       public_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
