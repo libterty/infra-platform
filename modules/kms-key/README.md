@@ -49,29 +49,27 @@ policy 由三種 statement 依序串成，一律用 `jsonencode` 產生：
 
 非對稱 key、multi-region key、外部金鑰材料、grant 管理、對 `*` principal 開放。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | alias 名稱，不含 `alias/` 前綴；1–250 字元，限英數字、`/`、`_`、`-`，不可以 `aws/` 開頭 |
-| `description` | `string` | `null` | 否 | key 的說明 |
-| `deletion_window_in_days` | `number` | `30` | 否 | 刪除前的等待天數，7–30 |
-| `administrator_arns` | `list(string)` | `[]` | 否 | 額外的管理者，IAM role 或 user ARN，不可含萬用字元 |
-| `service_principals` | `map(object)` | `{}` | 否 | 服務 principal => `actions`（預設見上）與 `conditions`（`test`、`variable`、`values`） |
-| `tags` | `map(string)` | `{}` | 否 | key 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | alias 名稱，不含 `alias/` 前綴。1–250 字元，限英數字、`/`、`_`、`-`，不可以 `aws/` 開頭。 |
+| `description` | `string` | `null` | 否 | key 的說明。 |
+| `deletion_window_in_days` | `number` | `30` | 否 | 刪除 key 前的等待天數，7–30。 |
+| `administrator_arns` | `list(string)` | `[]` | 否 | 額外的 key 管理者，限 IAM role 或 user ARN，不可含萬用字元。帳號 root 一律是管理者，不用列。 |
+| `service_principals` | `map(object)` | `{}` | 否 | 服務 principal（例如 `logs.ap-northeast-1.amazonaws.com`，必須以 `.amazonaws.com` 結尾）對應它在這把 key 上的權限。欄位：`actions`（預設 `kms:Decrypt`、`kms:GenerateDataKey*`、`kms:DescribeKey`，不可給 `*` 或 `kms:*`）、`conditions`（`test`、`variable`、`values` 的清單，預設 `[]`）。 |
+| `tags` | `map(string)` | `{}` | 否 | key 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `key_arn` | `string` | key ARN |
-| `key_id` | `string` | key ID |
-| `alias_name` | `string` | `alias/<name>` |
-| `alias_arn` | `string` | alias ARN |
+| 名稱 | 說明 |
+|---|---|
+| `key_arn` | key 的 ARN。 |
+| `key_id` | key 的 ID。 |
+| `alias_name` | alias 名稱，格式 `alias/<name>`。 |
+| `alias_arn` | alias 的 ARN。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
