@@ -124,49 +124,47 @@ listener_rules = {
 - 不建 IAM。
 - 不支援 NLB、mutual TLS、Cognito／OIDC 認證 action。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | ALB 名稱，2–32 字元，不得以 `internal-` 開頭 |
-| `internal` | `bool` | `false` | 否 | `true` 建內部 ALB |
-| `subnet_ids` | `list(string)` | 無 | 是 | 至少兩個不同的 subnet |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 SG |
-| `certificate_arn` | `string` | `null` | 否 | ACM 憑證；`null` 時只開 HTTP:80 |
-| `additional_certificate_arns` | `set(string)` | `[]` | 否 | SNI 憑證；非空時必須給 `certificate_arn` |
-| `idle_timeout` | `number` | `60` | 否 | 1–4000 秒 |
-| `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
-| `web_acl` | `object({ arn })` | `null` | 否 | regional WAFv2 Web ACL；只做關聯。ARN 在 plan 時還不知道時（同一個 configuration 建 WAF），一定要用這個變數 |
-| `web_acl_arn` | `string` | `null` | 否 | regional WAFv2 Web ACL ARN；**只適合 plan 時已知的值**，日後移除。與 `web_acl` 不能同時給 |
-| `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |
-| `target_groups` | `map(object)` | `{}` | 否 | 見上方 target group 與 listener rule |
-| `listener_rules` | `map(object)` | `{}` | 否 | 見上方 target group 與 listener rule、加權 forward |
-| `origin_verify_header_name` | `string` | `null` | 否 | CDN 加在回源請求的 header 名稱；要跟 value 一起給 |
-| `origin_verify_header_value` | `string`（sensitive） | `null` | 否 | header 的值；從 `TF_VAR_origin_verify_header_value` 傳入 |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警通知的 SNS topic；至少一個 |
-| `alarm_config` | `object({ elb_5xx_threshold, period })` | `{}` | 否 | `elb_5xx_threshold` 預設 1、`period` 預設 60 秒 |
-| `tags` | `map(string)` | `{}` | 否 | tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | ALB 名稱。2–32 字元，限英數字與 `-`，頭尾不可是 `-`，不可以 `internal-` 開頭。 |
+| `internal` | `bool` | `false` | 否 | `true` 時建內部 ALB。 |
+| `subnet_ids` | `list(string)` | 無 | 是 | ALB 所在的 subnet，至少兩個、分屬不同 AZ；對外時用 public tier，`internal = true` 時用 app tier。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | ALB 的 security group，至少一個，由 network stack 建立。 |
+| `certificate_arn` | `string` | `null` | 否 | HTTPS listener 用的 ACM 憑證 ARN。`null` 時只開 HTTP:80，這時 network stack 必須收窄 ALB 的 security group。 |
+| `additional_certificate_arns` | `set(string)` | `[]` | 否 | 掛在 HTTPS listener 上做 SNI 的額外 ACM 憑證；非空時必須給 `certificate_arn`。 |
+| `idle_timeout` | `number` | `60` | 否 | 閒置逾時秒數，1–4000。 |
+| `deletion_protection` | `bool` | `true` | 否 | 是否開啟刪除保護；測試或 PoC 要 destroy 前先設成 `false` 並 apply。 |
+| `web_acl` | `object` | `null` | 否 | 要關聯的 regional WAFv2 Web ACL，格式 `{ arn }`，`null` 時不關聯；module 不建 Web ACL。Web ACL 在同一個 configuration 建、plan 時還不知道 ARN 時，一定要用這個變數，不要用 `web_acl_arn`。與 `web_acl_arn` 不能同時給。 |
+| `web_acl_arn` | `string` | `null` | 否 | 要關聯的 regional WAFv2 Web ACL ARN，只適合 plan 時已知的值；Web ACL 在同一個 configuration 建時會報 `Invalid count argument`，請改用 `web_acl`。為了既有呼叫端保留，之後會移除。與 `web_acl` 不能同時給。 |
+| `vpc_id` | `string` | `null` | 否 | `target_groups` 非空時必填。target group 所在的 VPC。 |
+| `target_groups` | `map(object)` | `{}` | 否 | key 對應一個 HTTP target group，名稱 `<name>-<key>`（1–32 字元）。欄位：`port`（必填；改了會重建，規則還在用時會失敗）、`protocol_version`（預設 `HTTP1`）、`deregistration_delay`（預設 300）、`target_type`（`ip` 或 `instance`，預設 `ip`）、`stickiness`（`{ duration }`，1–604800 秒，`lb_cookie`，預設 `null` 不開）、`health_check`（可只覆寫部分欄位），細節見〈target group 與 listener rule〉。 |
+| `listener_rules` | `map(object)` | `{}` | 否 | key 對應 HTTPS listener 上的 forward 規則（沒有憑證時掛在 HTTP listener）。欄位：`priority`（不可重複）、`target_group`（`target_groups` 的 key）或 `forward`（加權轉發，1–5 個 target，兩者擇一）、`path_patterns`、`host_headers`（合計至少一個）、`require_origin_verify`（預設 `false`）。欄位見〈target group 與 listener rule〉與〈加權 forward（0.4.0）〉。 |
+| `origin_verify_header_name` | `string` | `null` | 否 | CDN 加在回源請求上的 header 名稱，要與 `origin_verify_header_value` 一起給或一起不給。 |
+| `origin_verify_header_value` | `string` | `null` | 否 | origin verify header 的值（sensitive）。從 `TF_VAR_origin_verify_header_value` 環境變數傳入，不要寫進 tfvars。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警 `alarm_actions` 與 `ok_actions` 的 SNS topic ARN，至少一個。 |
+| `alarm_config` | `object` | `{}` | 否 | ELB 5xx 告警設定。欄位：`elb_5xx_threshold`（一個 period 內 `HTTPCode_ELB_5XX_Count` 的總和門檻，預設 1）、`period`（秒，預設 60）。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `alb_arn` | `string` | ALB ARN |
-| `alb_arn_suffix` | `string` | `app/<name>/<id>`，給告警與 `requests_per_target` |
-| `alb_dns_name` | `string` | ALB DNS 名稱 |
-| `alb_zone_id` | `string` | alias record 用的 hosted zone ID |
-| `listener_arn` | `string` | 有憑證時是 HTTPS listener，否則是 HTTP listener |
-| `listener_arns` | `object({ http, https })` | `http` 一定有值；沒有憑證時 `https` 是 `null` |
-| `listener_rule_arns` | `map(string)` | listener rule ARN，key 同 `listener_rules`；沒給時是空 map |
-| `listener_protocol` | `string` | `"HTTPS"` 或 `"HTTP"` |
-| `alarm_arns` | `map(string)` | 告警 ARN，目前只有 `elb_5xx` |
-| `web_acl_association_ids` | `list(string)` | WAF 關聯 ID；沒關聯時是空 list |
-| `target_group_arns` | `map(string)` | target group ARN，key 同 `target_groups`；沒給時是空 map |
-| `target_group_arn_suffixes` | `map(string)` | `targetgroup/<name>/<id>`，key 同 `target_groups`，給 CloudWatch dimension 用 |
+| 名稱 | 說明 |
+|---|---|
+| `alb_arn` | ALB ARN。 |
+| `alb_arn_suffix` | `app/<name>/<id>`，給 CloudWatch dimension 與 `requests_per_target` 的 resource label 用。 |
+| `alb_dns_name` | ALB DNS 名稱。 |
+| `alb_zone_id` | ALB 的 Route 53 hosted zone ID，給 alias record 用。 |
+| `listener_arn` | 有憑證時是 HTTPS listener ARN，否則是 HTTP listener ARN。 |
+| `listener_arns` | 依協定分的 listener ARN，`{ http, https }`；`http` 一定有值，沒有憑證時 `https` 是 `null`。 |
+| `listener_rule_arns` | key 同 `listener_rules` 的 map，值是 listener rule ARN；沒給時是空 map。 |
+| `listener_protocol` | `listener_arn` 的協定，`HTTPS` 或 `HTTP`。 |
+| `alarm_arns` | 告警名稱對應告警 ARN 的 map，目前只有 `elb_5xx`。 |
+| `target_group_arns` | key 同 `target_groups` 的 map，值是 target group ARN；沒給時是空 map。 |
+| `target_group_arn_suffixes` | key 同 `target_groups` 的 map，值是 `targetgroup/<name>/<id>`，給 CloudWatch dimension 用。 |
+| `web_acl_association_ids` | Web ACL 關聯 ID 的 list；沒有關聯時是空 list。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
