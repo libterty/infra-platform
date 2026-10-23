@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Guardrail name."
+  description = "guardrail 名稱，1–50 個英數字、`-`、`_`。"
   validation {
     condition     = can(regex("^[0-9A-Za-z_-]{1,50}$", var.name))
     error_message = "name must be 1-50 characters of letters, digits, hyphens or underscores."
@@ -10,23 +10,23 @@ variable "name" {
 variable "description" {
   type        = string
   default     = null
-  description = "Guardrail description."
+  description = "guardrail 的說明。"
 }
 
 variable "blocked_input_message" {
   type        = string
-  description = "Text returned instead of the prompt when the input is blocked."
+  description = "輸入被擋時，取代 prompt 回給使用者的文字。"
 }
 
 variable "blocked_output_message" {
   type        = string
-  description = "Text returned instead of the model output when the output is blocked."
+  description = "輸出被擋時，取代模型輸出回給使用者的文字。"
 }
 
 variable "tier" {
   type        = string
   default     = "STANDARD"
-  description = "STANDARD or CLASSIC. CLASSIC evaluates English only; non-English text passes unchecked."
+  description = "`STANDARD` 或 `CLASSIC`。`CLASSIC` 只評估英文，非英文的文字完全不擋。"
   validation {
     condition     = contains(["STANDARD", "CLASSIC"], var.tier)
     error_message = "tier must be STANDARD or CLASSIC."
@@ -36,7 +36,7 @@ variable "tier" {
 variable "cross_region_profile_id" {
   type        = string
   default     = null
-  description = "Guardrail profile id, e.g. apac.guardrail.v1:0. Required for STANDARD. No API validates it; a wrong id only fails on the first real request."
+  description = "`tier` 是 `STANDARD` 時必填；`CLASSIC` 時必須是 `null`。guardrail profile id，例如 `apac.guardrail.v1:0`。沒有 API 驗證這個值，寫錯要到第一個真實請求才會失敗。"
   validation {
     # Format derived from one known id only; other profile id shapes are untested.
     condition = var.tier == "STANDARD" ? (
@@ -56,7 +56,7 @@ variable "content_filters" {
     output_enabled  = optional(bool, true)
   }))
   default     = {}
-  description = "Content filters keyed by type: SEXUAL, VIOLENCE, HATE, INSULTS, MISCONDUCT or PROMPT_ATTACK. Strength is NONE, LOW, MEDIUM or HIGH; action is BLOCK or NONE."
+  description = "content filter，key 是類型：`SEXUAL`、`VIOLENCE`、`HATE`、`INSULTS`、`MISCONDUCT`、`PROMPT_ATTACK`。欄位：`input_strength`、`output_strength`（必填，`NONE`、`LOW`、`MEDIUM`、`HIGH`；`PROMPT_ATTACK` 的 `output_strength` 必須是 `NONE`）、`input_action`、`output_action`（`BLOCK` 或 `NONE`，預設 `BLOCK`）、`input_enabled`、`output_enabled`（預設 `true`）。"
   validation {
     condition     = alltrue([for k in keys(var.content_filters) : contains(["SEXUAL", "VIOLENCE", "HATE", "INSULTS", "MISCONDUCT", "PROMPT_ATTACK"], k)])
     error_message = "content_filters keys must be SEXUAL, VIOLENCE, HATE, INSULTS, MISCONDUCT or PROMPT_ATTACK."
@@ -86,7 +86,7 @@ variable "denied_topics" {
     examples   = optional(list(string), [])
   }))
   default     = {}
-  description = "Denied topics keyed by topic name. definition is the only place to state exclusions; examples should be positive only."
+  description = "denied topic，key 是 topic 名稱，最多 30 個。欄位：`definition`（必填、不可空白，排除條件只能寫在這裡）、`examples`（預設 `[]`，只放正面例子）。"
   validation {
     condition     = length(var.denied_topics) <= 30
     error_message = "denied_topics must have at most 30 topics."
@@ -100,13 +100,13 @@ variable "denied_topics" {
 variable "words" {
   type        = list(string)
   default     = []
-  description = "Custom blocked words or phrases."
+  description = "自訂封鎖字詞。"
 }
 
 variable "managed_word_lists" {
   type        = set(string)
   default     = []
-  description = "AWS managed word lists. Only PROFANITY exists."
+  description = "AWS 管理的字詞清單，只收 `PROFANITY`。"
   validation {
     condition     = alltrue([for w in var.managed_word_lists : w == "PROFANITY"])
     error_message = "managed_word_lists only accepts PROFANITY."
@@ -120,7 +120,7 @@ variable "pii_entities" {
     output_enabled = optional(bool, true)
   }))
   default     = {}
-  description = "PII entities keyed by entity type, e.g. EMAIL or PHONE. action is BLOCK or ANONYMIZE; ANONYMIZE still reports an intervention."
+  description = "PII 過濾，key 是 PII 類型（全大寫，例如 `EMAIL`、`PHONE`，只收 aws provider 6.69.0 驗證的 31 種）。欄位：`action`（`BLOCK` 或 `ANONYMIZE`；`ANONYMIZE` 仍會回報 intervention）、`input_enabled`、`output_enabled`（預設 `true`）。"
   # Same list as the enum the aws provider 6.69.0 validates at plan time; checked here so the error points at this input.
   validation {
     condition = alltrue([for k in keys(var.pii_entities) : contains([
@@ -147,7 +147,7 @@ variable "regexes" {
     description = optional(string)
   }))
   default     = {}
-  description = "Custom regex filters keyed by name. action is BLOCK or ANONYMIZE."
+  description = "自訂 regex 過濾，key 是名稱。欄位：`pattern`、`action`（`BLOCK` 或 `ANONYMIZE`）、`description`（選填）。"
   validation {
     condition     = alltrue([for r in values(var.regexes) : contains(["BLOCK", "ANONYMIZE"], r.action)])
     error_message = "regexes action must be BLOCK or ANONYMIZE."
@@ -160,7 +160,7 @@ variable "contextual_grounding" {
     relevance_threshold = optional(number)
   })
   default     = null
-  description = "Contextual grounding thresholds, each 0-0.99. At least one must be set."
+  description = "contextual grounding 門檻。欄位：`grounding_threshold`、`relevance_threshold`，各 0–0.99，至少給一個。`null` 時不設定。"
   validation {
     condition = var.contextual_grounding == null ? true : alltrue([
       for t in [var.contextual_grounding.grounding_threshold, var.contextual_grounding.relevance_threshold] :
@@ -179,7 +179,7 @@ variable "contextual_grounding" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key ARN (key/<uuid>, not an alias) for the guardrail. null uses an AWS owned key."
+  description = "guardrail 用的自管 KMS key ARN（`key/<uuid>` 或 `key/mrk-<32 碼>`，不收 alias 與 `*`）。`null` 時用 AWS 擁有的 key。"
   validation {
     condition     = var.kms_key_arn == null || can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
     error_message = "kms_key_arn must be a KMS key ARN (arn:aws:kms:<region>:<account>:key/<uuid>), not an alias or a wildcard."
@@ -189,5 +189,5 @@ variable "kms_key_arn" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the guardrail. Name is added by the module."
+  description = "guardrail 的 tag；`Name` 由 module 加上。"
 }

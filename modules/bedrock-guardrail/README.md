@@ -54,40 +54,38 @@ module "guardrail" {
 - `input_modalities`／`output_modalities`：只處理文字。
 - word、managed word list、PII、regex 的 `input_action`／`output_action`：全部用預設，需要時再加（MINOR）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | guardrail 名稱，1–50 個英數字、`-`、`_` |
-| `description` | `string` | `null` | 否 | 說明 |
-| `blocked_input_message` | `string` | 無 | 是 | 輸入被擋時回給使用者的文字 |
-| `blocked_output_message` | `string` | 無 | 是 | 輸出被擋時回給使用者的文字 |
-| `tier` | `string` | `"STANDARD"` | 否 | `STANDARD` 或 `CLASSIC`；`CLASSIC` 只評估英文 |
-| `cross_region_profile_id` | `string` | `null` | `STANDARD` 時必填 | guardrail profile id，例如 `apac.guardrail.v1:0`；`CLASSIC` 必須是 `null` |
-| `content_filters` | `map(object)` | `{}` | 否 | key 是 `SEXUAL`／`VIOLENCE`／`HATE`／`INSULTS`／`MISCONDUCT`／`PROMPT_ATTACK`；`input_strength`、`output_strength`（`NONE`／`LOW`／`MEDIUM`／`HIGH`，必填）、`input_action`、`output_action`（`BLOCK`／`NONE`，預設 `BLOCK`）、`input_enabled`、`output_enabled`（預設 `true`） |
-| `denied_topics` | `map(object)` | `{}` | 否 | key 是 topic 名稱；`definition`（必填、不可空白）、`examples`（預設 `[]`）；最多 30 個 |
-| `words` | `list(string)` | `[]` | 否 | 自訂封鎖字詞 |
-| `managed_word_lists` | `set(string)` | `[]` | 否 | 只收 `PROFANITY` |
-| `pii_entities` | `map(object)` | `{}` | 否 | key 是 PII 類型（例如 `EMAIL`、`PHONE`，只收 provider 6.69.0 的 31 種類型）；`action`（`BLOCK`／`ANONYMIZE`）、`input_enabled`、`output_enabled`（預設 `true`） |
-| `regexes` | `map(object)` | `{}` | 否 | key 是名稱；`pattern`、`action`（`BLOCK`／`ANONYMIZE`）、`description`（選填） |
-| `contextual_grounding` | `object` | `null` | 否 | `grounding_threshold`、`relevance_threshold`，各 0–0.99，至少給一個 |
-| `kms_key_arn` | `string` | `null` | 否 | 自管 KMS key 的 ARN（`key/<uuid>`，不收 alias 與 `*`）；`null` 用 AWS 的 key |
-| `tags` | `map(string)` | `{}` | 否 | guardrail 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | guardrail 名稱，1–50 個英數字、`-`、`_`。 |
+| `description` | `string` | `null` | 否 | guardrail 的說明。 |
+| `blocked_input_message` | `string` | 無 | 是 | 輸入被擋時，取代 prompt 回給使用者的文字。 |
+| `blocked_output_message` | `string` | 無 | 是 | 輸出被擋時，取代模型輸出回給使用者的文字。 |
+| `tier` | `string` | `"STANDARD"` | 否 | `STANDARD` 或 `CLASSIC`。`CLASSIC` 只評估英文，非英文的文字完全不擋。 |
+| `cross_region_profile_id` | `string` | `null` | 否 | `tier` 是 `STANDARD` 時必填；`CLASSIC` 時必須是 `null`。guardrail profile id，例如 `apac.guardrail.v1:0`。沒有 API 驗證這個值，寫錯要到第一個真實請求才會失敗。 |
+| `content_filters` | `map(object)` | `{}` | 否 | content filter，key 是類型：`SEXUAL`、`VIOLENCE`、`HATE`、`INSULTS`、`MISCONDUCT`、`PROMPT_ATTACK`。欄位：`input_strength`、`output_strength`（必填，`NONE`、`LOW`、`MEDIUM`、`HIGH`；`PROMPT_ATTACK` 的 `output_strength` 必須是 `NONE`）、`input_action`、`output_action`（`BLOCK` 或 `NONE`，預設 `BLOCK`）、`input_enabled`、`output_enabled`（預設 `true`）。 |
+| `denied_topics` | `map(object)` | `{}` | 否 | denied topic，key 是 topic 名稱，最多 30 個。欄位：`definition`（必填、不可空白，排除條件只能寫在這裡）、`examples`（預設 `[]`，只放正面例子）。 |
+| `words` | `list(string)` | `[]` | 否 | 自訂封鎖字詞。 |
+| `managed_word_lists` | `set(string)` | `[]` | 否 | AWS 管理的字詞清單，只收 `PROFANITY`。 |
+| `pii_entities` | `map(object)` | `{}` | 否 | PII 過濾，key 是 PII 類型（全大寫，例如 `EMAIL`、`PHONE`，只收 aws provider 6.69.0 驗證的 31 種）。欄位：`action`（`BLOCK` 或 `ANONYMIZE`；`ANONYMIZE` 仍會回報 intervention）、`input_enabled`、`output_enabled`（預設 `true`）。 |
+| `regexes` | `map(object)` | `{}` | 否 | 自訂 regex 過濾，key 是名稱。欄位：`pattern`、`action`（`BLOCK` 或 `ANONYMIZE`）、`description`（選填）。 |
+| `contextual_grounding` | `object` | `null` | 否 | contextual grounding 門檻。欄位：`grounding_threshold`、`relevance_threshold`，各 0–0.99，至少給一個。`null` 時不設定。 |
+| `kms_key_arn` | `string` | `null` | 否 | guardrail 用的自管 KMS key ARN（`key/<uuid>` 或 `key/mrk-<32 碼>`，不收 alias 與 `*`）。`null` 時用 AWS 擁有的 key。 |
+| `tags` | `map(string)` | `{}` | 否 | guardrail 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `guardrail_id` | `string` | guardrail id |
-| `guardrail_arn` | `string` | guardrail ARN |
-| `name` | `string` | guardrail 名稱 |
-| `version` | `string` | 固定 `"DRAFT"`，不讀 resource 的 `version`；對 guardrail 的修改立刻生效 |
-| `cross_region_profile_arn` | `string` | `STANDARD` 時是 guardrail profile ARN；`CLASSIC` 時是 `null` |
-| `cross_region_profile_id` | `string` | profile id；`CLASSIC` 時是 `null` |
+| 名稱 | 說明 |
+|---|---|
+| `guardrail_id` | guardrail id。 |
+| `guardrail_arn` | guardrail ARN。 |
+| `name` | guardrail 名稱。 |
+| `version` | 呼叫端要用的版本，固定 `DRAFT`（不讀 resource 的 `version`），因為這個 module 不發佈版本；對 guardrail 的修改立刻生效。 |
+| `cross_region_profile_arn` | `STANDARD` 時是 guardrail profile ARN；`CLASSIC` 時是 `null`。 |
+| `cross_region_profile_id` | guardrail profile id；`CLASSIC` 時是 `null`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
