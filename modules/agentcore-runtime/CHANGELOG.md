@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/libterty/infra-platform/compare/agentcore-runtime-v0.1.1...agentcore-runtime-v0.1.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **agentcore-runtime:** rewrite the input and output descriptions in Chinese ([b7ddb7a](https://github.com/libterty/infra-platform/commit/b7ddb7a0d062008a0e18760bb95f4ba80d28b6dc))
+
 ## 0.1.1（2026-10-16）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
