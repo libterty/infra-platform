@@ -70,11 +70,12 @@ infra/
 | 5 | `iam` | foundation、containerimage、database | 各 role ARN |
 | 6 | `bridge` | 前面所有 stack（樹 A） | 樹 B |
 | 7 | `eks-cluster` | 樹 B | 版本化的 EKS 合約：叢集名稱、endpoint、CA、cluster SG、service CIDR、app namespace 與 ServiceAccount 名稱 |
-| 8 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
-| 9 | `agent` | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
-| 10 | `application` | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
-| 11 | `operation` | 樹 B | bucket、Lambda 名稱 |
-| 12 | `postdeploy` | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
+| 8 | `eks-addons` | eks-cluster、樹 B | 不發布；Auto Mode 的 NodeClass 與 NodePool、NetworkPolicy、LB Controller、KEDA、CloudWatch 採集、app namespace。要從 VPC 或可連通的網路執行 |
+| 9 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
+| 10 | `agent` | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
+| 11 | `application` | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
+| 12 | `operation` | 樹 B | bucket、Lambda 名稱 |
+| 13 | `postdeploy` | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
 
 實際的 key 以各 stack 的 `ssm-inputs.tf`、`ssm-outputs.tf` 為準。
 
@@ -90,9 +91,9 @@ infra/
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 34 個 key。少了任何一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 36 個 key。少了任何一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
 
-String（30 個，值不可為空）：
+String（31 個，值不可為空）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
@@ -101,9 +102,9 @@ String（30 個，值不可為空）：
 | `signing_public_key_secret_arn` | 簽章 public key 的 secret ARN | application |
 | `agent_runtimes` | JSON 陣列，Runtime 名稱 | agent |
 | `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | agent、application、operation |
-| `vpc_id` | VPC id | loadbalancer、application |
+| `vpc_id` | VPC id | eks-addons、loadbalancer、application |
 | `alb_sg_id` | ALB 的 security group | loadbalancer |
-| `app_sg_id` | app 層的 security group | application、operation |
+| `app_sg_id` | app 層的 security group | eks-addons、application、operation |
 | `agent_sg_id` | agent 層的 security group | agent |
 | `bastion_sg_id` | bastion 的 security group | operation |
 | `db_proxy_endpoint` | RDS Proxy endpoint | agent、application、operation |
@@ -120,14 +121,15 @@ String（30 個，值不可為空）：
 | `agent_runtime_role_arn` | AgentCore Runtime role | agent |
 | `eks_api_sg_id` | 控制平面 ENI 的 security group | eks-cluster |
 | `eks_cluster_role_arn` | EKS 叢集 role | eks-cluster |
-| `eks_node_role_arn` | Auto Mode node role | eks-cluster |
+| `eks_node_role_arn` | Auto Mode node role | eks-cluster、eks-addons |
 | `api_pod_role_arn` | api 的 Pod Identity role | eks-cluster |
 | `worker_pod_role_arn` | worker 的 Pod Identity role | eks-cluster |
 | `lb_controller_role_arn` | AWS Load Balancer Controller 的 role | eks-cluster |
 | `keda_role_arn` | KEDA operator 的 role | eks-cluster |
 | `cloudwatch_agent_role_arn` | CloudWatch agent 與 Fluent Bit 的 role | eks-cluster |
+| `node_sg_id` | EKS node 的 security group | eks-addons |
 
-StringList（4 個，逗號分隔）：
+StringList（5 個，逗號分隔）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
@@ -135,6 +137,7 @@ StringList（4 個，逗號分隔）：
 | `public_subnet_ids` | public subnet，至少 2 個 | loadbalancer |
 | `app_subnet_ids` | app subnet，至少 2 個 | eks-cluster、application、operation |
 | `agent_subnet_ids` | agent subnet，至少 2 個 | agent |
+| `app_subnet_cidrs` | app subnet 的 CIDR（控制平面 ENI 與 interface endpoint 所在） | eks-addons |
 
 `bridge` 在 apply 前用 `guards.tf` 檢查：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes` 與 `ecr_repository_urls` 是合法 JSON。外部發布者也應該照這幾條驗過再寫。
 
@@ -258,7 +261,7 @@ cd infra/terraform
 | Secrets Manager secret（`foundation`） | `recovery_window_in_days = 7` | 刪除後保留 7 天，期間不能用同名重建；secret 的值是在 Terraform 外面寫的，刪了就沒有，要先備份 |
 | Redis（`database`） | module 沒有設定 final snapshot | 要保留資料就先手動做 snapshot |
 
-`bridge` 之後的 stack（7–12）只依賴樹 B，所以要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經照這樣排；單獨 destroy 某個 stack 時要自己注意順序。destroy 不會刪掉不是這份範本建的東西（外部發布的樹 B、state bucket 本身）。
+`bridge` 之後的 stack（7–13）只依賴樹 B，所以要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經照這樣排；單獨 destroy 某個 stack 時要自己注意順序。destroy 不會刪掉不是這份範本建的東西（外部發布的樹 B、state bucket 本身）。
 
 ## 已知限制
 

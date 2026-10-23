@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Apply order, on one line: check-ssm-contract.sh parses it from here. Destroy runs it backwards.
-ORDER=(containerimage foundation network database iam bridge eks-cluster loadbalancer agent application operation postdeploy)
+ORDER=(containerimage foundation network database iam bridge eks-cluster eks-addons loadbalancer agent application operation postdeploy)
 
 # Envs whose tree B (the shared SSM prefix) is published by someone else. For these `all` skips the bridge stack,
 # and asking for bridge by name is an error. Empty means every env runs bridge.
