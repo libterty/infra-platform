@@ -16,13 +16,8 @@ override_module {
     strings = {
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
       target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
-      cluster_name              = "example-dev-app"
-      api_service_name          = "example-dev-api"
-      worker_service_name       = "example-dev-worker"
-      api_log_group_name        = "/ecs/example-dev-api"
-      worker_log_group_name     = "/ecs/example-dev-worker"
-      api_max_capacity          = "10"
-      worker_max_capacity       = "6"
+      cluster_name              = "example-dev"
+      app_namespace             = "app"
       stream_length_cap         = "100000"
       agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
@@ -48,13 +43,8 @@ run "reads_the_late_stack_keys_from_tree_a_and_only_the_topic_from_tree_b" {
     condition = local.ssm_input_strings == {
       alb_arn_suffix            = "loadbalancer/alb_arn_suffix"
       target_group_arn_suffixes = "loadbalancer/target_group_arn_suffixes"
-      cluster_name              = "application/cluster_name"
-      api_service_name          = "application/api_service_name"
-      worker_service_name       = "application/worker_service_name"
-      api_log_group_name        = "application/api_log_group_name"
-      worker_log_group_name     = "application/worker_log_group_name"
-      api_max_capacity          = "application/api_max_capacity"
-      worker_max_capacity       = "application/worker_max_capacity"
+      cluster_name              = "eks-cluster/cluster_name"
+      app_namespace             = "eks-cluster/app_namespace"
       stream_length_cap         = "application/stream_length_cap"
       agent_runtime_arns        = "agent/agent_runtime_arns"
       agent_memory_arn          = "agent/agent_memory_arn"
@@ -75,7 +65,7 @@ run "nothing_is_created_by_default" {
 
   assert {
     condition = (
-      length(module.service_alarms) == 0 && length(module.stream_alarms) == 0 &&
+      length(module.workload_alarms) == 0 && length(module.stream_alarms) == 0 &&
       length(module.api_log_alarms) == 0 && length(module.worker_log_alarms) == 0 && length(module.traces) == 0
     )
     error_message = "All five features default to off"
@@ -84,19 +74,19 @@ run "nothing_is_created_by_default" {
 
 # ---- the switches are independent ----
 
-run "service_alarms_alone" {
+run "workload_alarms_alone" {
   command = plan
 
   variables {
-    service_alarms_enabled = true
+    workload_alarms_enabled = true
   }
 
   assert {
     condition = (
-      toset(keys(module.service_alarms)) == toset(["api", "worker"]) && length(module.stream_alarms) == 0 &&
+      toset(keys(module.workload_alarms)) == toset(["api", "worker"]) && length(module.stream_alarms) == 0 &&
       length(module.api_log_alarms) == 0 && length(module.worker_log_alarms) == 0 && length(module.traces) == 0
     )
-    error_message = "Only the two service alarm modules appear"
+    error_message = "Only the two workload alarm modules appear"
   }
 }
 
@@ -109,7 +99,7 @@ run "stream_alarms_alone" {
 
   assert {
     condition = (
-      length(module.stream_alarms) == 1 && length(module.service_alarms) == 0 &&
+      length(module.stream_alarms) == 1 && length(module.workload_alarms) == 0 &&
       length(module.api_log_alarms) == 0 && length(module.worker_log_alarms) == 0 && length(module.traces) == 0
     )
     error_message = "Only the stream alarms appear"
@@ -125,7 +115,7 @@ run "log_alarms_alone" {
 
   assert {
     condition = (
-      length(module.api_log_alarms) == 1 && length(module.worker_log_alarms) == 1 && length(module.service_alarms) == 0 &&
+      length(module.api_log_alarms) == 1 && length(module.worker_log_alarms) == 1 && length(module.workload_alarms) == 0 &&
       length(module.stream_alarms) == 0 && length(module.traces) == 0
     )
     error_message = "Only the two log alarm modules appear"
@@ -141,7 +131,7 @@ run "tracing_alone" {
 
   assert {
     condition = (
-      length(module.traces) == 1 && length(module.service_alarms) == 0 && length(module.stream_alarms) == 0 &&
+      length(module.traces) == 1 && length(module.workload_alarms) == 0 && length(module.stream_alarms) == 0 &&
       length(module.api_log_alarms) == 0 && length(module.worker_log_alarms) == 0
     )
     error_message = "Only the trace delivery appears"
@@ -152,52 +142,67 @@ run "all_features_together" {
   command = plan
 
   variables {
-    service_alarms_enabled = true
-    stream_alarms_enabled  = true
-    log_alarms_enabled     = true
-    tracing_enabled        = true
+    workload_alarms_enabled = true
+    stream_alarms_enabled   = true
+    log_alarms_enabled      = true
+    tracing_enabled         = true
   }
 
   assert {
     condition = (
-      length(module.service_alarms) == 2 && length(module.stream_alarms) == 1 && length(module.api_log_alarms) == 1 &&
+      length(module.workload_alarms) == 2 && length(module.stream_alarms) == 1 && length(module.api_log_alarms) == 1 &&
       length(module.worker_log_alarms) == 1 && length(module.traces) == 1
     )
     error_message = "Switching everything on adds up"
   }
 }
 
-# ---- service alarms and dashboards ----
+# ---- workload alarms (design v4 §10) ----
 
-run "api_alarms_include_the_target_group_and_the_ceiling" {
+run "api_alarms_include_the_target_group" {
   command = plan
 
   assert {
-    condition = (
-      local.service_alarm_services["api"].load_balancer == {
-        alb_arn_suffix          = "app/example-dev-alb/0123456789abcdef"
-        target_group_arn_suffix = "targetgroup/example-dev-alb-api/0123456789ab"
-      } && local.service_alarm_services["api"].max_capacity == 10
-    )
-    error_message = "The api has load balancer alarms and an at-max-capacity alarm sized from the application stack"
+    condition = local.workloads["api"].load_balancer == {
+      alb_arn_suffix          = "app/example-dev-alb/0123456789abcdef"
+      target_group_arn_suffix = "targetgroup/example-dev-alb-api/0123456789ab"
+    }
+    error_message = "The api gets the target 5xx, latency and healthy host alarms on its target group"
   }
-}
-
-run "worker_alarms_have_no_load_balancer_and_its_own_ceiling" {
-  command = plan
 
   assert {
-    condition     = local.service_alarm_services["worker"].load_balancer == null && local.service_alarm_services["worker"].max_capacity == 6
+    condition     = local.workloads["worker"].load_balancer == null
     error_message = "The worker sits behind no load balancer"
   }
 }
 
-run "each_service_gets_its_own_dashboard" {
+run "workload_alarms_watch_the_deployments_ci_creates" {
   command = plan
 
+  variables {
+    workload_alarms_enabled = true
+  }
+
   assert {
-    condition     = local.service_alarm_services["api"].dashboard_name == "example-dev-api" && local.service_alarm_services["worker"].dashboard_name == "example-dev-worker"
-    error_message = "One dashboard per service, named after it, instead of one cross-service dashboard"
+    condition     = toset(keys(module.workload_alarms)) == toset(["api", "worker"])
+    error_message = "One alarm set per workload"
+  }
+
+  assert {
+    condition = (
+      local.workload_alarm_inputs["api"].cluster_name == "example-dev" &&
+      local.workload_alarm_inputs["api"].namespace == "app" &&
+      local.workload_alarm_inputs["api"].workload_name == "api" &&
+      local.workload_alarm_inputs["api"].container_name == "api" &&
+      local.workload_alarm_inputs["worker"].workload_name == "worker" &&
+      local.workload_alarm_inputs["api"].name == "example-dev-api"
+    )
+    error_message = "Deployments and containers are named after the workload (deploy/charts/app, release api or worker) in the eks-cluster namespace"
+  }
+
+  assert {
+    condition     = length(module.workload_alarms["api"].alarm_names) > length(module.workload_alarms["worker"].alarm_names)
+    error_message = "The api has the load balancer alarms on top of the workload ones"
   }
 }
 
@@ -239,22 +244,29 @@ run "log_alarms_match_json_events_in_the_right_log_group" {
 
   assert {
     condition = alltrue([
-      for a in concat(values(local.api_log_alarms), values(local.worker_log_alarms)) : startswith(a.pattern, "{ $.event = \"")
+      for k, a in local.api_log_alarms : a.pattern == "{ $.kubernetes.namespace_name = \"app\" && $.kubernetes.container_name = \"api\" && $.log_processed.event = \"${k}\" }"
     ])
-    error_message = "Filters match the JSON event field the application logs"
+    error_message = "Fluent Bit puts the parsed JSON line under log_processed; the api filters also match the namespace and the container"
+  }
+
+  assert {
+    condition = alltrue([
+      for k, a in local.worker_log_alarms : strcontains(a.pattern, "$.kubernetes.container_name = \"worker\"") && strcontains(a.pattern, "$.log_processed.event = \"${k}\"")
+    ])
+    error_message = "The worker filters match the worker container only"
   }
 }
 
-run "rate_limiter_unavailable_alarms_on_a_minute_of_task_seconds_in_five_minutes" {
+run "rate_limiter_unavailable_alarms_on_a_minute_of_pod_seconds_in_five_minutes" {
   command = plan
 
   assert {
     condition     = local.api_log_alarms["rate_limiter_unavailable"].period == 300 && local.api_log_alarms["rate_limiter_unavailable"].threshold == 60
-    error_message = "A short blip is tolerated; a minute of task time unmetered in five minutes is not"
+    error_message = "A short blip is tolerated; a minute of Pod time unmetered in five minutes is not"
   }
 }
 
-run "log_alarms_use_the_log_groups_application_published" {
+run "log_alarms_read_the_container_insights_application_log_group" {
   command = plan
 
   variables {
@@ -262,8 +274,8 @@ run "log_alarms_use_the_log_groups_application_published" {
   }
 
   assert {
-    condition     = local.log_group_names == { api = "/ecs/example-dev-api", worker = "/ecs/example-dev-worker" }
-    error_message = "Filters read the log groups of the services themselves"
+    condition     = local.application_log_group_name == "/aws/containerinsights/example-dev/application"
+    error_message = "The CloudWatch observability add-on writes every container log of the cluster to this group"
   }
 }
 
@@ -302,13 +314,8 @@ run "a_second_runtime_gets_its_own_trace_source" {
       strings = {
         alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
         target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
-        cluster_name              = "example-dev-app"
-        api_service_name          = "example-dev-api"
-        worker_service_name       = "example-dev-worker"
-        api_log_group_name        = "/ecs/example-dev-api"
-        worker_log_group_name     = "/ecs/example-dev-worker"
-        api_max_capacity          = "10"
-        worker_max_capacity       = "6"
+        cluster_name              = "example-dev"
+        app_namespace             = "app"
         stream_length_cap         = "100000"
         agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\",\"agent-lite\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent_lite-XyZxYzXy\"}"
         agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"

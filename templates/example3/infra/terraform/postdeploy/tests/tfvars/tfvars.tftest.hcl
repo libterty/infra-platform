@@ -12,13 +12,8 @@ override_module {
     strings = {
       alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
       target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
-      cluster_name              = "example-dev-app"
-      api_service_name          = "example-dev-api"
-      worker_service_name       = "example-dev-worker"
-      api_log_group_name        = "/ecs/example-dev-api"
-      worker_log_group_name     = "/ecs/example-dev-worker"
-      api_max_capacity          = "10"
-      worker_max_capacity       = "6"
+      cluster_name              = "example-dev"
+      app_namespace             = "app"
       stream_length_cap         = "100000"
       agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
       agent_memory_arn          = "arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:memory/example_dev_memory-KlMnOpQr"
@@ -58,12 +53,12 @@ run "tfvars_switch_every_feature_on" {
   command = plan
 
   assert {
-    condition     = var.service_alarms_enabled && var.stream_alarms_enabled && var.log_alarms_enabled && var.tracing_enabled
+    condition     = var.workload_alarms_enabled && var.stream_alarms_enabled && var.log_alarms_enabled && var.tracing_enabled
     error_message = "The placeholder tfvars show every feature on; the defaults are off"
   }
 
   assert {
-    condition     = length(module.service_alarms) == 2 && length(module.traces) == 1
+    condition     = length(module.workload_alarms) == 2 && length(module.traces) == 1
     error_message = "With every feature on the modules exist"
   }
 }
