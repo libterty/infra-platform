@@ -1,9 +1,9 @@
 output "policy_names" {
-  description = "Names of the attached inline policies."
+  description = "已附加的 inline policy 名稱清單。"
   value       = keys(aws_iam_role_policy.this)
 }
 
 output "role_name" {
-  description = "Name of the role the policies are attached to."
+  description = "從 `role_arn` 取出的 role 名稱。"
   value       = local.role_name
 }
