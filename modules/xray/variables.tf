@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  description = "Rule and group names are <name_prefix>-<key>; X-Ray limits both to 32 characters."
+  description = "rule 與 group 的名稱前綴，名稱是 `<name_prefix>-<key>`，X-Ray 限制總長最多 32 字元。"
 }
 
 variable "sampling_rules" {
@@ -16,7 +16,7 @@ variable "sampling_rules" {
     attributes     = optional(map(string), {})
   }))
   default     = {}
-  description = "Sampling rules keyed by short name. priority is 1-9999 (lower wins), fixed_rate is 0-1, reservoir_size is traces per second sampled before fixed_rate applies."
+  description = "sampling rule，key 是 rule 短名。欄位：`priority`（必填，1–9999，越小越先套用，不可重複）、`fixed_rate`（必填，0–1）、`reservoir_size`（每秒先抽的 trace 數，超過才套用 `fixed_rate`，預設 `1`，不得為負）、`service_name`、`service_type`、`host`、`http_method`、`url_path`（預設都是 `*`）、`attributes`（預設 `{}`）。"
 
   validation {
     condition = alltrue([for k, v in var.sampling_rules :
@@ -41,7 +41,7 @@ variable "groups" {
     notifications_enabled = optional(bool, false)
   }))
   default     = {}
-  description = "X-Ray groups keyed by short name, for example fault = true OR error = true, or responsetime > 3."
+  description = "X-Ray group，key 是 group 短名。欄位：`filter_expression`（必填，不可為空白，例如 `fault = true OR error = true`、`responsetime > 3`）、`insights_enabled`（預設 `false`）、`notifications_enabled`（預設 `false`，為 `true` 時 `insights_enabled` 也必須是 `true`）。"
 
   validation {
     condition = alltrue([for k, v in var.groups :
@@ -59,5 +59,5 @@ variable "groups" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags applied to every rule and group."
+  description = "套用到每個 rule 與 group 的 tag。"
 }
