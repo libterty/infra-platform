@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/waf-web-acl-v0.1.0...waf-web-acl-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **waf-web-acl:** rewrite the input and output descriptions in Chinese ([7e4f117](https://github.com/libterty/infra-platform/commit/7e4f1171c9ae1aa4bb82b732ef3de75ac3aca8f3))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
