@@ -33,8 +33,8 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C2 | example2 原樣複製成 example3，只改 README 裡的路徑與範本名稱 | 完成：`git archive` 複製 196 個追蹤中的檔案；README 只改標題、改寫中說明與驗證指令的路徑；兩個範本 22 個 stack 全部通過、`check-ssm-contract.sh` 兩邊都過；example2 無變動 | — |
 | C3 | `network`（vpc 0.2.0、subnet tag、`node` SG、`app` SG 規則、endpoint、runner 的來源）、`iam`（新增 EKS 的 role，ECS role 先保留） | 完成：network 43、iam 34 個 run 全過；example3 11 個 stack 與 `check-ssm-contract.sh` 通過；突變（pod trust 不限叢集、api_pod 保留 ECS Exec）都被抓到；example2 無變動 | — |
 | C4 | `eks-cluster` stack；ORDER 加入 `eks-cluster`；EKS 合約 | 完成：eks-cluster 22 個 run、bridge 16 個 run 全過；example3 12 個 stack 與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；example2 無變動 | — |
-| C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 進行中 | — |
-| C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 未開始 | — |
+| C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 程式合併（#67）；發版卡在 GitHub 事件，Release run 失敗 4 次，等恢復後重跑 | — |
+| C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 進行中：程式與測試完成，以本機 module 路徑驗證；等 0.3.0 上 HCP 與 helm lock | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 未開始 | — |
 | C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
 | C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
