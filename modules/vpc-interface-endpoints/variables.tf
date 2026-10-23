@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Prefix for the security group and endpoint Name tags."
+  description = "security group 與 endpoint `Name` tag 的前綴。2–48 字元，限小寫英數字與 `-`，以字母開頭。"
   type        = string
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,47}$", var.name))
@@ -8,7 +8,7 @@ variable "name" {
 }
 
 variable "vpc_id" {
-  description = "VPC the endpoints and the security group are created in."
+  description = "endpoint 與 security group 所在的 VPC，格式 `vpc-0123456789abcdef0`。"
   type        = string
   validation {
     condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
@@ -17,7 +17,7 @@ variable "vpc_id" {
 }
 
 variable "allowed_cidrs" {
-  description = "IPv4 CIDRs allowed to reach the endpoints on 443, usually [vpc_cidr]."
+  description = "允許連 endpoint 443 port 的 IPv4 CIDR，至少一個，不可含 `0.0.0.0/0`；通常給 `[vpc_cidr]`。"
   type        = list(string)
   validation {
     condition = length(var.allowed_cidrs) > 0 && alltrue([for c in var.allowed_cidrs :
@@ -28,7 +28,7 @@ variable "allowed_cidrs" {
 }
 
 variable "subnet_ids" {
-  description = "One subnet per AZ for the endpoint network interfaces."
+  description = "endpoint 網路介面所在的 subnet，每個 AZ 一個，至少兩個不重複。"
   type        = list(string)
   validation {
     condition     = length(distinct(var.subnet_ids)) >= 2
@@ -37,7 +37,7 @@ variable "subnet_ids" {
 }
 
 variable "services" {
-  description = "Service names after com.amazonaws.<region>., e.g. ecr.api. Empty creates nothing."
+  description = "要建的服務名稱，只寫 `com.amazonaws.<region>.` 之後的部分，例如 `ecr.api`；空集合時什麼都不建。"
   type        = set(string)
   default     = []
   validation {
@@ -47,13 +47,13 @@ variable "services" {
 }
 
 variable "private_dns_enabled" {
-  description = "Whether the endpoints override the public service DNS name inside the VPC; the VPC needs DNS support and hostnames enabled."
+  description = "是否在 VPC 內用 endpoint 蓋過公開服務的 DNS 名稱；VPC 必須開啟 DNS support 與 DNS hostnames。"
   type        = bool
   default     = true
 }
 
 variable "tags" {
-  description = "Extra tags; Name is set by the module."
+  description = "額外的 tag；`Name` 由 module 加上。"
   type        = map(string)
   default     = {}
 }
