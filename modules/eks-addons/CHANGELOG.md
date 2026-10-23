@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/libterty/infra-platform/compare/eks-addons-v0.2.0...eks-addons-v0.3.0) (2026-10-23)
+
+
+### Features
+
+* **eks-addons:** aggregate TargetGroupBinding and KEDA roles into the default edit roles ([499a105](https://github.com/libterty/infra-platform/commit/499a10556f0489d706abc4a9320425cb406d3302))
+
 ## [0.2.0](https://github.com/libterty/infra-platform/compare/eks-addons-v0.1.0...eks-addons-v0.2.0) (2026-10-22)
 
 
