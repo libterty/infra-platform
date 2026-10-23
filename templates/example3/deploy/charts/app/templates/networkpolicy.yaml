@@ -1,0 +1,57 @@
+{{- $np := .Values.networkPolicy }}
+# The app NodeClass is DefaultDeny (design v4 K5). The Pod security group narrows VPC traffic further; this policy is
+# what limits traffic leaving the VPC.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "app.selector" . | nindent 6 }}
+  policyTypes:
+    {{- if include "app.isApi" . }}
+    - Ingress
+    {{- end }}
+    - Egress
+  {{- if include "app.isApi" . }}
+  # The ALB reaches the Pods from inside the VPC; the app security group admits only the ALB group on this port.
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: {{ $np.vpcCidr | quote }}
+      ports:
+        - port: {{ .Values.port }}
+          protocol: TCP
+  {{- end }}
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ $np.dnsCidr | quote }}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # RDS Proxy and Redis.
+    - to:
+        - ipBlock:
+            cidr: {{ $np.vpcCidr | quote }}
+      ports:
+        {{- range .Values.dataPorts }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+    # AWS APIs (Secrets Manager, Bedrock, AgentCore, CloudWatch), through NAT or the interface endpoints.
+    - ports:
+        - port: 443
+          protocol: TCP
+    # EKS Pod Identity agent, which hands out the credentials.
+    - to:
+        - ipBlock:
+            cidr: 169.254.170.23/32
+      ports:
+        - port: 80
+          protocol: TCP

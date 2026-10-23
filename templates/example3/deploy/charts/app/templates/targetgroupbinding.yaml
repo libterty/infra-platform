@@ -1,0 +1,16 @@
+{{- if and (include "app.isApi" .) .Values.targetGroupArn }}
+# AWS Load Balancer Controller binding (design v4 E4). No networking block: the security group rules belong to
+# Terraform, and the controller would otherwise edit them.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  targetGroupARN: {{ .Values.targetGroupArn | quote }}
+  targetType: ip
+  serviceRef:
+    name: {{ .Release.Name }}
+    port: {{ .Values.port }}
+{{- end }}

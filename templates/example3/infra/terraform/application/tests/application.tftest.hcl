@@ -17,10 +17,11 @@ override_module {
   target = module.in
   outputs = {
     strings = {
-      api_target_group_arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
-      alb_arn_suffix       = "app/example-dev-alb/0123456789abcdef"
-      agent_runtime_arns   = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
-      guardrail_ids        = "{\"default\":\"gr0input00001\",\"output\":\"gr0output00003\"}"
+      api_target_group_arn      = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab"
+      alb_arn_suffix            = "app/example-dev-alb/0123456789abcdef"
+      target_group_arn_suffixes = "{\"api\":\"targetgroup/example-dev-alb-api/0123456789ab\"}"
+      agent_runtime_arns        = "{\"agent\":\"arn:aws:bedrock-agentcore:ap-northeast-1:111111111111:runtime/example_dev_agent-AbCdEfGh\"}"
+      guardrail_ids             = "{\"default\":\"gr0input00001\",\"output\":\"gr0output00003\"}"
     }
   }
 }
@@ -66,10 +67,11 @@ run "reads_the_late_stack_keys_from_tree_a_and_the_rest_from_tree_b" {
 
   assert {
     condition = local.ssm_input_strings == {
-      api_target_group_arn = "loadbalancer/api_target_group_arn"
-      alb_arn_suffix       = "loadbalancer/alb_arn_suffix"
-      agent_runtime_arns   = "agent/agent_runtime_arns"
-      guardrail_ids        = "agent/guardrail_ids"
+      api_target_group_arn      = "loadbalancer/api_target_group_arn"
+      alb_arn_suffix            = "loadbalancer/alb_arn_suffix"
+      target_group_arn_suffixes = "loadbalancer/target_group_arn_suffixes"
+      agent_runtime_arns        = "agent/agent_runtime_arns"
+      guardrail_ids             = "agent/guardrail_ids"
     }
     error_message = "application reads the target group and ALB from loadbalancer and the Runtime and guardrails from agent"
   }
@@ -409,12 +411,113 @@ run "publishes_the_cluster_services_and_log_groups" {
       api_max_capacity      = "/example/dev/application/api_max_capacity"
       worker_max_capacity   = "/example/dev/application/worker_max_capacity"
       stream_length_cap     = "/example/dev/application/stream_length_cap"
+      # Deploy contract of the EKS version (design v4 §8.1); the ECS keys above stay until phase C7.
+      app_port                = "/example/dev/application/app_port"
+      vpc_cidr                = "/example/dev/application/vpc_cidr"
+      api_target_group_arn    = "/example/dev/application/api_target_group_arn"
+      api_image_repository    = "/example/dev/application/api_image_repository"
+      worker_image_repository = "/example/dev/application/worker_image_repository"
+      api_environment_json    = "/example/dev/application/api_environment_json"
+      worker_environment_json = "/example/dev/application/worker_environment_json"
+      api_scaling_json        = "/example/dev/application/api_scaling_json"
+      worker_scaling_json     = "/example/dev/application/worker_scaling_json"
     }
-    error_message = "application publishes eight keys under its own path"
+    error_message = "application publishes the eight ECS keys and the nine deploy contract keys under its own path"
   }
 
   assert {
     condition     = local.published_strings.api_max_capacity == "10" && local.published_strings.worker_max_capacity == "6" && local.published_strings.stream_length_cap == "100000"
     error_message = "The scaling ceilings and the stream cap are published so postdeploy sizes its alarms from the same numbers"
+  }
+}
+
+# ---- deploy contract (design v4 §8.1, §9) ----
+
+run "deploy_contract_forwards_what_the_chart_needs" {
+  command = plan
+
+  assert {
+    condition = (
+      local.published_strings.app_port == "8080" &&
+      local.published_strings.vpc_cidr == "10.10.0.0/16" &&
+      local.published_strings.api_target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" &&
+      local.published_strings.api_image_repository == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api" &&
+      local.published_strings.worker_image_repository == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-worker"
+    )
+    error_message = "CI reads the port, the VPC CIDR, the api target group and both repositories from the application prefix only"
+  }
+}
+
+run "environment_json_matches_the_ecs_environment" {
+  command = plan
+
+  assert {
+    condition     = jsondecode(local.published_strings.api_environment_json) == local.api_environment
+    error_message = "api_environment_json is the same environment the ECS api task gets"
+  }
+
+  assert {
+    condition     = jsondecode(local.published_strings.worker_environment_json) == local.worker_environment
+    error_message = "worker_environment_json is the same environment the ECS worker task gets"
+  }
+
+  assert {
+    condition     = alltrue([for k, v in jsondecode(local.published_strings.api_environment_json) : can(regex("^[A-Z][A-Z0-9_]*$", k)) && can(tostring(v))])
+    error_message = "Every environment entry is an upper-case name with a string value"
+  }
+
+  assert {
+    condition     = !anytrue([for k, _ in jsondecode(local.published_strings.api_environment_json) : can(regex("SECRET$|PASSWORD|PRIVATE_KEY$", k))])
+    error_message = "Secrets travel as ARNs only (design v4 §8.2)"
+  }
+}
+
+run "api_scaling_json_has_the_keda_fields" {
+  command = plan
+
+  variables {
+    api_min_capacity          = 3
+    api_max_capacity          = 9
+    api_cpu_target_percent    = 55
+    api_requests_per_target   = 250
+    api_streams_per_task_high = 80
+  }
+
+  assert {
+    condition = jsondecode(local.published_strings.api_scaling_json) == {
+      min_replicas            = 3
+      max_replicas            = 9
+      cpu_target_percent      = 55
+      requests_per_target     = 250
+      streams_per_replica     = 80
+      region                  = "ap-northeast-1"
+      alb_arn_suffix          = "app/example-dev-alb/0123456789abcdef"
+      target_group_arn_suffix = "targetgroup/example-dev-alb-api/0123456789ab"
+    }
+    error_message = "api scaling: replica bounds, the three triggers of design v4 §9 and the ALB dimensions"
+  }
+}
+
+run "worker_scaling_json_targets_a_quarter_of_the_cap_per_replica" {
+  command = plan
+
+  variables {
+    worker_min_capacity = 2
+    worker_max_capacity = 5
+    stream_length_cap   = 40000
+  }
+
+  assert {
+    condition = jsondecode(local.published_strings.worker_scaling_json) == {
+      min_replicas        = 2
+      max_replicas        = 5
+      backlog_per_replica = 10000
+      region              = "ap-northeast-1"
+      metric_namespace    = "Example/dev"
+      metric_name         = "StreamBacklogMax"
+      dimension_name      = "Env"
+      dimension_value     = "dev"
+    }
+    error_message = "worker scaling follows the same backlog metric as example2, a quarter of stream_length_cap per replica"
   }
 }

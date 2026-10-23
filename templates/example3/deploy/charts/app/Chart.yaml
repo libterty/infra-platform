@@ -1,0 +1,5 @@
+apiVersion: v2
+name: app
+description: Example chart of the example3 api and worker on EKS. One release per workload; deploy/values-from-ssm.sh builds the values from the SSM deploy contract.
+type: application
+version: 0.1.0

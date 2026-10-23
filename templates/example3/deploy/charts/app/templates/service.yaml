@@ -1,0 +1,17 @@
+{{- if include "app.isApi" . }}
+# ClusterIP only: the ALB belongs to Terraform, and Pods reach it through the TargetGroupBinding.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "app.selector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http
+{{- end }}

@@ -1,0 +1,47 @@
+# No replicas field: the KEDA ScaledObject owns the replica count.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "app.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "app.selector" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      nodeSelector:
+        karpenter.sh/nodepool: {{ .Values.nodePool }}
+      securityContext:
+        # Idle streams are cut by middleboxes without a word; probing earlier makes dead peers visible (design v4 §8.2).
+        sysctls:
+          - name: net.ipv4.tcp_keepalive_time
+            value: "60"
+          - name: net.ipv4.tcp_keepalive_intvl
+            value: "10"
+          - name: net.ipv4.tcp_keepalive_probes
+            value: "3"
+      containers:
+        - name: {{ .Values.component }}
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          {{- if include "app.isApi" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          {{- end }}
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml (get .Values.resources .Values.component) | nindent 12 }}

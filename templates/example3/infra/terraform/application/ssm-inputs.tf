@@ -2,8 +2,10 @@ locals {
   ssm_input_strings = {
     api_target_group_arn = "loadbalancer/api_target_group_arn"
     alb_arn_suffix       = "loadbalancer/alb_arn_suffix"
-    agent_runtime_arns   = "agent/agent_runtime_arns"
-    guardrail_ids        = "agent/guardrail_ids"
+    # The api KEDA trigger needs the TargetGroup dimension, which is the suffix, not the ARN.
+    target_group_arn_suffixes = "loadbalancer/target_group_arn_suffixes"
+    agent_runtime_arns        = "agent/agent_runtime_arns"
+    guardrail_ids             = "agent/guardrail_ids"
   }
 
   shared_input_strings = {
