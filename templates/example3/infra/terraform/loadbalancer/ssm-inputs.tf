@@ -3,6 +3,8 @@ locals {
     vpc_id          = "infra/vpc_id"
     alb_sg_id       = "infra/alb_sg_id"
     alarm_topic_arn = "infra/alarm_topic_arn"
+    # The breaker Lambda image of the canary (containerimage).
+    ecr_repository_urls = "infra/ecr_repository_urls"
   }
 
   shared_input_lists = {

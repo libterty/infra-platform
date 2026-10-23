@@ -71,11 +71,11 @@ infra/
 | 6 | `bridge` | 前面所有 stack（樹 A） | 樹 B |
 | 7 | `eks-cluster` | 樹 B | 版本化的 EKS 合約：叢集名稱、endpoint、CA、cluster SG、service CIDR、app namespace 與 ServiceAccount 名稱 |
 | 8 | `eks-addons` | eks-cluster、樹 B | 不發布；Auto Mode 的 NodeClass 與 NodePool、NetworkPolicy、LB Controller、KEDA、CloudWatch 採集、app namespace。要從 VPC 或可連通的網路執行 |
-| 9 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
+| 9 | `loadbalancer` | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱；開了 canary 時另外發布 `api_canary_target_group_arn` |
 | 10 | `agent` | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
-| 11 | `application` | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
+| 11 | `application` | 樹 B、loadbalancer、agent | 不建資源；部署合約（port、VPC CIDR、api target group、image repository、環境變數與擴縮的 JSON）與 stream 長度上限 |
 | 12 | `operation` | 樹 B | bucket、Lambda 名稱 |
-| 13 | `postdeploy` | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
+| 13 | `postdeploy` | 樹 B、eks-cluster、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
 
 實際的 key 以各 stack 的 `ssm-inputs.tf`、`ssm-outputs.tf` 為準。
 
@@ -91,9 +91,9 @@ infra/
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 36 個 key。少了任何一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 33 個 key。少了任何一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值的來源是樹 A 的同名 key（`bridge` 原樣轉寫）。
 
-String（31 個，值不可為空）：
+String（28 個，值不可為空）：
 
 | key | 內容 | 讀的 stack |
 |---|---|---|
@@ -101,10 +101,10 @@ String（31 個，值不可為空）：
 | `signing_private_key_secret_arn` | 簽章 private key 的 secret ARN | application |
 | `signing_public_key_secret_arn` | 簽章 public key 的 secret ARN | application |
 | `agent_runtimes` | JSON 陣列，Runtime 名稱 | agent |
-| `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | agent、application、operation |
+| `ecr_repository_urls` | JSON 物件，映像名稱 => repository URL | loadbalancer、agent、application、operation |
 | `vpc_id` | VPC id | eks-addons、loadbalancer、application |
 | `alb_sg_id` | ALB 的 security group | loadbalancer |
-| `app_sg_id` | app 層的 security group | eks-addons、application、operation |
+| `app_sg_id` | app 層的 security group | eks-addons、operation |
 | `agent_sg_id` | agent 層的 security group | agent |
 | `bastion_sg_id` | bastion 的 security group | operation |
 | `db_proxy_endpoint` | RDS Proxy endpoint | agent、application、operation |
@@ -113,9 +113,6 @@ String（31 個，值不可為空）：
 | `rate_limit_redis_endpoint` | `host:port` | application |
 | `stream_redis_endpoint` | `host:port` | application |
 | `stream_shard_count` | stream Redis 的 shard 數（字串） | application |
-| `ecs_execution_role_arn` | ECS execution role | application |
-| `api_task_role_arn` | api task role | application |
-| `worker_task_role_arn` | worker task role | application |
 | `import_extract_role_arn` | import-extract Lambda role | operation |
 | `import_load_role_arn` | import-load Lambda role | operation |
 | `agent_runtime_role_arn` | AgentCore Runtime role | agent |
@@ -135,7 +132,7 @@ StringList（5 個，逗號分隔）：
 |---|---|---|
 | `services` | 服務名稱 | application |
 | `public_subnet_ids` | public subnet，至少 2 個 | loadbalancer |
-| `app_subnet_ids` | app subnet，至少 2 個 | eks-cluster、application、operation |
+| `app_subnet_ids` | app subnet，至少 2 個 | eks-cluster、operation |
 | `agent_subnet_ids` | agent subnet，至少 2 個 | agent |
 | `app_subnet_cidrs` | app subnet 的 CIDR（控制平面 ENI 與 interface endpoint 所在） | eks-addons |
 

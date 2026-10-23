@@ -1,13 +1,3 @@
-variable "api_image_tag" {
-  description = "Image tag of the api service. Terraform owns it: change it here and apply."
-  type        = string
-}
-
-variable "worker_image_tag" {
-  description = "Image tag of the worker service. Terraform owns it: change it here and apply."
-  type        = string
-}
-
 variable "app_port" {
   description = "Port the api container listens on. It must equal app_port in the network stack and in the loadbalancer stack."
   type        = number
@@ -41,44 +31,20 @@ variable "trusted_proxies" {
   }
 }
 
-variable "enable_execute_command" {
-  description = "Allow ECS Exec into the tasks. Both task roles carry the ssmmessages permissions it needs."
-  type        = bool
-  default     = false
-}
-
-variable "log_retention_days" {
-  description = "Retention of the service log groups."
-  type        = number
-  default     = 14
-}
-
-variable "api_cpu" {
-  description = "api task CPU units."
-  type        = number
-  default     = 512
-}
-
-variable "api_memory" {
-  description = "api task memory in MiB; must pair with api_cpu."
-  type        = number
-  default     = 1024
-}
-
 variable "api_min_capacity" {
-  description = "Lowest api task count."
+  description = "Lowest api replica count."
   type        = number
   default     = 2
 }
 
 variable "api_max_capacity" {
-  description = "Highest api task count. Every task opens connections to the database proxy and Redis, so raise it only after checking those limits."
+  description = "Highest api replica count. Every replica opens connections to the database proxy and Redis, so raise it only after checking those limits."
   type        = number
   default     = 10
 }
 
 variable "api_requests_per_target" {
-  description = "Target ALB requests per api task."
+  description = "Target ALB requests per api replica (KEDA trigger on RequestCountPerTarget)."
   type        = number
   default     = 300
 }
@@ -90,47 +56,19 @@ variable "api_cpu_target_percent" {
 }
 
 variable "api_streams_per_task_high" {
-  description = "Approximate active streams per api task above which the step policy adds tasks."
+  description = "Target ALB active connections per api replica (KEDA trigger on ActiveConnectionCount)."
   type        = number
   default     = 100
 }
 
-variable "api_scheduled_scaling" {
-  description = "Capacity windows of the api, keyed by name. max_capacity must not exceed api_max_capacity."
-  type = map(object({
-    schedule     = string
-    timezone     = optional(string, "UTC")
-    min_capacity = number
-    max_capacity = number
-  }))
-  default = {}
-
-  validation {
-    condition     = alltrue([for w in values(var.api_scheduled_scaling) : w.max_capacity <= var.api_max_capacity])
-    error_message = "Every scheduled window must keep max_capacity at or below api_max_capacity."
-  }
-}
-
-variable "worker_cpu" {
-  description = "worker task CPU units."
-  type        = number
-  default     = 256
-}
-
-variable "worker_memory" {
-  description = "worker task memory in MiB; must pair with worker_cpu."
-  type        = number
-  default     = 512
-}
-
 variable "worker_min_capacity" {
-  description = "Lowest worker task count."
+  description = "Lowest worker replica count."
   type        = number
   default     = 2
 }
 
 variable "worker_max_capacity" {
-  description = "Highest worker task count."
+  description = "Highest worker replica count."
   type        = number
   default     = 6
 }

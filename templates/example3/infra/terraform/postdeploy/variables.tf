@@ -1,5 +1,5 @@
-variable "service_alarms_enabled" {
-  description = "Create the alarms and the dashboard of the api and the worker."
+variable "workload_alarms_enabled" {
+  description = "Create the workload alarms of the api and the worker (eks-workload-alarms)."
   type        = bool
   default     = false
 }

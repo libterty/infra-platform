@@ -1,6 +1,6 @@
 # infra-platform v4 實作流程：example3
 
-> 狀態：C0–C6 完成（2026-10-23），下一步 C7。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：C0–C7 完成（2026-10-23），下一步 C8。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -36,7 +36,7 @@ C1r 發版、HCP 確認讀得到之後，C3 以後的範本 PR 才開始，因�
 | C5m | `eks-addons` 0.3.0：`aggregate_crd_roles`（design C5-1）；發版、HCP 確認 | 完成：#67 合併；Release run 遇到 GitHub 事件失敗 4 次，恢復後重跑成功；#69 發版，HCP 上的 0.3.0 從消費端抓下來跟 tag 相同 | — |
 | C5 | `eks-addons` stack（用 0.3.0）；ORDER 加入 `eks-addons`（helm lock 由使用者產生） | 完成：eks-addons 16 個 run 加 tfvars 2 個全過；example3 13 個 stack（356 個 run）與 `check-ssm-contract.sh` 通過；9 個突變都被抓到；helm 3.3.0 的 lock 由使用者產生；example2 無變動 | — |
 | C6 | `application` 改成部署合約、範例 chart；舊 key 先保留 | 完成：application 30 個 run、`check-deploy-values.sh` 通過；example3 13 個 stack（360 個 run）與 `check-ssm-contract.sh` 通過；12 個突變都被抓到；example2 無變動 | — |
-| C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 未開始 | — |
+| C7 | `loadbalancer` 的 `canary`（預設關閉）、`postdeploy` 改用 `eks-workload-alarms`；所有 consumer 切換後拿掉 ECS 的 role、key 與 module | 完成：example3 13 個 stack（362 個 run）、`check-ssm-contract.sh`、`check-deploy-values.sh` 通過；14 個突變都被抓到；example3 沒有 ECS module、key 與 `ecs-tasks.amazonaws.com`；example2 無變動 | — |
 | C8 | README、保密比對、全量 `validate.sh`；分開記錄「靜態驗證通過」與「雲端整合待驗證」 | 未開始 | — |
 
 ## 每個 Phase 的做法與驗收
@@ -161,6 +161,14 @@ C6 的結果：
 - 所有 consumer 都切到新 key 之後，拿掉 `iam` 的 ECS role 與權限、`bridge` 與 `application` 的舊 key。
 
 驗收：同 C3；`grep` 確認 example3 沒有 `ecs-*` module、ECS 的 SSM key 與 `ecs-tasks.amazonaws.com`（README 的差異說明除外）。
+
+C7 的結果（設計見 design C7-1 到 C7-6）：
+
+- `loadbalancer`：`canary` 物件與 `canary.tf`（`iam-role`、`lambda-function`、`lb-traffic-breaker`）。測試涵蓋 §6.1 的四種情況：關閉時零個 canary 資源；開啟時第二個 target group、加權 rule、breaker 接線與 Lambda 權限只到三條 rule；`weight > 0` 沒有 breaker 被擋下；SSM 只在開啟時發布 `api_canary_target_group_arn`。
+- `containerimage`：tfvars 加 `traffic-breaker`。`postdeploy`：`eks-workload-alarms`，log 告警改看 `/aws/containerinsights/<cluster>/application`。
+- 拿掉 ECS：`iam` 三個 role、`application` 的 ECS module 與變數、`bridge` 三個 key、README 的樹 B 表（33 個 key）。network 的 SG 描述拿掉 ECS 字樣（SG 會重建，範本還沒有環境 apply 過）。
+- 測試先後：iam、containerimage、loadbalancer、腳本先看到失敗再實作；application 與 postdeploy 改測試後被合約檢查擋住，沒有單獨看到 RED，改以突變補驗。14 個突變：pod role 加回 ECS Exec、application 加回舊 key、container 名稱、namespace、log group、filter 欄位、忽略權重、breaker 能改 listener、拿掉 weight 的檢查、canary key 永遠發布、breaker 看 stable target group、canary 自建 ServiceAccount、canary 用 stable 的維度、拿掉 breaker repository，都被抓到。
+- code review 後補上：canary target group 名稱超過 32 字元時由 `var.canary` 提早擋下；`canary.tftest.hcl` 換掉了 alb 的輸出，所以另外用真的 alb module 確認 breaker 讀的 key；`values-from-ssm.sh --canary` 檢查 ARN 格式。
 
 ### C8：收尾
 

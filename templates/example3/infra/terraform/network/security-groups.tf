@@ -3,7 +3,7 @@ locals {
 
   security_groups = {
     alb      = { name = "${local.name_prefix}-alb", description = "Application load balancer" }
-    app      = { name = "${local.name_prefix}-app", description = "EKS pods (NodeClass pod security group), ECS tasks and Lambda functions" }
+    app      = { name = "${local.name_prefix}-app", description = "EKS pods (NodeClass pod security group) and Lambda functions" }
     agent    = { name = "${local.name_prefix}-agent", description = "AgentCore Runtime" }
     db       = { name = "${local.name_prefix}-db", description = "Aurora cluster, reachable only through the RDS Proxy" }
     db_proxy = { name = "${local.name_prefix}-db-proxy", description = "RDS Proxy" }
@@ -173,7 +173,7 @@ locals {
     },
   )
 
-  # The app group holds the ECS tasks and the Lambda functions, which are the ones that call the peer network.
+  # The app group holds the EKS pods and the Lambda functions, which are the ones that call the peer network.
   peering_egress_rules = {
     for c in var.peering == null ? [] : var.peering.peer_cidrs : "app_out_peer_${replace(replace(c, ".", "_"), "/", "_")}" => {
       security_group = "app"

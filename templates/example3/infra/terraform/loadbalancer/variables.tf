@@ -101,3 +101,44 @@ variable "access_log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "canary" {
+  description = <<-EOT
+    Weighted canary of the api (design v4 §6.1); null creates nothing. weight (0-100) goes to the api-canary target
+    group, the rest to api, on the three api rules. CI deploys a second release bound to api_canary_target_group_arn
+    (deploy/values-from-ssm.sh --canary). breaker adds lb-traffic-breaker: alarms on the canary target group and a
+    Lambda (image <project>-traffic-breaker:<image_tag>) that moves all traffic back to api. A weight above 0 needs
+    the breaker. After a trip, set weight to 0 here and apply before anything else (the next apply restores weight).
+  EOT
+  type = object({
+    weight = number
+    breaker = optional(object({
+      image_tag          = string
+      error_rate_percent = optional(number, 5)
+      min_requests       = optional(number, 50)
+      min_healthy_hosts  = optional(number, 1)
+    }))
+  })
+  default = null
+
+  validation {
+    condition     = var.canary == null ? true : var.canary.weight >= 0 && var.canary.weight <= 100 && var.canary.weight == floor(var.canary.weight)
+    error_message = "canary.weight must be a whole number from 0 to 100."
+  }
+
+  validation {
+    condition     = var.canary == null ? true : var.canary.weight == 0 || var.canary.breaker != null
+    error_message = "A canary weight above 0 needs canary.breaker: nothing else moves the traffic back when the canary fails."
+  }
+
+  # Target group names are <alb name>-<key> and AWS caps them at 32 characters; api-canary is the longest key.
+  validation {
+    condition     = var.canary == null ? true : length("${var.project}-${var.env}-alb-api-canary") <= 32
+    error_message = "The canary target group would be named ${var.project}-${var.env}-alb-api-canary, longer than the 32 characters AWS allows; shorten project or env."
+  }
+
+  validation {
+    condition     = try(var.canary.breaker.image_tag, null) == null ? true : can(regex("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$", var.canary.breaker.image_tag)) && var.canary.breaker.image_tag != "latest"
+    error_message = "canary.breaker.image_tag must be an image tag other than latest."
+  }
+}

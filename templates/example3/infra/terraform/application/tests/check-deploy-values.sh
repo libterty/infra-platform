@@ -2,9 +2,10 @@
 # Offline check of the deploy contract consumer (design v4 §8.1): deploy/values-from-ssm.sh reads the eks-cluster and
 # application keys and the chart in deploy/charts/app renders them. A fake `aws` serves fixed SSM values, so nothing
 # reaches AWS or a cluster. Checks:
-#   1. every key the script reads is published by eks-cluster or application (their ssm-outputs.tf)
+#   1. every key the script reads is published by eks-cluster, application or loadbalancer (their ssm-outputs.tf)
 #   2. the api and worker values render, pass helm lint, and the manifests carry the contract values
-#   3. the script refuses an unknown contract_version and a missing key
+#   3. the canary values (--canary) bind the api to the canary target group and reuse the ServiceAccount
+#   4. the script refuses an unknown contract_version, a missing key and a canary that is not enabled
 # Needs helm and jq; without helm it prints a skip line like scripts/validate.sh does.
 set -euo pipefail
 
@@ -31,10 +32,10 @@ fail() {
 # ---- 1. keys read by the script are published ----
 
 published_keys() {
-  # Keys of the published_strings map at depth 1 (same format check-ssm-contract.sh relies on).
-  awk '
+  # Keys at depth 1 of the map local $2 (default published_strings, the format check-ssm-contract.sh relies on).
+  awk -v map="${2:-published_strings}" '
     /^[[:space:]]*#/ { next }
-    /published_strings[[:space:]]*=[[:space:]]*\{/ { in_map = 1; depth = 1; next }
+    $0 ~ "^[[:space:]]*" map "[[:space:]]*=.*[{][[:space:]]*$" { in_map = 1; depth = 1; next }
     in_map {
       if (depth == 1 && match($0, /^[[:space:]]*[a-z][a-z0-9_]*[[:space:]]*=/)) {
         k = substr($0, RSTART, RLENGTH); gsub(/[[:space:]=]/, "", k); print k
@@ -45,13 +46,14 @@ published_keys() {
   ' "$1"
 }
 
-for stack in eks-cluster application; do
-  published="$(published_keys "${terraform_dir}/${stack}/ssm-outputs.tf")"
-  var="$(echo "$stack" | tr 'a-z-' 'A-Z_')_KEYS"
+# stack:map of the producer, then the array in the script that lists the keys read from it.
+for entry in eks-cluster:published_strings:EKS_CLUSTER_KEYS application:published_strings:APPLICATION_KEYS loadbalancer:canary_strings:CANARY_KEYS; do
+  IFS=: read -r stack map var <<<"$entry"
+  published="$(published_keys "${terraform_dir}/${stack}/ssm-outputs.tf" "$map")"
   keys="$(sed -n "s/^${var}=(\(.*\))$/\1/p" "$script")"
   [ -n "$keys" ] || fail "values-from-ssm.sh has no single-line ${var}=(...)"
   for k in $keys; do
-    grep -qx "$k" <<<"$published" || fail "values-from-ssm.sh reads ${stack}/${k}, which ${stack}/ssm-outputs.tf does not publish"
+    grep -qx "$k" <<<"$published" || fail "values-from-ssm.sh reads ${stack}/${k}, which ${map} of ${stack}/ssm-outputs.tf does not publish"
   done
 done
 
@@ -191,7 +193,30 @@ if helm template api "$chart" -n other -f "${work}/api.json" >/dev/null 2>&1; th
   fail "chart rendered into namespace other although eks-cluster says app"
 fi
 
-# ---- 3. the script refuses what it does not understand ----
+# ---- 3. canary ----
+
+canary_arn=arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api-canary/fedcba9876543210
+fixture /example/dev/loadbalancer/ "api_canary_target_group_arn=${canary_arn}"
+if bash "$script" --project example --env dev --component api --image-tag 1.3.0 --region ap-northeast-1 --canary >"${work}/canary.json" 2>"${work}/canary.err"; then
+  helm template api-canary "$chart" -n app -f "${work}/canary.json" >"${work}/canary.yaml" 2>"${work}/canary.tpl" || fail "helm template canary: $(cat "${work}/canary.tpl")"
+  canary="${work}/canary.yaml"
+  expect "$canary" "targetGroupARN: \"${canary_arn}\""
+  expect "$canary" "dimensionValue: \"targetgroup/example-dev-alb-api-canary/fedcba9876543210;app/example-dev-alb/0123456789abcdef\""
+  expect_line "$canary" "kind: ServiceAccount" 0
+  expect_line "$canary" "serviceAccountName: api" 1
+  expect "$canary" "image: \"111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/example-api:1.3.0\""
+else
+  fail "values-from-ssm.sh --canary failed: $(cat "${work}/canary.err")"
+fi
+if bash "$script" --project example --env dev --component worker --image-tag 1.3.0 --region ap-northeast-1 --canary >/dev/null 2>&1; then
+  fail "values-from-ssm.sh accepted --canary for the worker"
+fi
+fixture /example/dev/loadbalancer/ "api_canary_target_group_arn=example-dev-alb-api-canary"
+if bash "$script" --project example --env dev --component api --image-tag 1.3.0 --region ap-northeast-1 --canary >/dev/null 2>&1; then
+  fail "values-from-ssm.sh accepted a canary target group that is not a target group ARN"
+fi
+
+# ---- 4. the script refuses what it does not understand ----
 
 write_fixtures 2
 if bash "$script" --project example --env dev --component api --image-tag 1.2.3 --region ap-northeast-1 >/dev/null 2>&1; then
@@ -204,6 +229,15 @@ if bash "$script" --project example --env dev --component api --image-tag 1.2.3 
   fail "values-from-ssm.sh accepted a missing api_scaling_json"
 elif ! grep -q "application 沒有發布這些 key：api_scaling_json" "${work}/missing.err"; then
   fail "values-from-ssm.sh must name the missing key, it said: $(cat "${work}/missing.err")"
+fi
+
+write_fixtures 1
+rm -f "${FAKE_SSM_DIR}/_example_dev_loadbalancer_.json"
+fixture /example/dev/loadbalancer/ "alb_arn_suffix=app/example-dev-alb/0123456789abcdef"
+if bash "$script" --project example --env dev --component api --image-tag 1.3.0 --region ap-northeast-1 --canary >/dev/null 2>"${work}/nocanary.err"; then
+  fail "values-from-ssm.sh --canary accepted a loadbalancer without a canary"
+elif ! grep -q "api_canary_target_group_arn" "${work}/nocanary.err"; then
+  fail "values-from-ssm.sh --canary must name the missing key, it said: $(cat "${work}/nocanary.err")"
 fi
 
 if [ "$errors" -ne 0 ]; then

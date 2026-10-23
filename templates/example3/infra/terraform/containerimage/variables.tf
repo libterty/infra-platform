@@ -1,5 +1,5 @@
 variable "services" {
-  description = "Image names other than AgentCore Runtimes: the ECS services and the Lambda functions. This is the single decision point for the list; downstream stacks read it from SSM."
+  description = "Image names other than AgentCore Runtimes: the EKS workloads and the Lambda functions (traffic-breaker is the canary breaker of loadbalancer). This is the single decision point for the list; downstream stacks read it from SSM."
   type        = list(string)
 
   validation {

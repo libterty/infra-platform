@@ -19,3 +19,12 @@ run "tfvars_pair_env_with_a_registered_account" {
     error_message = "The template ships with an empty deploy_role_arn so it runs as the caller"
   }
 }
+
+run "tfvars_have_a_repository_for_every_workload_and_the_breaker" {
+  command = plan
+
+  assert {
+    condition     = length(setsubtract(["api", "worker", "import-extract", "import-load", "traffic-breaker"], var.services)) == 0
+    error_message = "The EKS workloads, the two import Lambdas and the canary breaker Lambda of loadbalancer each need a repository"
+  }
+}

@@ -1,17 +1,9 @@
 locals {
   published_strings = {
-    cluster_name          = module.cluster.cluster_name
-    api_service_name      = module.api.service_name
-    worker_service_name   = module.worker.service_name
-    api_log_group_name    = module.api.log_group_name
-    worker_log_group_name = module.worker.log_group_name
-    # postdeploy sizes its at-max-capacity and backlog alarms from these, so the two stacks cannot drift apart.
-    api_max_capacity    = tostring(var.api_max_capacity)
-    worker_max_capacity = tostring(var.worker_max_capacity)
-    stream_length_cap   = tostring(var.stream_length_cap)
+    # postdeploy sizes its backlog alarms from it, so the two stacks cannot drift apart.
+    stream_length_cap = tostring(var.stream_length_cap)
 
-    # Deploy contract of the EKS version (design v4 §8.1): CI reads these and eks-cluster's keys, then runs Helm.
-    # The ECS keys above stay until phase C7. The JSON fields are asserted in tests/application.tftest.hcl and read by
+    # Deploy contract (design v4 §8.1): CI reads these and eks-cluster's keys, then runs Helm. The JSON fields are asserted in tests/application.tftest.hcl and read by
     # templates/example3/deploy/values-from-ssm.sh.
     app_port                = tostring(var.app_port)
     vpc_cidr                = data.aws_vpc.this.cidr_block

@@ -10,11 +10,16 @@ data "aws_ec2_managed_prefix_list" "cdn_origin_facing" {
 }
 
 locals {
+  # The two workloads CI deploys with deploy/charts/app; containerimage must have a repository for each.
+  workloads = ["api", "worker"]
+  # iam allows the worker to publish metrics only into this namespace.
+  metric_namespace = "${title(var.project)}/${var.env}"
+
   ecr_urls = jsondecode(module.shared.strings["ecr_repository_urls"])
 
   # "*" makes uvicorn take the leftmost X-Forwarded-For entry, which the caller writes itself; CIDRs make it look for
   # the first hop from the right that is not trusted. The CloudFront ranges are sorted because the entries are a set and
-  # a different order would register a new task definition on every plan.
+  # a different order would change the environment JSON on every plan.
   forwarded_allow_ips = var.trusted_proxies == "any" ? "*" : join(",", concat(
     [data.aws_vpc.this.cidr_block],
     var.trusted_proxies == "vpc_and_cdn"
@@ -25,7 +30,7 @@ locals {
   stream_redis = split(":", module.shared.strings["stream_redis_endpoint"])
   rate_redis   = split(":", module.shared.strings["rate_limit_redis_endpoint"])
 
-  # The execution role cannot read secrets, so the tasks get ARNs and fetch the values with their task role.
+  # The workloads get secret ARNs and fetch the values with their Pod Identity role (design v4 §8.2).
   common_environment = {
     AWS_REGION                    = var.aws_region
     APP_ENV                       = var.env
@@ -57,10 +62,4 @@ locals {
     METRICS_NAMESPACE = local.metric_namespace
   })
 
-  # Idle streams are cut by middleboxes without a word; probing earlier makes dead peers visible.
-  system_controls = {
-    "net.ipv4.tcp_keepalive_time"   = "60"
-    "net.ipv4.tcp_keepalive_intvl"  = "10"
-    "net.ipv4.tcp_keepalive_probes" = "3"
-  }
 }

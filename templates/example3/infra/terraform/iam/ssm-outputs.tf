@@ -1,12 +1,8 @@
 locals {
   published_strings = {
-    ecs_execution_role_arn  = module.role["ecs_execution"].arn
-    api_task_role_arn       = module.role["api_task"].arn
-    worker_task_role_arn    = module.role["worker_task"].arn
-    import_extract_role_arn = module.role["import_extract"].arn
-    import_load_role_arn    = module.role["import_load"].arn
-    agent_runtime_role_arn  = module.role["agent_runtime"].arn
-    # EKS (design v4 §8.1).
+    import_extract_role_arn   = module.role["import_extract"].arn
+    import_load_role_arn      = module.role["import_load"].arn
+    agent_runtime_role_arn    = module.role["agent_runtime"].arn
     eks_cluster_role_arn      = module.role["eks_cluster"].arn
     eks_node_role_arn         = module.role["eks_node"].arn
     api_pod_role_arn          = module.role["api_pod"].arn

@@ -2,7 +2,7 @@
 resource "terraform_data" "services_present" {
   lifecycle {
     precondition {
-      condition     = alltrue([for s in keys(local.service_names) : contains(module.shared.lists["services"], s)])
+      condition     = alltrue([for s in local.workloads : contains(module.shared.lists["services"], s)])
       error_message = "The service list in tree B (services) must contain api and worker; containerimage must create their repositories."
     }
   }

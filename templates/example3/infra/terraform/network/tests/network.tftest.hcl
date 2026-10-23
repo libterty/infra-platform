@@ -504,7 +504,7 @@ run "peering_routes_the_app_and_agent_tiers" {
     condition = [
       for r in values(local.sg_rules) : r.cidr_ipv4 if r.type == "egress" && r.security_group == "app" && r.description == "peer network over the peering connection"
     ] == ["10.250.0.0/16"]
-    error_message = "The app group (ECS tasks and Lambda) may reach the peer CIDR on 443"
+    error_message = "The app group (EKS pods and Lambda) may reach the peer CIDR on 443"
   }
 }
 

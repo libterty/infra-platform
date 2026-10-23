@@ -20,9 +20,10 @@ override_module {
   target = module.shared
   outputs = {
     strings = {
-      vpc_id          = "vpc-0123456789abcdef0"
-      alb_sg_id       = "sg-0123456789abcdef0"
-      alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      vpc_id              = "vpc-0123456789abcdef0"
+      alb_sg_id           = "sg-0123456789abcdef0"
+      alarm_topic_arn     = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      ecr_repository_urls = "{}"
     }
     lists = {
       public_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
@@ -40,8 +41,10 @@ run "reads_only_tree_b" {
       vpc_id          = "infra/vpc_id"
       alb_sg_id       = "infra/alb_sg_id"
       alarm_topic_arn = "infra/alarm_topic_arn"
+      # The breaker Lambda image of the canary (containerimage).
+      ecr_repository_urls = "infra/ecr_repository_urls"
     } && local.shared_input_lists == { public_subnet_ids = "infra/public_subnet_ids" }
-    error_message = "loadbalancer reads the VPC, the ALB security group, the alarm topic and the public subnets from tree B"
+    error_message = "loadbalancer reads the VPC, the ALB security group, the alarm topic, the repositories and the public subnets from tree B"
   }
 }
 
@@ -341,3 +344,35 @@ run "alb_is_associated_with_the_web_acl_of_this_stack" {
     error_message = "the ALB must be associated with the Web ACL created in this stack"
   }
 }
+
+# ---- canary against the real alb module (tests/canary.tftest.hcl replaces its outputs) ----
+
+run "canary_keys_match_the_alb_outputs_the_breaker_reads" {
+  command = plan
+
+  variables {
+    canary = { weight = 0 }
+  }
+
+  assert {
+    condition     = toset(keys(module.alb.target_group_arns)) == toset(["api", "api-canary"]) && toset(keys(module.alb.target_group_arn_suffixes)) == toset(["api", "api-canary"])
+    error_message = "The breaker reads target_group_arns[api] and target_group_arn_suffixes[api-canary]"
+  }
+
+  assert {
+    condition     = length(setsubtract(keys(local.api_routes), keys(module.alb.listener_rule_arns))) == 0
+    error_message = "The breaker reads listener_rule_arns by the api route keys"
+  }
+}
+
+run "rejects_a_canary_whose_target_group_name_is_too_long" {
+  command = plan
+
+  variables {
+    project = "abcdefghijklmnop"
+    canary  = { weight = 0 }
+  }
+
+  expect_failures = [var.canary]
+}
+

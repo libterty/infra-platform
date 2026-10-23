@@ -8,18 +8,6 @@ locals {
 
   roles = merge(
     {
-      ecs_execution = {
-        name  = "${local.name_prefix}-ecs-execution"
-        trust = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id, source_arn = null }
-      }
-      api_task = {
-        name  = "${local.name_prefix}-api-task"
-        trust = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id, source_arn = null }
-      }
-      worker_task = {
-        name  = "${local.name_prefix}-worker-task"
-        trust = { service_principals = ["ecs-tasks.amazonaws.com"], source_account = local.account_id, source_arn = null }
-      }
       import_extract = {
         name  = "${local.name_prefix}-import-extract"
         trust = { service_principals = ["lambda.amazonaws.com"], source_account = local.account_id, source_arn = null }
@@ -33,7 +21,7 @@ locals {
         trust = { service_principals = ["bedrock-agentcore.amazonaws.com"], source_account = local.account_id, source_arn = "arn:aws:bedrock-agentcore:${local.region}:${local.account_id}:*" }
       }
     },
-    # EKS roles (design v4 §4, §8.1). The ECS roles above stay until every consumer has switched (phase C7).
+    # EKS roles (design v4 §4, §8.1).
     {
       # The AWS trust policies of the Auto Mode cluster and node roles carry no aws:SourceAccount condition.
       eks_cluster = {
