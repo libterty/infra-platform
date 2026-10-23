@@ -63,24 +63,22 @@ module "fargate_app" {
 - 沒有 `Name` tag：provider 沒有名稱屬性，`tags` 原樣傳入。
 - 同一個帳號對同一個 issuer URL 只能建一個 provider，重複建會被 AWS 拒絕。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `issuer_url` | `string` | 無 | 是 | EKS 的 OIDC issuer，格式 `https://oidc.eks.<region>.amazonaws.com/id/<id>` |
-| `client_ids` | `set(string)` | `["sts.amazonaws.com"]` | 否 | provider 接受的 client ID（audience），至少一個 |
-| `tags` | `map(string)` | `{}` | 否 | provider 的 tag |
+| `issuer_url` | `string` | 無 | 是 | EKS 叢集的 OIDC issuer URL（`eks-cluster` 的 `oidc_issuer_url` 輸出），格式 `https://oidc.eks.<region>.amazonaws.com/id/<id>`，結尾不可有 `/`。 |
+| `client_ids` | `set(string)` | `[ "sts.amazonaws.com" ]` | 否 | provider 接受的 client ID（audience），至少一個，每個 1–255 字元、不含空白。IRSA 的 token 用 `sts.amazonaws.com`。 |
+| `tags` | `map(string)` | `{}` | 否 | provider 的 tag，原樣傳入（provider 沒有名稱，module 不加 `Name`）。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `arn` | `string` | provider ARN，給 `iam-role` 的 `trust.federated.oidc_provider_arn` |
-| `issuer` | `string` | issuer URL 去掉 `https://` |
+| 名稱 | 說明 |
+|---|---|
+| `arn` | OIDC provider 的 ARN，給 `iam-role` 的 `trust.federated.oidc_provider_arn`。 |
+| `issuer` | issuer URL 去掉 `https://`，也就是 trust policy 裡 `<issuer>:sub`、`<issuer>:aud` 條件鍵的前綴。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
