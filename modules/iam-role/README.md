@@ -80,32 +80,43 @@ module "ebs_csi" {
 - 只檢查 Action、`NotAction`、`NotResource`，不檢查 `Resource`；`Resource = "*"` 合不合理由呼叫端的測試負責。
 - `Statement` 必須是清單（單一物件的寫法會被擋）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | role 名稱，1–64 字元，限字母、數字與 `+=,.@_-` |
-| `description` | `string` | `null` | 否 | role 說明 |
-| `trust` | `object({ service_principals = optional(set(string), []), tag_session = optional(bool, false), source_account = optional(string), source_arn = optional(string), federated = optional(object({ oidc_provider_arn = string, subject = string })) })` | 無 | 是 | `service_principals`（至少一個 `*.amazonaws.com` 服務主體）與 `federated` 二選一；`tag_session` 加 `sts:TagSession`；`federated.subject` 格式為 `system:serviceaccount:<namespace>:<serviceaccount>`，`oidc_provider_arn` 格式為 `arn:aws:iam::<12 位帳號>:oidc-provider/<issuer>`；`source_account` 為 12 位數字；`source_arn` 以 `arn:` 開頭、可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`），用 `ArnLike` 比對 |
-| `managed_policy_arns` | `set(string)` | `[]` | 否 | 要掛的 AWS managed policy ARN，只收 `locals.tf` 白名單內的 |
-| `inline_policies` | `map(string)` | `{}` | 否 | policy 名稱對 policy JSON 字串 |
-| `permissions_boundary` | `string` | `null` | 否 | permissions boundary 的 policy ARN |
-| `instance_profile_name` | `string` | `null` | 否 | 有給就建一個 instance profile 綁這個 role；1–128 字元，限字母、數字與 `_+=,.@-` |
-| `tags` | `map(string)` | `{}` | 否 | 額外 tag，module 只再加 `Name` |
+| `name` | `string` | 無 | 是 | role 名稱，1–64 字元，限字母、數字與 `+=,.@_-`。 |
+| `description` | `string` | `null` | 否 | role 的說明；`null` 時不設定。 |
+| `trust` | `object` | 無 | 是 | trust policy：`service_principals` 與 `federated`（IRSA）二選一，其他欄位只能搭配 `service_principals`。欄位見〈`trust` 欄位〉。 |
+| `managed_policy_arns` | `set(string)` | `[]` | 否 | 要掛的 AWS managed policy ARN，每個建一個 attachment。只收 `locals.tf` 白名單內的 ARN；customer managed policy 與白名單以外的 AWS managed policy 一律拒絕。 |
+| `inline_policies` | `map(string)` | `{}` | 否 | inline policy 名稱對 policy JSON 字串（用 `jsonencode()` 產生）。每份 JSON 的 `Statement` 必須是清單；Allow statement（沒寫 `Effect` 視為 Allow）的 Action 不可是 `*` 或以 `:*` 結尾，也不可用 `NotAction`、`NotResource`；Deny statement 不受限。 |
+| `permissions_boundary` | `string` | `null` | 否 | permissions boundary 的 policy ARN；`null` 時不設定。 |
+| `instance_profile_name` | `string` | `null` | 否 | instance profile 名稱。有給就建一個綁這個 role 的 instance profile，`null` 時不建。1–128 字元，限字母、數字與 `_+=,.@-`。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；module 只再加 `Name`。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `arn` | role ARN；所有 inline policy 與 managed policy 都附加好之後才有值。 |
+| `name` | role 名稱。 |
+| `id` | role ID。 |
+| `instance_profile_name` | instance profile 名稱；沒給 `instance_profile_name` 時為 `null`。 |
+| `instance_profile_arn` | instance profile ARN；沒給 `instance_profile_name` 時為 `null`。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
+## `trust` 欄位
+
+`service_principals` 與 `federated` 二選一，不能同時給，也不能都不給。
+
+| 欄位 | 預設 | 說明 |
 |---|---|---|
-| `arn` | `string` | role ARN；所有 inline policy 與 managed policy 附加之後才有值 |
-| `name` | `string` | role 名稱 |
-| `id` | `string` | role ID |
-| `instance_profile_name` | `string` | instance profile 名稱；沒給 `instance_profile_name` 時為 `null` |
-| `instance_profile_arn` | `string` | instance profile ARN；沒給 `instance_profile_name` 時為 `null` |
+| `service_principals` | `[]` | AWS 服務主體，例如 `ecs-tasks.amazonaws.com`、`pods.eks.amazonaws.com`；每個都要符合 `*.amazonaws.com`，不可含萬用字元 |
+| `tag_session` | `false` | `true` 時 Action 加上 `sts:TagSession`；Pod Identity 與 EKS Auto Mode 需要。只能搭配 `service_principals` |
+| `source_account` | `null` | 12 位數字的帳號 ID；有給才加 `StringEquals` 的 `aws:SourceAccount` 條件。只能搭配 `service_principals` |
+| `source_arn` | `null` | 以 `arn:` 開頭、不含空白，可含萬用字元（例如 `arn:aws:bedrock:ap-northeast-1:111111111111:knowledge-base/*`）；有給才加 `ArnLike` 的 `aws:SourceArn` 條件。只能搭配 `service_principals` |
+| `federated.oidc_provider_arn` | 無（`federated` 有給時必填） | IRSA 用的 OIDC provider ARN，格式 `arn:aws:iam::<12 位帳號>:oidc-provider/<issuer>` |
+| `federated.subject` | 無（`federated` 有給時必填） | 單一 service account，格式 `system:serviceaccount:<namespace>:<serviceaccount>`，不可含萬用字元 |
 
 ## 測試
 

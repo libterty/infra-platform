@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Role name."
+  description = "role 名稱，1–64 字元，限字母、數字與 `+=,.@_-`。"
   validation {
     condition     = can(regex("^[a-zA-Z0-9+=,.@_-]{1,64}$", var.name))
     error_message = "name must be 1-64 chars of letters, digits or +=,.@_-."
@@ -10,7 +10,7 @@ variable "name" {
 variable "description" {
   type        = string
   default     = null
-  description = "Role description."
+  description = "role 的說明；`null` 時不設定。"
 }
 
 variable "trust" {
@@ -24,7 +24,7 @@ variable "trust" {
       subject           = string
     }))
   })
-  description = "Trust policy. Give either service_principals (AWS service principals such as ecs-tasks.amazonaws.com or pods.eks.amazonaws.com) or federated (IRSA: oidc_provider_arn plus a single service account subject system:serviceaccount:<namespace>:<serviceaccount>), not both. tag_session adds sts:TagSession (service principals only; Pod Identity and EKS Auto Mode need it). source_account adds an aws:SourceAccount condition when set; source_arn adds an ArnLike aws:SourceArn condition when set (wildcards allowed); both apply to service principals only."
+  description = "trust policy：`service_principals` 與 `federated`（IRSA）二選一，其他欄位只能搭配 `service_principals`。欄位見〈`trust` 欄位〉。"
   validation {
     condition = (
       (length(var.trust.service_principals) > 0) != (var.trust.federated != null) &&
@@ -53,7 +53,7 @@ variable "trust" {
 variable "managed_policy_arns" {
   type        = set(string)
   default     = []
-  description = "AWS managed policy ARNs to attach. Only the allowlist in locals.tf is accepted; customer managed policies and other AWS managed policies are rejected."
+  description = "要掛的 AWS managed policy ARN，每個建一個 attachment。只收 `locals.tf` 白名單內的 ARN；customer managed policy 與白名單以外的 AWS managed policy 一律拒絕。"
   validation {
     condition     = alltrue([for a in var.managed_policy_arns : contains(local.managed_policy_allowlist, a)])
     error_message = "managed_policy_arns accepts only allowlisted AWS managed policies (see locals.tf)."
@@ -63,7 +63,7 @@ variable "managed_policy_arns" {
 variable "inline_policies" {
   type        = map(string)
   default     = {}
-  description = "Policy name => policy JSON built with jsonencode()."
+  description = "inline policy 名稱對 policy JSON 字串（用 `jsonencode()` 產生）。每份 JSON 的 `Statement` 必須是清單；Allow statement（沒寫 `Effect` 視為 Allow）的 Action 不可是 `*` 或以 `:*` 結尾，也不可用 `NotAction`、`NotResource`；Deny statement 不受限。"
   validation {
     condition     = alltrue([for p in values(var.inline_policies) : can(jsondecode(p).Statement[0])])
     error_message = "Each inline policy must be a JSON document with a Statement."
@@ -99,13 +99,13 @@ variable "inline_policies" {
 variable "permissions_boundary" {
   type        = string
   default     = null
-  description = "Permissions boundary policy ARN."
+  description = "permissions boundary 的 policy ARN；`null` 時不設定。"
 }
 
 variable "instance_profile_name" {
   type        = string
   default     = null
-  description = "Instance profile name. When set, an instance profile bound to this role is created; null creates none."
+  description = "instance profile 名稱。有給就建一個綁這個 role 的 instance profile，`null` 時不建。1–128 字元，限字母、數字與 `_+=,.@-`。"
   validation {
     condition     = var.instance_profile_name == null ? true : can(regex("^[\\w+=,.@-]{1,128}$", var.instance_profile_name))
     error_message = "instance_profile_name must be 1-128 chars of letters, digits or _+=,.@-."
@@ -115,5 +115,5 @@ variable "instance_profile_name" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags merged with Name."
+  description = "額外的 tag；module 只再加 `Name`。"
 }
