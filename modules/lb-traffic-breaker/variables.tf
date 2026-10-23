@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Name prefix. Alarm names are <name>-<breaker key>-<signal> with signal error-rate, healthy-hosts or custom."
+  description = "名稱前綴，alarm 名稱是 `<name>-<breaker key>-<signal>`，`signal` 為 `error-rate`、`healthy-hosts` 或 `custom`。2–60 字元，限小寫英數字與 `-`，以字母開頭。"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,59}$", var.name))
     error_message = "name must be 2-60 chars of lowercase letters, digits or hyphens, starting with a letter."
@@ -9,7 +9,7 @@ variable "name" {
 
 variable "load_balancer_type" {
   type        = string
-  description = "application (ALB) or network (NLB). An NLB has no HTTP status metrics, so it only gets the healthy-hosts alarm and the optional custom_metric alarm."
+  description = "`application`（ALB）或 `network`（NLB）。NLB 沒有 HTTP 狀態碼 metric，只有 healthy-hosts alarm 與選用的 `custom_metric` alarm。"
   validation {
     condition     = contains(["application", "network"], var.load_balancer_type)
     error_message = "load_balancer_type must be application or network."
@@ -18,7 +18,7 @@ variable "load_balancer_type" {
 
 variable "load_balancer_arn_suffix" {
   type        = string
-  description = "arn_suffix of the load balancer (app/<name>/<id> or net/<name>/<id>), used as the LoadBalancer metric dimension."
+  description = "load balancer 的 `arn_suffix`，當作 metric 的 `LoadBalancer` dimension；ALB 是 `app/<name>/<id>`，NLB 是 `net/<name>/<id>`，要與 `load_balancer_type` 一致。"
   validation {
     condition     = can(regex("^${var.load_balancer_type == "network" ? "net" : "app"}/[A-Za-z0-9-]{1,32}/[0-9a-f]{16}$", var.load_balancer_arn_suffix))
     error_message = "load_balancer_arn_suffix must be app/<name>/<id> for an application load balancer and net/<name>/<id> for a network load balancer."
@@ -46,16 +46,7 @@ variable "breakers" {
       comparison_operator = optional(string, "GreaterThanThreshold")
     }))
   }))
-  description = <<-EOT
-    Breaker key => one rule "if the new system is in trouble, send everything to the old system".
-    - listener_arn or rule_arn: exactly one. The listener default action or the listener rule the Lambda rewrites. An NLB only has listener_arn. Both must belong to this load balancer and be owned by Terraform (not by the AWS Load Balancer Controller).
-    - stable_target_group_arn: the old system's target group; it keeps the traffic after a trip.
-    - canary_target_group_arn_suffix: targetgroup/<name>/<id> of the new system's target group; the alarms watch it.
-    - error_rate_percent (ALB only, default 5) and min_requests (ALB only, default 50): trip when more than error_rate_percent of the requests in a period return 5xx, ignoring periods with fewer than min_requests requests. Setting either for an NLB is rejected.
-    - min_healthy_hosts (default 1): trip when HealthyHostCount drops below it.
-    - period (default 60, multiple of 60), evaluation_periods (default 3), datapoints_to_alarm (default 2): shared by every alarm of the breaker.
-    - custom_metric: optional extra alarm on a metric the application publishes (the only application-level signal for an NLB).
-  EOT
+  description = "breaker key 對應一條「新系統出問題就把流量全部切回舊系統」的規則，至少一個。欄位見〈`breakers` 欄位〉。"
 
   validation {
     condition     = length(var.breakers) > 0 && alltrue([for k in keys(var.breakers) : can(regex("^[a-z][a-z0-9-]{0,19}$", k))])
@@ -128,7 +119,7 @@ variable "breakers" {
 
 variable "lambda_function_arn" {
   type        = string
-  description = "ARN of the breaker Lambda function (unqualified: the invoke permission from lambda_permissions is granted on the function, not on an alias or version)."
+  description = "斷路器 Lambda function 的 ARN，不可帶 version 或 alias：`lambda_permissions` 的呼叫權限授予在 function 本身。"
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9_-]{1,64}$", var.lambda_function_arn))
     error_message = "lambda_function_arn must be a Lambda function ARN without a version or alias qualifier."
@@ -137,7 +128,7 @@ variable "lambda_function_arn" {
 
 variable "sns_topic_arns" {
   type        = list(string)
-  description = "Topics for alarm_actions and ok_actions of every alarm, so people are told when the breaker trips and when the alarm recovers. Required, at least one."
+  description = "所有 alarm 的 `alarm_actions` 與 `ok_actions` 用的 SNS topic ARN，至少一個；斷路器觸發與 alarm 恢復時都會通知。"
   validation {
     condition     = length(var.sns_topic_arns) > 0
     error_message = "Give at least one SNS topic ARN."
@@ -151,5 +142,5 @@ variable "sns_topic_arns" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the alarms. Name is added by the module."
+  description = "alarm 的 tag；`Name` 由 module 加上。"
 }

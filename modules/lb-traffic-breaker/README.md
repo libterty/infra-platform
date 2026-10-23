@@ -204,40 +204,42 @@ CloudWatch 呼叫 Lambda 的 event 取自官方文件，Lambda 只讀 `alarmData
 - `ModifyListener`、`ModifyRule`、`AddTags` 的 resource-level 限制在真實環境是否如上面的 policy 所寫。
 - 含 `authenticate-oidc` 的 action 能否原樣寫回。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 名稱前綴，小寫英數字與連字號，最長 60 字元 |
-| `load_balancer_type` | `string` | 無 | 是 | `application` 或 `network` |
-| `load_balancer_arn_suffix` | `string` | 無 | 是 | load balancer 的 `arn_suffix`，`app/...` 或 `net/...` 要跟類型一致 |
-| `breakers` | `map(object)` | 無 | 是 | 見下表 |
-| `lambda_function_arn` | `string` | 無 | 是 | 斷路器 Lambda 的 ARN，不帶 version 或 alias |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 至少一個，同時用於 `alarm_actions` 與 `ok_actions` |
-| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上 |
-
-`breakers` 每個項目：
-
-| 欄位 | 預設 | 說明 |
-|---|---|---|
-| `listener_arn`、`rule_arn` | `null` | 二選一；NLB 只能 `listener_arn` |
-| `stable_target_group_arn` | 必填 | 舊系統的 target group ARN，切回後留下的那個 |
-| `canary_target_group_arn_suffix` | 必填 | 新系統的 target group `arn_suffix`（`targetgroup/<name>/<id>`） |
-| `error_rate_percent` | ALB 為 `5` | 只有 ALB 能設，`0 < x <= 100` |
-| `min_requests` | ALB 為 `50` | 只有 ALB 能設，至少 1 |
-| `min_healthy_hosts` | `1` | 至少 1 |
-| `period` | `60` | 60 的倍數 |
-| `evaluation_periods` | `3` | 至少 1 |
-| `datapoints_to_alarm` | `2` | 1 到 `evaluation_periods` |
-| `custom_metric` | `null` | `namespace`、`metric_name`、`threshold` 必填；`dimensions`（`{}`）、`statistic`（`Average`）、`comparison_operator`（`GreaterThanThreshold`） |
+| `name` | `string` | 無 | 是 | 名稱前綴，alarm 名稱是 `<name>-<breaker key>-<signal>`，`signal` 為 `error-rate`、`healthy-hosts` 或 `custom`。2–60 字元，限小寫英數字與 `-`，以字母開頭。 |
+| `load_balancer_type` | `string` | 無 | 是 | `application`（ALB）或 `network`（NLB）。NLB 沒有 HTTP 狀態碼 metric，只有 healthy-hosts alarm 與選用的 `custom_metric` alarm。 |
+| `load_balancer_arn_suffix` | `string` | 無 | 是 | load balancer 的 `arn_suffix`，當作 metric 的 `LoadBalancer` dimension；ALB 是 `app/<name>/<id>`，NLB 是 `net/<name>/<id>`，要與 `load_balancer_type` 一致。 |
+| `breakers` | `map(object)` | 無 | 是 | breaker key 對應一條「新系統出問題就把流量全部切回舊系統」的規則，至少一個。欄位見〈`breakers` 欄位〉。 |
+| `lambda_function_arn` | `string` | 無 | 是 | 斷路器 Lambda function 的 ARN，不可帶 version 或 alias：`lambda_permissions` 的呼叫權限授予在 function 本身。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 所有 alarm 的 `alarm_actions` 與 `ok_actions` 用的 SNS topic ARN，至少一個；斷路器觸發與 alarm 恢復時都會通知。 |
+| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
 | 名稱 | 說明 |
 |---|---|
-| `alarm_arns` | alarm ARN，key 是 `<breaker key>-<signal>` |
-| `alarm_names` | alarm 名稱，key 同上；plan 時就已知 |
-| `lambda_config_json` | 給 Lambda 環境變數 `BREAKER_CONFIG` |
-| `lambda_permissions` | 直接傳給 `lambda-function` 的 `permissions`：principal `lambda.alarms.cloudwatch.amazonaws.com`，`source_arn` 是各 alarm 的 ARN，`source_account` 是目前帳號 |
+| `alarm_arns` | key 是 `<breaker key>-<signal>`（`signal` 為 `error-rate`、`healthy-hosts`、`custom`）的 map，值是 alarm ARN。 |
+| `alarm_names` | key 同 `alarm_arns` 的 map，值是 alarm 名稱；由輸入組成，plan 時就已知。 |
+| `lambda_config_json` | 斷路器 Lambda 環境變數 `BREAKER_CONFIG` 的 JSON：`schema_version`，以及每個 alarm 名稱對應要改寫的 `listener_arn` 或 `rule_arn` 與 `stable_target_group_arn`。 |
+| `lambda_permissions` | 直接傳給 `lambda-function` 的 `permissions`：只允許本帳號的這些 alarm 呼叫 function。principal 是 `lambda.alarms.cloudwatch.amazonaws.com`，`source_arn` 是各 alarm 的 ARN，`source_account` 是目前帳號。alarm ARN 由名稱與目前的 partition、region、帳號組成，不取自 alarm 資源，所以與 `lambda_function_arn` 沒有循環相依。 |
+<!-- END_TF_DOCS -->
+
+## `breakers` 欄位
+
+`breakers` 的 key 是 1–20 字元，限小寫英數字與 `-`，以字母開頭，至少一個。每個項目是一條「新系統出問題就把流量全部切回舊系統」的規則：
+
+| 欄位 | 預設 | 說明 |
+|---|---|---|
+| `listener_arn`、`rule_arn` | `null` | 二選一；NLB 只能 `listener_arn`。Lambda 要改寫的 listener 預設 action 或 listener rule，必須屬於 `load_balancer_arn_suffix` 指的 load balancer，並由 Terraform 管理（不是 AWS Load Balancer Controller） |
+| `stable_target_group_arn` | 必填 | 舊系統的 target group ARN，切回後留下的那個 |
+| `canary_target_group_arn_suffix` | 必填 | 新系統的 target group `arn_suffix`（`targetgroup/<name>/<id>`，不是 ARN），alarm 監看它；不可與 `stable_target_group_arn` 是同一個 target group |
+| `error_rate_percent` | ALB 為 `5` | 只有 ALB 能設，`0 < x <= 100`；一個 period 內回 5xx 的請求比例超過它就觸發 |
+| `min_requests` | ALB 為 `50` | 只有 ALB 能設，至少 1 的整數；請求數少於它的 period 不計 |
+| `min_healthy_hosts` | `1` | 至少 1 的整數；`HealthyHostCount` 低於它就觸發 |
+| `period` | `60` | 60 的倍數；`period`、`evaluation_periods`、`datapoints_to_alarm` 由這個 breaker 的所有 alarm 共用 |
+| `evaluation_periods` | `3` | 至少 1；`period * evaluation_periods` 不可超過 86400 秒（CloudWatch 上限） |
+| `datapoints_to_alarm` | `2` | 1 到 `evaluation_periods` |
+| `custom_metric` | `null` | 應用程式自己發布的 metric 上的額外 alarm（NLB 唯一的應用層訊號）。`namespace`、`metric_name`、`threshold` 必填；`dimensions`（`{}`）、`statistic`（`Average`，可為 `Sum`、`Average`、`Maximum`、`Minimum`、`SampleCount`）、`comparison_operator`（`GreaterThanThreshold`，可為 `GreaterThanOrEqualToThreshold`、`GreaterThanThreshold`、`LessThanThreshold`、`LessThanOrEqualToThreshold`） |
