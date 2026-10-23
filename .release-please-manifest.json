@@ -24,7 +24,7 @@
   "modules/s3-bucket": "0.3.0",
   "modules/security-group": "0.1.0",
   "modules/sns-alarm-topic": "0.1.0",
-  "modules/ssm-publish": "0.1.0",
+  "modules/ssm-publish": "0.1.1",
   "modules/ssm-read": "0.1.0",
   "modules/vpc": "0.2.0",
   "modules/vpc-interface-endpoints": "0.1.0",

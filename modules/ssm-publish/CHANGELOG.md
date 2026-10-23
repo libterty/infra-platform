@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/ssm-publish-v0.1.0...ssm-publish-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **ssm-publish:** rewrite the input and output descriptions in Chinese ([a8078e4](https://github.com/libterty/infra-platform/commit/a8078e47caa60a3fbabcf35a5a43540e66e861bc))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
