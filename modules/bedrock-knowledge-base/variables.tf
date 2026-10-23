@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Knowledge base name."
+  description = "KB 的完整名稱。字母、數字、`-`、`_`，頭尾是字母或數字，最多 100 字元。"
 
   validation {
     condition     = can(regex("^[0-9A-Za-z]([0-9A-Za-z_-]{0,98}[0-9A-Za-z])?$", var.name))
@@ -11,12 +11,12 @@ variable "name" {
 variable "description" {
   type        = string
   default     = null
-  description = "Knowledge base description."
+  description = "KB 的說明。"
 }
 
 variable "role_arn" {
   type        = string
-  description = "Bedrock knowledge base service role ARN. This module does not create IAM."
+  description = "Bedrock KB service role ARN（範本由 `iam-base` 建），可以帶 path，但每段不能是空的。這個 module 不建 IAM。"
 
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role(/[A-Za-z0-9+=,.@_-]+)*/[A-Za-z0-9+=,.@_-]+$", var.role_arn))
@@ -26,7 +26,7 @@ variable "role_arn" {
 
 variable "embedding_model_arn" {
   type        = string
-  description = "Embedding foundation model ARN."
+  description = "嵌入模型的 foundation-model ARN，不能含 `*`。"
 
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:bedrock:[a-z0-9-]+::foundation-model/[A-Za-z0-9._:/-]+$", var.embedding_model_arn))
@@ -36,7 +36,7 @@ variable "embedding_model_arn" {
 
 variable "embedding_dimensions" {
   type        = number
-  description = "Must equal the vector(N) size of the table's vector column."
+  description = "向量維度，正整數，必須等於表裡向量欄的 `vector(N)`。"
 
   validation {
     condition     = var.embedding_dimensions > 0 && floor(var.embedding_dimensions) == var.embedding_dimensions
@@ -58,7 +58,7 @@ variable "aurora" {
       custom_metadata_field = optional(string)
     }), {})
   })
-  description = "Aurora PostgreSQL vector store. cluster_arn and credentials_secret_arn must be in the current account and region. credentials_secret_arn is the exact ARN of the secret of a dedicated knowledge base database user, never the master user secret. The table and columns are created by the project's migration."
+  description = "Aurora PostgreSQL 向量儲存，表與欄位由專案的 migration 建。欄位：`cluster_arn`（Aurora cluster ARN，不收 DB instance ARN）、`credentials_secret_arn`（KB 專用資料庫帳號的 secret 完整 ARN，含 6 字元尾碼，值是 `{\"username\",\"password\"}`，**不要給 master secret**）、`database_name`（小寫識別字）、`table_name`（`<schema>.<table>` 或 `<table>`，每段小寫識別字）、`field_mapping`（選填，預設 `{}`；五個欄位名稱與預設見〈部署前要先完成的事〉的對照表，都是小寫識別字、彼此不重複，`custom_metadata_field` 預設 `null`，不送）。`cluster_arn` 與 `credentials_secret_arn` 必須在目前的帳號與 region。"
 
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:rds:[a-z0-9-]+:[0-9]{12}:cluster:[A-Za-z][A-Za-z0-9-]*$", var.aurora.cluster_arn))
@@ -124,7 +124,7 @@ variable "data_sources" {
     }), {})
   }))
   default     = {}
-  description = "S3 data sources keyed by data source name. bucket_owner_account_id is required and must be the current account or listed in allowed_account_ids. data_deletion_policy RETAIN keeps vectors when a data source is deleted."
+  description = "S3 data source，key 是 data source 名稱（規則同 `name`）。欄位見〈`data_sources` 欄位〉。"
 
   validation {
     condition     = alltrue([for k in keys(var.data_sources) : can(regex("^[0-9A-Za-z]([0-9A-Za-z_-]{0,98}[0-9A-Za-z])?$", k))])
@@ -172,7 +172,7 @@ variable "allowed_account_ids" {
   type        = set(string)
   default     = []
   nullable    = false
-  description = "Accounts other than the current one that may own a data source bucket. Empty means only same-account buckets."
+  description = "目前帳號以外、允許擁有 data source bucket 的帳號（12 位數字）。空集合表示只收同帳號的 bucket。"
 
   validation {
     condition     = alltrue([for a in var.allowed_account_ids : can(regex("^[0-9]{12}$", a))])
@@ -183,7 +183,7 @@ variable "allowed_account_ids" {
 variable "kms_key_arn" {
   type        = string
   default     = null
-  description = "KMS key ARN (key/<uuid>, not an alias) for transient data during ingestion (data source server-side encryption)."
+  description = "data source ingestion 暫存資料（server-side encryption）用的 KMS key ARN（`key/<uuid>` 或 `key/mrk-<32 碼>`，不收 alias 與 `*`）。`null` 時用 AWS 管理的 key。"
 
   validation {
     condition     = var.kms_key_arn == null || can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[0-9a-f]{32}|[0-9a-f-]{36})$", var.kms_key_arn))
@@ -194,5 +194,5 @@ variable "kms_key_arn" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags applied to the knowledge base."
+  description = "套用到 KB 的 tag，另外自動加 `Name`；data source 沒有 tag。"
 }
