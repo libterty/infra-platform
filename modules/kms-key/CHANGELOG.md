@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/kms-key-v0.1.0...kms-key-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **kms-key:** rewrite the input and output descriptions in Chinese ([106f943](https://github.com/libterty/infra-platform/commit/106f9432e1cb70b2ed885de3a6c90044e3d96302))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
