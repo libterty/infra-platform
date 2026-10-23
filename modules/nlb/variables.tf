@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "NLB name, 2-32 characters. Target groups are named <name>-<key>."
+  description = "NLB 名稱，target group 名稱是 `<name>-<key>`。2–32 字元，限英數字與 `-`，頭尾不可是 `-`，不可以 `internal-` 開頭。"
   validation {
     condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9-]{0,30}[a-zA-Z0-9]$", var.name)) && !startswith(var.name, "internal-")
     error_message = "name must be 2-32 letters, digits or hyphens, not starting or ending with a hyphen nor starting with internal-."
@@ -10,12 +10,12 @@ variable "name" {
 variable "internal" {
   type        = bool
   default     = true
-  description = "true creates an internal NLB."
+  description = "`true` 時建內部 NLB。"
 }
 
 variable "subnet_ids" {
   type        = list(string)
-  description = "Subnets of the NLB, in at least two AZs."
+  description = "NLB 所在的 subnet，至少兩個、分屬不同 AZ。"
   validation {
     condition     = length(distinct(var.subnet_ids)) >= 2
     error_message = "Give at least two subnets in different AZs."
@@ -24,7 +24,7 @@ variable "subnet_ids" {
 
 variable "security_group_ids" {
   type        = list(string)
-  description = "Security groups created by the network stack. A security group can only be attached when the NLB is created (not confirmed)."
+  description = "NLB 的 security group，至少一個，由 network stack 建立。security group 只能在建立 NLB 時加（未確認）。"
   validation {
     condition     = length(var.security_group_ids) >= 1
     error_message = "Give at least one security group (created by the network stack)."
@@ -34,19 +34,19 @@ variable "security_group_ids" {
 variable "cross_zone" {
   type        = bool
   default     = true
-  description = "enable_cross_zone_load_balancing."
+  description = "是否開啟跨 AZ 負載平衡（`enable_cross_zone_load_balancing`）。"
 }
 
 variable "deletion_protection" {
   type        = bool
   default     = true
-  description = "enable_deletion_protection."
+  description = "是否開啟刪除保護（`enable_deletion_protection`）。"
 }
 
 variable "vpc_id" {
   type        = string
   default     = null
-  description = "VPC of the target groups. Required when target_groups is non-empty."
+  description = "`target_groups` 非空時必填。target group 所在的 VPC。"
   validation {
     condition     = length(var.target_groups) == 0 || var.vpc_id != null
     error_message = "vpc_id is required when target_groups is non-empty."
@@ -73,7 +73,7 @@ variable "target_groups" {
     dns_failover = optional(string, "1") # "off" or 1-3000 (minimum healthy targets per zone)
   }))
   default     = {}
-  description = "Key => target group named <name>-<key>. dns_failover is target_group_health.dns_failover.minimum_healthy_targets_count: a listener with more than one target needs it to be \"off\" on every target group it uses from this module."
+  description = "key 對應一個 target group，名稱 `<name>-<key>`（1–32 字元）。`dns_failover` 是 `target_group_health.dns_failover.minimum_healthy_targets_count`：listener 有多個 target 時，它用到的本 module target group 都必須設成 `\"off\"`。欄位見〈`target_groups` 欄位〉。"
   validation {
     condition     = alltrue([for k in keys(var.target_groups) : can(regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$", "${var.name}-${k}"))])
     error_message = "<name>-<key> must be 1-32 letters, digits or hyphens, not starting or ending with a hyphen."
@@ -139,7 +139,7 @@ variable "listeners" {
     }))
   }))
   default     = {}
-  description = "Key => listener whose default action forwards to 1-5 weighted targets (weight 0-999, at least one above 0). A listener with more than one target needs dns_failover = \"off\" on every target group it uses from this module; external ARNs cannot be checked."
+  description = "key 對應一個 listener，預設 action 依權重轉發到 1–5 個 target（`weight` 0–999，至少一個大於 0）。有多個 target 時，用到的本 module target group 都必須 `dns_failover = \"off\"`；外部 ARN 無法檢查。欄位見〈`listeners` 欄位〉。"
   validation {
     condition     = alltrue([for l in values(var.listeners) : l.port >= 1 && l.port <= 65535])
     error_message = "Listener port must be 1-65535."
@@ -233,7 +233,7 @@ variable "listeners" {
 
 variable "sns_topic_arns" {
   type        = list(string)
-  description = "Topics for alarm_actions and ok_actions. Required: an alarm nobody receives is not an alarm."
+  description = "告警 `alarm_actions` 與 `ok_actions` 的 SNS topic ARN，至少一個。"
   validation {
     condition     = length(var.sns_topic_arns) > 0 && alltrue([for a in var.sns_topic_arns : can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", a))])
     error_message = "Give at least one SNS topic ARN."
@@ -241,6 +241,7 @@ variable "sns_topic_arns" {
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  type        = map(string)
+  default     = {}
+  description = "額外的 tag；`Name` 由 module 加上。"
 }
