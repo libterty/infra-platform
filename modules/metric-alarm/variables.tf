@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  description = "Alarm names are <name_prefix>-<key with _ replaced by ->."
+  description = "alarm 的名稱前綴，名稱是 `<name_prefix>-<key 的 _ 換成 ->`。小寫字母開頭，2–101 個小寫英數字或連字號。"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,100}$", var.name_prefix))
     error_message = "name_prefix must be lowercase letters, digits or hyphens."
@@ -37,7 +37,7 @@ variable "alarms" {
       }))
     })), [])
   }))
-  description = "Alarm key => settings. Keys must be snake_case. description says what the alarm means and what to check first. Give either metric (one metric) or queries (metric math; exactly one query has return_data = true, and each query has either expression or metric)."
+  description = "key（snake_case）對應一個 alarm 的設定，每個 alarm 用 `metric`（單一指標）或 `queries`（metric math）二選一。欄位見〈`alarms` 欄位〉。"
 
   validation {
     condition     = alltrue([for k, v in var.alarms : can(regex("^[a-z][a-z0-9_]*$", k)) && length(trimspace(v.description)) > 0])
@@ -76,7 +76,7 @@ variable "alarms" {
 
 variable "sns_topic_arns" {
   type        = list(string)
-  description = "Topics for alarm_actions and ok_actions of every alarm. Required, at least one."
+  description = "SNS topic ARN，至少一個，同時用於每個 alarm 的 `alarm_actions` 與 `ok_actions`。"
   validation {
     condition     = length(var.sns_topic_arns) > 0
     error_message = "Give at least one SNS topic ARN."
@@ -90,5 +90,5 @@ variable "sns_topic_arns" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the alarms. Name is added by the module."
+  description = "alarm 的 tag；`Name` 由 module 加上。"
 }

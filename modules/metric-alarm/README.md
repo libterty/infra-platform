@@ -48,25 +48,58 @@ module "alarms" {
 - `insufficient_data_actions`、`unit`。
 - 建 metric filter（用 `log-metric-alarm`）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name_prefix` | `string` | 無 | 是 | 名稱前綴，小寫英數字與連字號 |
-| `alarms` | `map(object)` | 無 | 是 | key（snake_case）對應 `description`、`threshold`，以及可選的 `comparison_operator`、`evaluation_periods`（`1`）、`datapoints_to_alarm`（`null`）、`treat_missing_data`（`notBreaching`）；再加 `metric`（`namespace`、`metric_name`、`dimensions`、`statistic`、`period`）或 `queries`（`id`、`expression`、`label`、`return_data`、`metric`）二選一 |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 至少一個 SNS topic ARN，同時用於 `alarm_actions` 與 `ok_actions` |
-| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上 |
+| `name_prefix` | `string` | 無 | 是 | alarm 的名稱前綴，名稱是 `<name_prefix>-<key 的 _ 換成 ->`。小寫字母開頭，2–101 個小寫英數字或連字號。 |
+| `alarms` | `map(object)` | 無 | 是 | key（snake\_case）對應一個 alarm 的設定，每個 alarm 用 `metric`（單一指標）或 `queries`（metric math）二選一。欄位見〈`alarms` 欄位〉。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | SNS topic ARN，至少一個，同時用於每個 alarm 的 `alarm_actions` 與 `ok_actions`。 |
+| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `alarm_arns` | key 同 `alarms` 的 map，值是 alarm ARN。 |
+| `alarm_names` | key 同 `alarms` 的 map，值是 alarm 名稱。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `alarm_arns` | `map(string)` | alarm ARN，key 同 `alarms` |
-| `alarm_names` | `map(string)` | alarm 名稱，key 同 `alarms` |
+## `alarms` 欄位
+
+每個 `alarms` 項目建一個 alarm。key 必須是 snake_case。`metric` 與 `queries` 必須二選一。
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `description` | `string` | 必填 | 告警代表什麼、先查什麼，不可為空白 |
+| `threshold` | `number` | 必填 | 門檻 |
+| `comparison_operator` | `string` | `GreaterThanOrEqualToThreshold` | `GreaterThanOrEqualToThreshold`、`GreaterThanThreshold`、`LessThanThreshold` 或 `LessThanOrEqualToThreshold` |
+| `evaluation_periods` | `number` | `1` | 評估幾期，至少 1 |
+| `datapoints_to_alarm` | `number` | `null` | 幾期超標就告警，1 到 `evaluation_periods` |
+| `treat_missing_data` | `string` | `notBreaching` | `missing`、`ignore`、`breaching` 或 `notBreaching` |
+| `metric` | `object` | `null` | 單一指標，欄位見下表 |
+| `queries` | `list(object)` | `[]` | metric math，欄位見下表 |
+
+`metric`（以及 `queries` 裡的 `metric`）的欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `namespace` | `string` | 必填 | 指標 namespace，例如 `AWS/SQS` |
+| `metric_name` | `string` | 必填 | 指標名稱 |
+| `dimensions` | `map(string)` | `{}` | 指標的 dimension |
+| `statistic` | `string` | `Average` | `Sum`、`Average`、`Maximum`、`Minimum` 或 `SampleCount` |
+| `period` | `number` | `300` | 秒數，只接受 10、30 或 60 的倍數 |
+
+`queries` 每一項的欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `id` | `string` | 必填 | 小寫字母開頭，1–255 個英數字或底線，同一個 alarm 內不可重複 |
+| `expression` | `string` | `null` | metric math 運算式；跟 `metric` 二選一 |
+| `label` | `string` | `null` | 顯示名稱 |
+| `return_data` | `bool` | `false` | 只能有一項是 `true`，告警比較的就是那一項 |
+| `metric` | `object` | `null` | 單一指標，欄位同上表；跟 `expression` 二選一 |
 
 ## 測試
 
