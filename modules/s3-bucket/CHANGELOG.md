@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.3.0...s3-bucket-v0.3.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **s3-bucket:** rewrite the input and output descriptions in Chinese ([9dcb8aa](https://github.com/libterty/infra-platform/commit/9dcb8aa41f04e569b237d76adb9d7665e80e1fde))
+
 ## [0.3.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.2.0...s3-bucket-v0.3.0) (2026-10-21)
 
 
