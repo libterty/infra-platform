@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/libterty/infra-platform/compare/bedrock-guardrail-v0.1.1...bedrock-guardrail-v0.1.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **bedrock-guardrail:** rewrite the input and output descriptions in Chinese ([b82d8ed](https://github.com/libterty/infra-platform/commit/b82d8ed699a329c8f3ab4a8ad8c8bf7dee361e3a))
+
 ## 0.1.1（2026-10-16）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
