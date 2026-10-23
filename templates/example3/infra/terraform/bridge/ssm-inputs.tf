@@ -11,6 +11,7 @@ locals {
     agent_sg_id                    = "network/agent_sg_id"
     bastion_sg_id                  = "network/bastion_sg_id"
     eks_api_sg_id                  = "network/eks_api_sg_id"
+    node_sg_id                     = "network/node_sg_id"
     db_proxy_endpoint              = "database/db_proxy_endpoint"
     db_secret_arn                  = "database/db_secret_arn"
     rate_limit_redis_endpoint      = "database/rate_limit_redis_endpoint"
@@ -37,6 +38,7 @@ locals {
     public_subnet_ids = "network/public_subnet_ids"
     app_subnet_ids    = "network/app_subnet_ids"
     agent_subnet_ids  = "network/agent_subnet_ids"
+    app_subnet_cidrs  = "network/app_subnet_cidrs"
   }
 }
 

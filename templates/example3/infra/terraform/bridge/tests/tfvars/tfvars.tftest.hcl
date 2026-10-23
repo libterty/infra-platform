@@ -29,6 +29,7 @@ override_module {
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
       eks_api_sg_id                  = "sg-0aaaaaaa00000005"
+      node_sg_id                     = "sg-0aaaaaaa00000006"
       eks_cluster_role_arn           = "arn:aws:iam::111111111111:role/example-dev-eks-cluster"
       eks_node_role_arn              = "arn:aws:iam::111111111111:role/example-dev-eks-node"
       api_pod_role_arn               = "arn:aws:iam::111111111111:role/example-dev-api-pod"
@@ -41,6 +42,7 @@ override_module {
       services          = ["api", "worker"]
       public_subnet_ids = ["subnet-0aaaaaaa00000001", "subnet-0aaaaaaa00000002"]
       app_subnet_ids    = ["subnet-0bbbbbbb00000001", "subnet-0bbbbbbb00000002"]
+      app_subnet_cidrs  = ["10.10.64.0/19", "10.10.96.0/19"]
       agent_subnet_ids  = ["subnet-0ccccccc00000001", "subnet-0ccccccc00000002"]
     }
   }
