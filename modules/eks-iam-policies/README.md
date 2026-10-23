@@ -132,30 +132,28 @@ IAM 對一個 role 的 inline policy 總和限制是 10,240 字元，計算時�
 - Karpenter 的轉換是人工做的，沒有程式比對 yaml；LB Controller 則是原檔。
 - 不檢查 `node_role_arn` 的帳號是否等於 `account_id`。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `cluster_name` | `string` | 無 | 是 | EKS 叢集名稱，1–100 字元，限字母、數字、`-`、`_`，首字元為字母或數字 |
-| `region` | `string` | 無 | 是 | 叢集所在 region，例如 `ap-northeast-1` |
-| `account_id` | `string` | 無 | 是 | 12 位數字的帳號 ID |
-| `partition` | `string` | `"aws"` | 否 | `aws`、`aws-cn` 或 `aws-us-gov`；只影響這個 module 組出的 ARN，不影響 LB Controller 官方 policy |
-| `load_balancer_controller_version` | `string` | `"3.6.1"` | 否 | 只接受 module 附的版本（目前是 `3.6.0`、`3.6.1`） |
-| `karpenter` | `object({ version = optional(string, "1.15.0"), node_role_arn = string, interruption_queue_name = string })` | `null` | 否 | `null` 時不輸出 Karpenter policy；`version` 只接受 module 附的版本（目前只有 `1.15.0`）；`node_role_arn` 必須是 role ARN；`interruption_queue_name` 1–80 字元，限字母、數字、`-`、`_` |
+| `cluster_name` | `string` | 無 | 是 | EKS cluster 名稱，用在 ARN 與 Karpenter policy 的 cluster tag 條件。1–100 字元，限英數字、`-`、`_`，首字元須為英數字。 |
+| `region` | `string` | 無 | 是 | cluster 所在 region，例如 `ap-northeast-1`。 |
+| `account_id` | `string` | 無 | 是 | cluster 所在的 12 位數 AWS 帳號 ID。 |
+| `partition` | `string` | `"aws"` | 否 | 這個 module 組出的 ARN 用的 AWS partition：`aws`、`aws-cn` 或 `aws-us-gov`。LB Controller policy 是官方檔案，不受影響。 |
+| `load_balancer_controller_version` | `string` | `"3.6.1"` | 否 | 要輸出哪個版本的 AWS Load Balancer Controller 官方 IAM policy。只接受 module 在 `policies/aws-load-balancer-controller/` 附的版本（目前是 `3.6.0`、`3.6.1`）。 |
+| `karpenter` | `object` | `null` | 否 | Karpenter controller policy 的設定；`null` 時不輸出 Karpenter policy。欄位：`version`（預設 `1.15.0`，只接受 `local.karpenter_supported_versions` 列的版本，目前只有 `1.15.0`）、`node_role_arn`（controller 唯一能 pass 給 EC2 的 role，必須是不含萬用字元的 IAM role ARN）、`interruption_queue_name`（controller 可讀的 SQS queue，1–80 字元，限英數字、`-`、`_`）。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `load_balancer_controller_policy_json` | `string` | LB Controller 官方 policy，去空白的 JSON |
-| `karpenter_controller_policy_json` | `string` | Karpenter controller policy；`karpenter` 為 `null` 時是 `null` |
-| `argo_rollouts_cloudwatch_policy_json` | `string` | `cloudwatch:GetMetricData` 的 policy |
-| `keda_cloudwatch_policy_json` | `string` | KEDA `aws-cloudwatch` scaler 用的 `cloudwatch:GetMetricData` policy |
-| `policy_sizes` | `map(number)` | 各 policy 去空白後的字元數；key 為 `load_balancer_controller`、`argo_rollouts_cloudwatch`、`keda_cloudwatch`，`karpenter` 有給時加 `karpenter_controller` |
+| 名稱 | 說明 |
+|---|---|
+| `load_balancer_controller_policy_json` | 所選版本的 AWS Load Balancer Controller 官方 IAM policy，去空白的 JSON 字串。 |
+| `karpenter_controller_policy_json` | 所選版本的 Karpenter controller IAM policy（官方各份 controller policy 併成一份），去空白的 JSON 字串。`karpenter` 為 `null` 時是 `null`。 |
+| `argo_rollouts_cloudwatch_policy_json` | Argo Rollouts 做 CloudWatch 指標分析用的 policy（`cloudwatch:GetMetricData`），去空白的 JSON 字串。 |
+| `keda_cloudwatch_policy_json` | KEDA `aws-cloudwatch` scaler 用的 policy（`cloudwatch:GetMetricData`），去空白的 JSON 字串。 |
+| `policy_sizes` | 各 policy JSON 去空白後的字元數（`map(number)`），IAM 就是這樣計入 role inline policy 的 10,240 字元上限。key：`load_balancer_controller`、`argo_rollouts_cloudwatch`、`keda_cloudwatch`，`karpenter` 有給時加 `karpenter_controller`。放在同一個 role 的 policy 要把大小加總。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
