@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Validation: fmt, static rules, init -backend=false, validate, test (mock), tflint. Never touches AWS.
 # Template stacks take their modules from the HCP private registry (ADR-0004), so they need a registry token
-# (terraform login, or TF_TOKEN_app_terraform_io); modules and customer repos stay offline.
+# (terraform login, or TF_TOKEN_app_terraform_io); modules and customer repos stay offline once the tflint plugins
+# are in .cache/tflint-plugins (the first tflint --init downloads them from GitHub).
 # Usage: scripts/validate.sh [dir...]   Without arguments, scans modules and templates.
 #        scripts/validate.sh --changed-since <rev>   fmt and static rules scan everything; init/validate/test/tflint
 #        only run in the directories a change since <rev> can affect (all of them when a shared file changed).
@@ -499,6 +500,11 @@ fi
 
 command -v tflint >/dev/null || { echo "找不到 tflint" >&2; exit 1; }
 
+# The aws ruleset is a plugin; install it once (verified by tflint against GitHub attestations), then lint runs offline.
+export TFLINT_PLUGIN_DIR="${TFLINT_PLUGIN_DIR:-${cache_root}/tflint-plugins}"
+mkdir -p "${TFLINT_PLUGIN_DIR}"
+tflint --init --config="${repo_root}/.tflint.hcl" >/dev/null || { echo "tflint --init 失敗：第一次要從 GitHub 下載 plugin，遇到額度限制時設定 GITHUB_TOKEN" >&2; exit 1; }
+
 # Template stacks resolve modules from the registry; without a token init fails with a vague "Module not found".
 for d in "${dirs[@]}"; do
   stack_root_of "$(rel "$d")" >/dev/null || continue
@@ -548,6 +554,14 @@ validate_dir() {
   done
 
   tflint --chdir="$dir" --config="${repo_root}/.tflint.hcl" || return 1
+
+  # Step 7a: stacks only call registry modules, so lint them expanded with each tfvars file to check the spec values.
+  if stack_root_of "$c" >/dev/null; then
+    for x in "$dir"/envs/*.tfvars "$dir"/envs/examples/*.tfvars; do
+      [ -f "$x" ] || continue
+      tflint --chdir="$dir" --config="${repo_root}/.tflint.hcl" --call-module-type=all --var-file="${x#"$dir"/}" || return 1
+    done
+  fi
 }
 
 for d in "${dirs[@]}"; do

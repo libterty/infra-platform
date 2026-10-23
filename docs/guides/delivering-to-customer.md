@@ -120,7 +120,7 @@ scripts/validate.sh "$CUSTOMER_REPO"
 | `vendor/modules/<module>/` | 跟本 repo 的 `modules/<module>/` 相同（S2 放行 `ssm-publish`、S3 放行 `ssm-read`、S4 放行 `iam-role`、`iam-role-policy`、`security-group`、`vpc-interface-endpoints`、`vpc`） |
 | `infra/terraform/<stack>/` | 跟範本的 stack 相同（S4、S8 一律不准直接宣告 IAM、SG 或其他原生 resource；S5 比對客戶這幾個 stack 的 `common.tf` 彼此是否一致） |
 
-stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`。這套換算要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；目錄放在別處，就當成一般目錄處理，S2、S3 不放行。
+stack 目錄跟本 repo 的範本 stack 一樣，用 `-lockfile=readonly` init，並且依目錄結構（有 `envs/<env>.tfvars` 與 `tests/tfvars/`、`envs/examples/*.tfvars` 與 `tests/examples/`）對 tfvars 再各跑一次 `terraform test`，並帶入每份 tfvars 跑 tflint（`--call-module-type=all`，會展開 vendored 的 module）。tflint 的設定與 aws ruleset plugin 用的是本 repo 的 `.tflint.hcl` 與 `.cache/tflint-plugins`，客戶 repo 不需要另外安裝。這套換算要求客戶 repo 的 stack 放在 `infra/terraform/<stack>/`，vendored 的 module 放在 `vendor/modules/<module>/`（`vendor-modules.sh` 固定寫到這裡）；目錄放在別處，就當成一般目錄處理，S2、S3 不放行。
 
 確認沒問題之後在客戶 repo 裡 commit，commit message 帶上 `VERSIONS` 的內容，之後誰要追是哪個版本都查得到。
 

@@ -15,7 +15,7 @@ issue 只能用表單開：
 
 ## 開發環境
 
-需要 terraform 1.15.8、tflint 0.64.0、bash 與 jq，不需要 AWS 憑證。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要驗證範本就要先用該 organization 成員的帳號 `terraform login`。
+需要 terraform 1.15.8、tflint 0.64.0、bash 與 jq，不需要 AWS 憑證。tflint 的 aws ruleset 是 plugin，第一次跑 `scripts/validate.sh` 時會從 GitHub 下載到 `.cache/tflint-plugins`；遇到 GitHub API 額度限制時設定 `GITHUB_TOKEN`。範本的 stack 從 `app.terraform.io/libterty` 抓 module，要驗證範本就要先用該 organization 成員的帳號 `terraform login`。
 
 ```bash
 scripts/validate.sh                      # 全部

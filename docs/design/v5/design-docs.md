@@ -78,6 +78,8 @@ plugin "aws" {
 - 範本 stack（現在 Step 6a 用目錄結構判斷的那一類）在原本的 tflint 之後，對 `envs/*.tfvars` 與 `envs/examples/*.tfvars` 逐一跑 `tflint --call-module-type=all --var-file=<file>`。module 已經由前面的 `init` 下載到 `TF_DATA_DIR`，不用另外 init。
 - module 與 examples 維持原本的 tflint 呼叫方式。
 
+aws ruleset 只檢查它有規則的 resource：ElastiCache 的 node type、EC2 的 instance type、`aws_db_instance` 的 instance class 會被檢查；Aurora 的 `aws_rds_cluster_instance` 沒有對應規則，範本的 `db_instance_class` 檢查不到（E1 實測）。
+
 CI（`.github/workflows/ci.yml`）：
 
 - 加一個 `actions/cache`，快取 `.cache/tflint-plugins`，key 是 `tflint-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}`。

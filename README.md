@@ -99,7 +99,7 @@ scripts/validate.sh modules/ssm-publish  # 只跑指定目錄
 scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
 ```
 
-這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（`required_providers` 裡的每個 provider 都要有 `mock_provider`）、`tflint`。它一開頭就清掉所有 `AWS_*`、`KUBE*`、`HELM*` 環境變數，並把 AWS 設定檔與 `KUBECONFIG` 指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session 或叢集。module 裡如果有本地 Helm chart（`charts/`）或 Lambda 程式碼的測試（`lambda/test_*.py`），裝了 `helm`、`python3` 時也會一起檢查。CI（`.github/workflows/ci.yml`）跑同一支腳本：PR 用 `--changed-since`，push 到 main、每週排程與手動觸發跑全部。
+這支腳本依序做：`terraform fmt -check`、靜態規則 S1 到 S10、`terraform init -backend=false`、`validate`、`test`（`required_providers` 裡的每個 provider 都要有 `mock_provider`）、`tflint`。tflint 用內建的 terraform ruleset 加上 aws ruleset（`.tflint.hcl` 釘版本，不開 `deep_check`，不需要 AWS 憑證）；aws ruleset 是 plugin，第一次跑時 `tflint --init` 會從 GitHub 下載到 `.cache/tflint-plugins`，之後不連網。範本的 stack 另外用 `--call-module-type=all` 逐一帶入 `envs/` 底下的每份 tfvars 再跑一次 tflint，tfvars 裡的規格值（例如 ElastiCache 的 node type）也會被檢查；aws ruleset 沒有對應規則的 resource（例如 Aurora 的 `aws_rds_cluster_instance`）檢查不到。它一開頭就清掉所有 `AWS_*`、`KUBE*`、`HELM*` 環境變數，並把 AWS 設定檔與 `KUBECONFIG` 指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session 或叢集。module 裡如果有本地 Helm chart（`charts/`）或 Lambda 程式碼的測試（`lambda/test_*.py`），裝了 `helm`、`python3` 時也會一起檢查。CI（`.github/workflows/ci.yml`）跑同一支腳本：PR 用 `--changed-since`，push 到 main、每週排程與手動觸發跑全部。
 
 `--changed-since <rev>` 的 fmt 與靜態規則仍然掃全部，`init` 到 `tflint` 只跑受影響的目錄：改到的目錄、用本地路徑（`./`、`../`）引用它的目錄（例如 module 的 examples），以及範本 stack 之外的檔案所屬範本的全部 stack。範本從 registry 抓 module，所以只改 module 不會重跑範本。`docs/`、`*.md` 不算改動；`scripts/`、`.tflint.hcl`、`.github/` 這類其他檔案一改就跑全部。
 

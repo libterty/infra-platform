@@ -1,6 +1,6 @@
 # infra-platform v5 實作流程：tflint aws ruleset 與 terraform-docs
 
-> 狀態：E0（設計）審閱中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：E0 完成（#78），E1 進行中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -24,7 +24,7 @@ E3 第一個 module 發版後，先到 HCP 確認中文顯示正常，才繼續�
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
-| E0 | v5 設計文件與實作流程 | 審閱中 | — |
+| E0 | v5 設計文件與實作流程 | 完成：審過並合併（#78） | `e63d6b2` |
 | E1 | tflint aws ruleset | 未開始 | — |
 | E2 | terraform-docs 設定、S11、CI、規則文件 | 未開始 | — |
 | E3 | 第 1 批：`kms-key`、`ecr-repository`、`s3-bucket`、`sns-alarm-topic`、`security-group`、`ssm-publish`、`ssm-read` | 未開始 | — |
@@ -50,8 +50,8 @@ E3 第一個 module 發版後，先到 HCP 確認中文顯示正常，才繼續�
 驗收：
 
 - 全量 `scripts/validate.sh` 通過。
-- 突變：在一個 module 的 example 寫不存在的 instance type → 失敗；在一個範本 stack 的 `envs/*.tfvars` 寫不存在的 instance type → 失敗；拿掉 `tflint --init` 且清空 plugin 目錄 → 失敗。
-- 清空 `.cache/tflint-plugins` 後重跑會重新下載並通過；第二次跑不連網（`HTTPS_PROXY=http://127.0.0.1:9`）也通過。
+- 突變：在一個 module 的 example 寫不存在的 instance type → 失敗；在一個範本 stack 的 `envs/*.tfvars` 寫不存在的 node type → 失敗；plugin 目錄是空的又連不到 GitHub → 失敗。
+- 空的 plugin 目錄重跑會重新下載並通過；已有 plugin 時，`tflint --init` 與 `tflint` 在不連網（`HTTPS_PROXY=http://127.0.0.1:9`）下都通過。`terraform init` 本來就要連 registry 查 provider，不在這項檢查內。
 - CI 綠燈，第二次跑命中 plugin 快取。
 
 ### E2：terraform-docs 設定、S11、CI、規則文件
