@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/vpc-v0.2.0...vpc-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **vpc:** rewrite the input and output descriptions in Chinese ([ea35219](https://github.com/libterty/infra-platform/commit/ea35219a1af1c68e29f2d6c1d345437f2a66f0a5))
+
 ## [0.2.0](https://github.com/libterty/infra-platform/compare/vpc-v0.1.0...vpc-v0.2.0) (2026-10-21)
 
 
