@@ -1,0 +1,35 @@
+formatter: "markdown table"
+version: ">= 0.24.0, < 0.25.0"
+sections:
+  show: [inputs, outputs]
+content: |-
+  ## 輸入
+
+  | 名稱 | 型別 | 預設 | 必填 | 說明 |
+  |---|---|---|---|---|
+  {{- range .Module.Inputs }}
+  | `{{ .Name }}` | `{{ regexReplaceAll "\\(\\{.*\\}\\)" (regexReplaceAll "\\s+" (regexReplaceAll "#[^\\n]*" (tostring .Type) "") " ") "" }}` | {{ if .Required }}無{{ else }}`{{ regexReplaceAll "\\s+" .GetValue " " }}`{{ end }} | {{ if .Required }}是{{ else }}否{{ end }} | {{ .Description | tostring | sanitizeMarkdownTbl }} |
+  {{- end }}
+
+  ## 輸出
+
+  | 名稱 | 說明 |
+  |---|---|
+  {{- range .Module.Outputs }}
+  | `{{ .Name }}` | {{ .Description | tostring | sanitizeMarkdownTbl }} |
+  {{- end }}
+output:
+  file: README.md
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
+sort:
+  enabled: false
+settings:
+  anchor: false
+  html: false
+  escape: true
+  lockfile: false
+  read-comments: false

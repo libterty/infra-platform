@@ -1,6 +1,6 @@
 # infra-platform v5 實作流程：tflint aws ruleset 與 terraform-docs
 
-> 狀態：E0 完成（#78），E1 進行中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：E0–E2 完成，E3 進行中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -25,8 +25,8 @@ E3 第一個 module 發版後，先到 HCP 確認中文顯示正常，才繼續�
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
 | E0 | v5 設計文件與實作流程 | 完成：審過並合併（#78） | `e63d6b2` |
-| E1 | tflint aws ruleset | 未開始 | — |
-| E2 | terraform-docs 設定、S11、CI、規則文件 | 未開始 | — |
+| E1 | tflint aws ruleset | 完成：全量 129 個目錄通過、aws ruleset 0 個問題；example 與範本 tfvars 的突變都被抓到；Aurora 的 `aws_rds_cluster_instance` 沒有對應規則 | `b9a37a7` |
+| E2 | terraform-docs 設定、S11、CI、規則文件 | 完成：外層型別 regex 在 42 個 module 的 392 個變數上只產生 10 種外層寫法、沒有 `{`；S11 五種情況（產生後通過、手改表格、改 description 沒重產、沒有設定檔、沒有工具）都符合預期 | — |
 | E3 | 第 1 批：`kms-key`、`ecr-repository`、`s3-bucket`、`sns-alarm-topic`、`security-group`、`ssm-publish`、`ssm-read` | 未開始 | — |
 | E4 | 第 2 批：`vpc`、`vpc-interface-endpoints`、`alb`、`waf-web-acl`、`vpc-peering`、`nlb`、`lb-traffic-breaker` | 未開始 | — |
 | E5 | 第 3 批：`ecs-cluster`、`ecs-service`、`ecs-service-alarms`、`lambda-function`、`ec2-bastion`、`ec2-instance`、`ec2-asg` | 未開始 | — |
