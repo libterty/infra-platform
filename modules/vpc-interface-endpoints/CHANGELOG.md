@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/vpc-interface-endpoints-v0.1.0...vpc-interface-endpoints-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **vpc-interface-endpoints:** rewrite the input and output descriptions in Chinese ([9f4cb11](https://github.com/libterty/infra-platform/commit/9f4cb119c1c461e32d96689c34683a825489f3e9))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
