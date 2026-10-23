@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/nlb-v0.2.0...nlb-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **nlb:** rewrite the input and output descriptions in Chinese ([f99343f](https://github.com/libterty/infra-platform/commit/f99343f4dbfbbdffe2795c4e53b10cb541330e81))
+
 ## [0.2.0](https://github.com/libterty/infra-platform/compare/nlb-v0.1.0...nlb-v0.2.0) (2026-10-21)
 
 
