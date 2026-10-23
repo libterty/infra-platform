@@ -18,7 +18,7 @@
   "modules/lambda-function": "0.1.0",
   "modules/log-delivery": "0.2.1",
   "modules/log-group": "0.1.0",
-  "modules/log-metric-alarm": "0.2.0",
+  "modules/log-metric-alarm": "0.2.1",
   "modules/metric-alarm": "0.1.0",
   "modules/rds": "0.2.1",
   "modules/s3-bucket": "0.3.1",

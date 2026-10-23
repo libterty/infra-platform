@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/log-metric-alarm-v0.2.0...log-metric-alarm-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **log-metric-alarm:** rewrite the input and output descriptions in Chinese ([f5d4d8e](https://github.com/libterty/infra-platform/commit/f5d4d8ec52287813a8dae01e1416042d3e206c02))
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
