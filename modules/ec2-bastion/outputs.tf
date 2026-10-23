@@ -1,14 +1,14 @@
 output "instance_id" {
-  description = "Instance ID, the target for aws ssm start-session."
+  description = "instance ID，`aws ssm start-session` 的 target。"
   value       = aws_instance.this.id
 }
 
 output "private_ip" {
-  description = "Private IP address of the instance."
+  description = "instance 的私有 IP。"
   value       = aws_instance.this.private_ip
 }
 
 output "ami_id" {
-  description = "AMI the instance was first created from. Later AMI releases are ignored."
+  description = "目前查到的最新 Amazon Linux 2023 AMI。因為 `ignore_changes = [ami]`，不一定是這台實際在用的。"
   value       = data.aws_ami.al2023.id
 }
