@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Function name. The log group is /aws/lambda/<name>."
+  description = "function 名稱，2–64 字元，限小寫英數字與連字號，字母開頭。log group 名稱為 `/aws/lambda/<name>`。"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,63}$", var.name))
     error_message = "name must be 2-64 chars of lowercase letters, digits or hyphens, starting with a letter."
@@ -9,7 +9,7 @@ variable "name" {
 
 variable "image_uri" {
   type        = string
-  description = "ECR image with an explicit tag or digest. latest is rejected. Terraform owns the tag: change it here and apply."
+  description = "ECR image，要帶明確 tag（不可 `latest`）或 sha256 digest。tag 由 Terraform 管：換版就改這裡再 apply。"
   validation {
     condition     = can(regex("^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/[a-z0-9._/-]+(:[A-Za-z0-9_.-]{1,128}|@sha256:[0-9a-f]{64})$", var.image_uri)) && !endswith(lower(var.image_uri), ":latest")
     error_message = "image_uri must be an ECR image with an explicit tag (not latest) or a sha256 digest."
@@ -18,7 +18,7 @@ variable "image_uri" {
 
 variable "role_arn" {
   type        = string
-  description = "Execution role. Build it with iam-role; it needs the logs permissions on the log group and, with vpc, the network interface permissions."
+  description = "execution role 的 ARN，用 `iam-role` 建。需要這個 log group 的寫入權限；給 `vpc` 時還需要建立 network interface 的權限。"
   validation {
     condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.role_arn))
     error_message = "role_arn must be an IAM role ARN."
@@ -28,7 +28,7 @@ variable "role_arn" {
 variable "architectures" {
   type        = list(string)
   default     = ["arm64"]
-  description = "Exactly one of arm64 or x86_64. It must match the architecture the image was built for."
+  description = "剛好一個：`arm64` 或 `x86_64`，要跟 image 建置的架構一致。"
   validation {
     condition     = length(var.architectures) == 1 && contains(["arm64", "x86_64"], var.architectures[0])
     error_message = "architectures must be [\"arm64\"] or [\"x86_64\"]."
@@ -38,7 +38,7 @@ variable "architectures" {
 variable "memory_size" {
   type        = number
   default     = 512
-  description = "Memory in MB, 128 to 10240."
+  description = "記憶體（MB），128–10240 的整數。"
   validation {
     condition     = var.memory_size == floor(var.memory_size) && var.memory_size >= 128 && var.memory_size <= 10240
     error_message = "memory_size must be a whole number from 128 to 10240."
@@ -48,7 +48,7 @@ variable "memory_size" {
 variable "timeout" {
   type        = number
   default     = 30
-  description = "Timeout in seconds, 1 to 900."
+  description = "逾時秒數，1–900 的整數。"
   validation {
     condition     = var.timeout == floor(var.timeout) && var.timeout >= 1 && var.timeout <= 900
     error_message = "timeout must be a whole number from 1 to 900."
@@ -58,7 +58,7 @@ variable "timeout" {
 variable "reserved_concurrent_executions" {
   type        = number
   default     = null
-  description = "Reserved concurrency. null leaves it unreserved; 0 stops all invocations."
+  description = "保留的並行數，不小於 0 的整數；`null` 時不保留，`0` 時 function 完全不能被呼叫。"
   validation {
     condition     = var.reserved_concurrent_executions == null ? true : (var.reserved_concurrent_executions == floor(var.reserved_concurrent_executions) && var.reserved_concurrent_executions >= 0)
     error_message = "reserved_concurrent_executions must be null or a whole number of at least 0."
@@ -69,7 +69,7 @@ variable "environment" {
   type        = map(string)
   default     = {}
   nullable    = false
-  description = "Plain environment variables. Put secrets in Secrets Manager and pass only the ARN here. Names that look like secrets are rejected unless they end in _ARN and the value is an ARN."
+  description = "一般環境變數，名稱要以字母開頭，限英數字與底線。secret 放 Secrets Manager，這裡只傳 ARN：名稱像 secret（含 `SECRET`、`PASSWORD`、`PASSWD`、`TOKEN`、`API_KEY`、`PRIVATE_KEY`、`CREDENTIAL`）會被拒，除非名稱以 `_ARN` 結尾且值是 ARN。"
   validation {
     condition     = alltrue([for k in keys(var.environment) : can(regex("^[a-zA-Z][a-zA-Z0-9_]*$", k))])
     error_message = "environment names must start with a letter and contain only letters, digits and underscores."
@@ -90,7 +90,7 @@ variable "vpc" {
     security_group_ids = list(string)
   })
   default     = null
-  description = "Attach the function to a VPC. null runs it outside any VPC. Needs at least one subnet and one security group."
+  description = "把 function 接進 VPC；`null` 時不進 VPC。欄位：`subnet_ids`（`subnet-…` 格式）、`security_group_ids`（`sg-…` 格式），各至少一個。"
   validation {
     condition     = var.vpc == null ? true : (length(var.vpc.subnet_ids) > 0 && length(var.vpc.security_group_ids) > 0)
     error_message = "vpc needs at least one subnet ID and one security group ID."
@@ -107,7 +107,7 @@ variable "vpc" {
 variable "log_retention_days" {
   type        = number
   default     = 30
-  description = "Retention of the function log group in days. Never-expire (0) is not accepted."
+  description = "function log group 的保留天數，必須是 CloudWatch Logs 接受的值（例如 `1`、`7`、`30`、`365`），不接受 `0`（永不過期）。"
   validation {
     condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
     error_message = "log_retention_days must be a value CloudWatch Logs accepts (1, 3, 5, 7, 14, 30, 60, 90, ... 3653)."
@@ -117,7 +117,7 @@ variable "log_retention_days" {
 variable "log_kms_key_arn" {
   type        = string
   default     = null
-  description = "Customer managed key for the log group. Its key policy must allow logs.<region>.amazonaws.com."
+  description = "log group 的客戶自管 KMS key ARN（`key/<id>`，不接受 alias）。key policy 必須允許 `logs.<region>.amazonaws.com`。"
   validation {
     condition     = var.log_kms_key_arn == null ? true : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-f-]+$", var.log_kms_key_arn))
     error_message = "log_kms_key_arn must be a KMS key ARN (key/<id>), not an alias."
@@ -127,7 +127,7 @@ variable "log_kms_key_arn" {
 variable "log_format" {
   type        = string
   default     = "Text"
-  description = "Text or JSON."
+  description = "log 格式，`Text` 或 `JSON`。"
   validation {
     condition     = contains(["Text", "JSON"], var.log_format)
     error_message = "log_format must be Text or JSON."
@@ -143,7 +143,7 @@ variable "permissions" {
   }))
   default     = {}
   nullable    = false
-  description = "Statement id => who may invoke the function. principal is an AWS service (*.amazonaws.com); source_arn is required, so a service is never allowed to invoke from every resource; s3.amazonaws.com also needs source_account because a bucket ARN has no account ID (confused deputy)."
+  description = "statement id（1–100 字元，限英數字、`_`、`-`）對應可呼叫 function 的對象。欄位：`principal`（AWS 服務，`*.amazonaws.com`，不可有萬用字元）、`source_arn`（必填，resource 部分不可以萬用字元開頭）、`source_account`（12 位數帳號 ID；`s3.amazonaws.com` 必填，因為 bucket ARN 沒有帳號，避免 confused deputy）、`action`（預設 `lambda:InvokeFunction`，單一 `lambda:` action，不可有萬用字元）。"
   validation {
     condition     = alltrue([for k in keys(var.permissions) : can(regex("^[A-Za-z0-9_-]{1,100}$", k))])
     error_message = "Keys are statement ids: 1-100 chars of letters, digits, _ or -."
@@ -173,5 +173,5 @@ variable "permissions" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the function and its log group. Name is added by the module."
+  description = "function 與 log group 的 tag；`Name` 由 module 加上。"
 }

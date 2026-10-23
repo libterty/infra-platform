@@ -52,37 +52,35 @@ module "worker" {
 - IAM role；用 `iam-role` 建。
 - S3 notification、EventBridge rule 等觸發來源；由呼叫端建，建的時候用 `function_arn`。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | function 名稱，小寫英數字與連字號，2–64 字元 |
-| `image_uri` | `string` | 無 | 是 | ECR image，要有 tag（不可 `latest`）或 sha256 digest |
-| `role_arn` | `string` | 無 | 是 | execution role 的 ARN |
-| `architectures` | `list(string)` | `["arm64"]` | 否 | 剛好一個：`arm64` 或 `x86_64` |
-| `memory_size` | `number` | `512` | 否 | MB，128 到 10240 的整數 |
-| `timeout` | `number` | `30` | 否 | 秒，1 到 900 的整數 |
-| `reserved_concurrent_executions` | `number` | `null` | 否 | 保留的並行數；`null` 不保留，`0` 停用 |
-| `environment` | `map(string)` | `{}` | 否 | 環境變數；名稱像 secret 的會被拒，除非名稱以 `_ARN` 結尾且值是 ARN |
-| `vpc` | `object` | `null` | 否 | `subnet_ids`、`security_group_ids`，各至少一個；`null` 不進 VPC |
-| `log_retention_days` | `number` | `30` | 否 | log group 保留天數，不接受 0 |
-| `log_kms_key_arn` | `string` | `null` | 否 | log group 的 KMS key ARN（`key/<id>`，不接受 alias） |
-| `log_format` | `string` | `"Text"` | 否 | `Text` 或 `JSON` |
-| `permissions` | `map(object)` | `{}` | 否 | statement id 對應 `principal`（`*.amazonaws.com`）、`source_arn`（必填）、`source_account`（`s3.amazonaws.com` 必填）、`action`（`lambda:InvokeFunction`） |
-| `tags` | `map(string)` | `{}` | 否 | function 與 log group 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | function 名稱，2–64 字元，限小寫英數字與連字號，字母開頭。log group 名稱為 `/aws/lambda/<name>`。 |
+| `image_uri` | `string` | 無 | 是 | ECR image，要帶明確 tag（不可 `latest`）或 sha256 digest。tag 由 Terraform 管：換版就改這裡再 apply。 |
+| `role_arn` | `string` | 無 | 是 | execution role 的 ARN，用 `iam-role` 建。需要這個 log group 的寫入權限；給 `vpc` 時還需要建立 network interface 的權限。 |
+| `architectures` | `list(string)` | `[ "arm64" ]` | 否 | 剛好一個：`arm64` 或 `x86_64`，要跟 image 建置的架構一致。 |
+| `memory_size` | `number` | `512` | 否 | 記憶體（MB），128–10240 的整數。 |
+| `timeout` | `number` | `30` | 否 | 逾時秒數，1–900 的整數。 |
+| `reserved_concurrent_executions` | `number` | `null` | 否 | 保留的並行數，不小於 0 的整數；`null` 時不保留，`0` 時 function 完全不能被呼叫。 |
+| `environment` | `map(string)` | `{}` | 否 | 一般環境變數，名稱要以字母開頭，限英數字與底線。secret 放 Secrets Manager，這裡只傳 ARN：名稱像 secret（含 `SECRET`、`PASSWORD`、`PASSWD`、`TOKEN`、`API_KEY`、`PRIVATE_KEY`、`CREDENTIAL`）會被拒，除非名稱以 `_ARN` 結尾且值是 ARN。 |
+| `vpc` | `object` | `null` | 否 | 把 function 接進 VPC；`null` 時不進 VPC。欄位：`subnet_ids`（`subnet-…` 格式）、`security_group_ids`（`sg-…` 格式），各至少一個。 |
+| `log_retention_days` | `number` | `30` | 否 | function log group 的保留天數，必須是 CloudWatch Logs 接受的值（例如 `1`、`7`、`30`、`365`），不接受 `0`（永不過期）。 |
+| `log_kms_key_arn` | `string` | `null` | 否 | log group 的客戶自管 KMS key ARN（`key/<id>`，不接受 alias）。key policy 必須允許 `logs.<region>.amazonaws.com`。 |
+| `log_format` | `string` | `"Text"` | 否 | log 格式，`Text` 或 `JSON`。 |
+| `permissions` | `map(object)` | `{}` | 否 | statement id（1–100 字元，限英數字、`_`、`-`）對應可呼叫 function 的對象。欄位：`principal`（AWS 服務，`*.amazonaws.com`，不可有萬用字元）、`source_arn`（必填，resource 部分不可以萬用字元開頭）、`source_account`（12 位數帳號 ID；`s3.amazonaws.com` 必填，因為 bucket ARN 沒有帳號，避免 confused deputy）、`action`（預設 `lambda:InvokeFunction`，單一 `lambda:` action，不可有萬用字元）。 |
+| `tags` | `map(string)` | `{}` | 否 | function 與 log group 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `function_name` | `string` | function 名稱 |
-| `function_arn` | `string` | function ARN；等所有 permission 建好才可用 |
-| `invoke_arn` | `string` | invoke ARN，給 API Gateway 整合用 |
-| `log_group_name` | `string` | module 建的 log group 名稱 |
+| 名稱 | 說明 |
+|---|---|
+| `function_name` | function 名稱。 |
+| `function_arn` | function ARN。等所有 permission 建好才可用，所以下游的 S3 notification 或 EventBridge target 用它，會在呼叫權限建好之後才建立。 |
+| `invoke_arn` | invoke ARN，給 API Gateway 整合用。 |
+| `log_group_name` | module 建的 log group 名稱。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
