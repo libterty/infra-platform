@@ -1,4 +1,4 @@
 output "peering_connection_id" {
-  description = "Peering connection ID. Give it to the peer account so it can accept the request."
+  description = "peering 連線 ID，交給對端帳號接受請求。"
   value       = aws_vpc_peering_connection.this.id
 }

@@ -71,30 +71,28 @@ priority 由 module 依固定順序產生，呼叫端不能指定，而且不會
 - 把整個 managed 群組改成 count。
 - logging 到 S3 或 Firehose。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | web ACL 名稱，1–128 字元，限英數字與 `_ -` |
-| `kill_switch` | `object` | `null` | 否 | `action`（`count` 或 `block`）、`response_json`（只有 `block` 能給） |
-| `rate_limit` | `object` | `null` | 否 | `limit`（10–2000000000，每個來源 IP）、`allowlist_cidrs`（預設 `[]`，IPv4） |
-| `managed_rule_groups` | `list(object)` | `[]` | 否 | `name`、`vendor`（預設 `AWS`）、`count_overrides`（預設 `[]`）；依清單順序評估，vendor 加 name 不可重複 |
-| `body_size_exempt_path_prefixes` | `list(string)` | `[]` | 否 | 不受 body size 限制的 path prefix；需要 `SizeRestrictions_BODY` 已在 common rule set 的 `count_overrides` |
-| `logging` | `object` | `null` | 否 | `retention_days`（預設 14）、`kms_key_arn`、`redacted_headers`（預設 `["authorization", "cookie"]`，在這兩個之外追加） |
-| `tags` | `map(string)` | `{}` | 否 | tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | Web ACL 名稱，也是 CloudWatch metric 名稱與 log group `aws-waf-logs-<name>` 的後綴。1–128 字元，限英數字、`_`、`-`。 |
+| `kill_switch` | `object` | `null` | 否 | 比對所有請求的緊急開關，`null` 時關閉。欄位：`action`（`count` 只觀察，`block` 擋下）、`response_json`（只有 `block` 能給，是 503 回應的 body，必須是合法 JSON，最多 10240 字元）。 |
+| `rate_limit` | `object` | `null` | 否 | 流量限制，`null` 時不限。欄位：`limit`（每個來源 IP 每 5 分鐘的請求數上限，超過就擋，10–2000000000）、`allowlist_cidrs`（IPv4 CIDR，前綴長度 1–32，預設 `[]`；只免除流量限制，其他規則照樣套用）。 |
+| `managed_rule_groups` | `list(object)` | `[]` | 否 | 依評估順序排列的 managed rule group，`vendor` 加 `name` 不可重複。欄位：`name`、`vendor`（預設 `AWS`），兩者皆 1–100 字元，限英數字、`_`、`-`；`count_overrides`（預設 `[]`，群組內改成只 count 不擋的規則名稱，不可重複）。群組本身一律維持自己的 action。 |
+| `body_size_exempt_path_prefixes` | `list(string)` | `[]` | 否 | 不受 8 KB body 大小限制的 path prefix，以 `/` 開頭且後面至少一個字元，不可重複。`managed_rule_groups` 必須有 `AWSManagedRulesCommonRuleSet`（vendor `AWS`），且 `SizeRestrictions_BODY` 在它的 `count_overrides` 裡；module 會另外加一條規則，擋下其他 path 的過大 body。 |
+| `logging` | `object` | `null` | 否 | 寫到 CloudWatch log group `aws-waf-logs-<name>` 的 log，`null` 時不開。欄位：`retention_days`（預設 14，限 CloudWatch Logs 接受的值，不可為 0）、`kms_key_arn`（預設 `null`）、`redacted_headers`（預設 `["authorization", "cookie"]`，在這兩個一律遮蔽的 header 之外追加，名稱轉小寫，1–64 字元）。origin verify header 要加在這裡。 |
+| `tags` | `map(string)` | `{}` | 否 | web ACL、IP set 與 log group 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `web_acl_arn` | `string` | web ACL ARN，傳給 `alb` 的 `web_acl_arn` |
-| `web_acl_name` | `string` | web ACL 名稱 |
-| `ip_set_arn` | `string` | allowlist IP set ARN，沒有 allowlist 時為 `null` |
-| `log_group_name` | `string` | `aws-waf-logs-<name>`，沒開 logging 時為 `null` |
+| 名稱 | 說明 |
+|---|---|
+| `web_acl_arn` | Web ACL ARN，傳給 `alb` module 做關聯；這個 module 不建關聯。 |
+| `web_acl_name` | Web ACL 名稱。 |
+| `ip_set_arn` | allowlist IP set ARN；沒有 allowlist 時是 `null`。 |
+| `log_group_name` | WAF log group 名稱 `aws-waf-logs-<name>`；沒開 logging 時是 `null`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

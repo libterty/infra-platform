@@ -134,25 +134,40 @@ module "nlb_access_logs" {
 - 不支援 listener 的 SNI 多憑證、mutual TLS、`unhealthy_state_routing`、`target_failover`、`proxy_protocol_v2`、`slow_start`、IPv6。
 - 不寫 provider 設定。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | NLB 名稱，2–32 字元，不得以 `internal-` 開頭 |
-| `internal` | `bool` | `true` | 否 | `true` 建內部 NLB |
-| `subnet_ids` | `list(string)` | 無 | 是 | 至少兩個不同的 subnet |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 SG，只能在建立時加（未確認） |
-| `cross_zone` | `bool` | `true` | 否 | `enable_cross_zone_load_balancing` |
-| `deletion_protection` | `bool` | `true` | 否 | 刪除保護 |
-| `vpc_id` | `string` | `null` | 視情況 | target group 的 VPC；`target_groups` 非空時必填 |
-| `target_groups` | `map(object)` | `{}` | 否 | 見下表 |
-| `listeners` | `map(object)` | `{}` | 否 | 見下表 |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警通知的 SNS topic；至少一個 |
-| `tags` | `map(string)` | `{}` | 否 | tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | NLB 名稱，target group 名稱是 `<name>-<key>`。2–32 字元，限英數字與 `-`，頭尾不可是 `-`，不可以 `internal-` 開頭。 |
+| `internal` | `bool` | `true` | 否 | `true` 時建內部 NLB。 |
+| `subnet_ids` | `list(string)` | 無 | 是 | NLB 所在的 subnet，至少兩個、分屬不同 AZ。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | NLB 的 security group，至少一個，由 network stack 建立。security group 只能在建立 NLB 時加（未確認）。 |
+| `cross_zone` | `bool` | `true` | 否 | 是否開啟跨 AZ 負載平衡（`enable_cross_zone_load_balancing`）。 |
+| `deletion_protection` | `bool` | `true` | 否 | 是否開啟刪除保護（`enable_deletion_protection`）。 |
+| `vpc_id` | `string` | `null` | 否 | `target_groups` 非空時必填。target group 所在的 VPC。 |
+| `target_groups` | `map(object)` | `{}` | 否 | key 對應一個 target group，名稱 `<name>-<key>`（1–32 字元）。`dns_failover` 是 `target_group_health.dns_failover.minimum_healthy_targets_count`：listener 有多個 target 時，它用到的本 module target group 都必須設成 `"off"`。欄位見〈`target_groups` 欄位〉。 |
+| `listeners` | `map(object)` | `{}` | 否 | key 對應一個 listener，預設 action 依權重轉發到 1–5 個 target（`weight` 0–999，至少一個大於 0）。有多個 target 時，用到的本 module target group 都必須 `dns_failover = "off"`；外部 ARN 無法檢查。欄位見〈`listeners` 欄位〉。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警 `alarm_actions` 與 `ok_actions` 的 SNS topic ARN，至少一個。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；`Name` 由 module 加上。 |
 
-`target_groups` 的欄位（名稱是 `<name>-<key>`）：
+## 輸出
+
+| 名稱 | 說明 |
+|---|---|
+| `nlb_arn` | NLB ARN。 |
+| `nlb_arn_suffix` | `net/<name>/<id>`，CloudWatch 的 `LoadBalancer` 維度。 |
+| `dns_name` | NLB DNS 名稱。 |
+| `zone_id` | NLB 的 Route 53 hosted zone ID，給 alias record 用。 |
+| `listener_arns` | key 同 `listeners` 的 map，值是 listener ARN；沒給時是空 map。 |
+| `target_group_arns` | key 同 `target_groups` 的 map，值是 target group ARN。 |
+| `target_group_arn_suffixes` | key 同 `target_groups` 的 map，值是 `targetgroup/<name>/<id>`，給 CloudWatch dimension 用。 |
+| `alarm_arns` | key 同 `target_groups` 的 map，值是 `UnHealthyHostCount` 告警 ARN。 |
+<!-- END_TF_DOCS -->
+
+## `target_groups` 欄位
+
+`target_groups` 的每個值（名稱是 `<name>-<key>`）：
 
 | 欄位 | 型別 | 預設 | 說明 |
 |---|---|---|---|
@@ -165,7 +180,9 @@ module "nlb_access_logs" {
 | `stickiness` | `bool` | `false` | `true` 開 `source_ip` |
 | `dns_failover` | `string` | `"1"` | `"off"` 或 1–3000 的數字字串；listener 有多個 target 時必須是 `"off"` |
 
-`listeners` 的欄位：
+## `listeners` 欄位
+
+`listeners` 的每個值：
 
 | 欄位 | 型別 | 預設 | 說明 |
 |---|---|---|---|
@@ -175,21 +192,6 @@ module "nlb_access_logs" {
 | `ssl_policy` | `string` | `"ELBSecurityPolicy-TLS13-1-2-2021-06"` | 只對 TLS 生效 |
 | `alpn_policy` | `string` | `null` | TLS 才能給：`HTTP1Only`、`HTTP2Only`、`HTTP2Optional`、`HTTP2Preferred`、`None` |
 | `targets` | `map(object)` | 無（必填） | 1–5 個；每個有 `target_group` 或 `target_group_arn`（擇一）與 `weight`（0–999，預設 1，至少一個大於 0） |
-
-## 輸出
-
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `nlb_arn` | `string` | NLB ARN |
-| `nlb_arn_suffix` | `string` | `net/<name>/<id>`，CloudWatch 的 `LoadBalancer` 維度 |
-| `dns_name` | `string` | NLB DNS 名稱 |
-| `zone_id` | `string` | alias record 用的 hosted zone ID |
-| `listener_arns` | `map(string)` | listener ARN，key 同 `listeners`；沒給時是空 map |
-| `target_group_arns` | `map(string)` | target group ARN，key 同 `target_groups` |
-| `target_group_arn_suffixes` | `map(string)` | `targetgroup/<name>/<id>`，key 同 `target_groups`，給 CloudWatch dimension 用 |
-| `alarm_arns` | `map(string)` | `UnHealthyHostCount` 告警 ARN，key 同 `target_groups` |
 
 ## 測試
 

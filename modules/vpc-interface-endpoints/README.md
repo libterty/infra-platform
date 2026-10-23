@@ -35,28 +35,26 @@ module "endpoints" {
 - 不支援 endpoint policy，也不為每個服務建獨立的 SG。
 - 不建 IAM 資源。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 2–48 字元小寫英數與連字號；SG 與 endpoint `Name` tag 的前綴 |
-| `vpc_id` | `string` | 無 | 是 | endpoint 與 SG 所在的 VPC，格式 `vpc-xxxxxxxx` |
-| `allowed_cidrs` | `list(string)` | 無 | 是 | 允許連 443 的 IPv4 CIDR，至少一個，不得含 `0.0.0.0/0` |
-| `subnet_ids` | `list(string)` | 無 | 是 | endpoint 網路介面的 subnet，至少兩個不重複 |
-| `services` | `set(string)` | `[]` | 否 | 服務名稱，例如 `ecr.api`；空集合什麼都不建 |
-| `private_dns_enabled` | `bool` | `true` | 否 | 是否在 VPC 內覆蓋公開服務的 DNS 名稱 |
-| `tags` | `map(string)` | `{}` | 否 | 額外 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | security group 與 endpoint `Name` tag 的前綴。2–48 字元，限小寫英數字與 `-`，以字母開頭。 |
+| `vpc_id` | `string` | 無 | 是 | endpoint 與 security group 所在的 VPC，格式 `vpc-0123456789abcdef0`。 |
+| `allowed_cidrs` | `list(string)` | 無 | 是 | 允許連 endpoint 443 port 的 IPv4 CIDR，至少一個，不可含 `0.0.0.0/0`；通常給 `[vpc_cidr]`。 |
+| `subnet_ids` | `list(string)` | 無 | 是 | endpoint 網路介面所在的 subnet，每個 AZ 一個，至少兩個不重複。 |
+| `services` | `set(string)` | `[]` | 否 | 要建的服務名稱，只寫 `com.amazonaws.<region>.` 之後的部分，例如 `ecr.api`；空集合時什麼都不建。 |
+| `private_dns_enabled` | `bool` | `true` | 否 | 是否在 VPC 內用 endpoint 蓋過公開服務的 DNS 名稱；VPC 必須開啟 DNS support 與 DNS hostnames。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `endpoint_ids` | `map(string)` | key 為服務名稱，值為 endpoint ID |
-| `security_group_id` | `string` | endpoint SG ID；`services` 為空時為 `null` |
+| 名稱 | 說明 |
+|---|---|
+| `endpoint_ids` | 服務名稱對應 endpoint ID 的 map。 |
+| `security_group_id` | endpoint 的 security group ID；`services` 為空時是 `null`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

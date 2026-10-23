@@ -40,29 +40,27 @@ module "peering" {
 - DNS resolution、IPv6、對端 route table。
 - security group 規則；用 `security-group` module 建。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 連線名稱，也是 `Name` tag；小寫英數字與連字號 |
-| `vpc_id` | `string` | 無 | 是 | 請求端 VPC（本帳號） |
-| `vpc_cidr` | `string` | 無 | 是 | 請求端 VPC 的 CIDR，用來檢查 `peer_cidrs` 是否重疊 |
-| `peer_vpc_id` | `string` | 無 | 是 | 對端 VPC |
-| `peer_owner_id` | `string` | 無 | 是 | 對端帳號 ID，12 位數 |
-| `peer_region` | `string` | `null` | 否 | 對端 region；`null` 表示同 region |
-| `route_table_ids` | `list(string)` | 無 | 是 | 要加 route 的 route table，至少一個、不可重複 |
-| `peer_cidrs` | `list(string)` | 無 | 是 | 對端網段，至少一個；不可為 `0.0.0.0/0`、不可重複、不可與 `vpc_cidr` 重疊 |
-| `tags` | `map(string)` | `{}` | 否 | 連線的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | peering 連線名稱，也是它的 `Name` tag。2–63 字元，限小寫英數字與 `-`，以字母開頭。 |
+| `vpc_id` | `string` | 無 | 是 | 請求端 VPC（本帳號的 VPC），格式 `vpc-0123456789abcdef0`。 |
+| `vpc_cidr` | `string` | 無 | 是 | 請求端 VPC 的主要 CIDR，必須是網路位址（例如 `10.10.0.0/16`）；用來擋下與它重疊的 `peer_cidrs`。 |
+| `peer_vpc_id` | `string` | 無 | 是 | 對端帳號裡的接受端 VPC，格式 `vpc-0123456789abcdef0`。 |
+| `peer_owner_id` | `string` | 無 | 是 | 對端 VPC 擁有者的帳號 ID，12 位數字。 |
+| `peer_region` | `string` | `null` | 否 | 對端 VPC 的 region，例如 `ap-northeast-1`；`null` 表示與請求端同 region。 |
+| `route_table_ids` | `list(string)` | 無 | 是 | 請求端 VPC 裡要加 route 到每個對端 CIDR 的 route table，至少一個、不可重複，格式 `rtb-0123456789abcdef0`。用 list 而不是 set：ID 在 plan 時可能還不知道，route 以索引為 key。 |
+| `peer_cidrs` | `list(string)` | 無 | 是 | 要路由過去的對端 VPC 網段，至少一個、不可重複，必須是網路位址（例如 `10.250.0.0/16`）；不可為 `0.0.0.0/0`，也不可與 `vpc_cidr` 重疊。 |
+| `tags` | `map(string)` | `{}` | 否 | peering 連線的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `peering_connection_id` | `string` | 連線 ID，交給對端帳號接受 |
+| 名稱 | 說明 |
+|---|---|
+| `peering_connection_id` | peering 連線 ID，交給對端帳號接受請求。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
