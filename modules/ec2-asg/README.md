@@ -69,41 +69,39 @@ module "web" {
 - step scaling、scheduled action、warm pool、lifecycle hook、額外的 EBS volume。
 - 讀 SSM 參數取得 AMI（只有 `ssm-read` 能讀 SSM 參數，所以用 `data "aws_ami"`）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | ASG 與 launch template 名稱，也是每台 instance 的 `Name` tag；小寫英數字與連字號 |
-| `subnet_ids` | `list(string)` | 無 | 是 | 放 instance 的 private subnet，至少一個 |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 security group |
-| `instance_profile_name` | `string` | 無 | 是 | instance profile 名稱 |
-| `instance_types` | `list(string)` | 無 | 是 | 至少一個，第一個是主要型號；都要跟 `architecture` 搭配 |
-| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64` |
-| `ami_id` | `string` | `null` | 否 | `null` 找最新的 Amazon Linux 2023 |
-| `root_volume` | `object({ size, kms_key_arn })` | `{ size = 20, kms_key_arn = null }` | 否 | root volume GiB（8 到 16384 的整數）與 KMS key ARN |
-| `user_data` | `string` | `null` | 否 | 開機腳本；明文，看起來像 secret 的內容會被拒 |
-| `min_size` | `number` | 無 | 是 | 最少台數 |
-| `max_size` | `number` | 無 | 是 | 最多台數 |
-| `desired_capacity` | `number` | 無 | 是 | 建立時的台數，`min_size <= desired_capacity <= max_size`；之後被忽略 |
-| `spot` | `object({ on_demand_base_capacity, on_demand_percentage_above_base, allocation_strategy })` | `null` | 否 | `null` 全 on-demand 且不建 mixed instances policy；欄位預設 `1`、`0`、`"price-capacity-optimized"` |
-| `target_group_arns` | `list(string)` | `[]` | 否 | 非空時 health check 用 `ELB` |
-| `health_check_grace_period` | `number` | `300` | 否 | 秒 |
-| `instance_refresh` | `object({ min_healthy_percentage })` | `{ min_healthy_percentage = 90 }` | 否 | rolling refresh 的最低健康比例，0 到 100 |
-| `cpu_target` | `number` | `null` | 否 | 有值才建 `ASGAverageCPUUtilization` target tracking policy |
-| `tags` | `map(string)` | `{}` | 否 | launch template 與每台 instance 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | Auto Scaling group 與 launch template 名稱，也是每台 instance 的 `Name` tag。2–63 字元，限小寫英數字與連字號，字母開頭。 |
+| `subnet_ids` | `list(string)` | 無 | 是 | ASG 啟動 instance 的 private subnet（`subnet-…` 格式），至少一個。instance 不會拿到 public IP。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | instance 的 security group（`sg-…` 格式），至少一個。 |
+| `instance_profile_name` | `string` | 無 | 是 | instance 的 instance profile 名稱，1–128 字元（例如帶 SSM Session Manager 權限）。沒有 SSH key。 |
+| `instance_types` | `list(string)` | 無 | 是 | instance type 清單，至少一個（例如 `t4g.small`），第一個是主要型號；其餘只當 spot override，所以只有設了 `spot` 才用得到。全部都要跟 `architecture` 搭配：Graviton 家族（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。 |
+| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64`，決定用哪個 Amazon Linux 2023 AMI。 |
+| `ami_id` | `string` | `null` | 否 | instance 的 AMI（`ami-…` 格式）；`null` 時找依 `architecture` 的最新 Amazon Linux 2023，出了新 AMI 會透過 instance refresh 換上。 |
+| `root_volume` | `object` | `{}` | 否 | root volume，一律是加密的 gp3。欄位：`size`（GiB，8–16384 的整數，預設 `20`；Amazon Linux 2023 快照是 8 GiB，所以最小 `8`）、`kms_key_arn`（KMS key ARN，不收 alias；預設 `null`，用帳號預設的 EBS key）。 |
+| `user_data` | `string` | `null` | 否 | 第一次開機執行的 shell script。以明文存在 state 與 launch template，能讀 launch template 的人都看得到，不要放 secret，改在開機時從 Secrets Manager 讀。看起來像 secret 的明文值或私鑰會被擋下。 |
+| `min_size` | `number` | 無 | 是 | 最少台數，不小於 0 的整數。 |
+| `max_size` | `number` | 無 | 是 | 最多台數，不小於 0 的整數。 |
+| `desired_capacity` | `number` | 無 | 是 | 建立時的台數，整數，`min_size <= desired_capacity <= max_size`。只在建立 ASG 時使用，之後的變更會被忽略，數量交給 scaling policy。 |
+| `spot` | `object` | `null` | 否 | 搭配 spot 的 mixed instances policy；`null` 時全部 on-demand，不建 `mixed_instances_policy`。欄位：`on_demand_base_capacity`（不小於 0 的整數，預設 `1`）、`on_demand_percentage_above_base`（0–100，預設 `0`）、`allocation_strategy`（`price-capacity-optimized`（預設）、`capacity-optimized`、`capacity-optimized-prioritized`、`lowest-price`）。用預設值時保留 1 台 on-demand，其餘都是 spot。 |
+| `target_group_arns` | `list(string)` | `[]` | 否 | 要把 instance 註冊進去的 target group ARN（ALB `target_type = instance`）。非空時 health check 類型改成 `ELB`。 |
+| `health_check_grace_period` | `number` | `300` | 否 | instance 啟動後幾秒才開始算 health check，不小於 0 的整數。要比開機加 `user_data` 跑完的時間長。 |
+| `instance_refresh` | `object` | `{}` | 否 | launch template 變更（例如新 AMI 或 `user_data`）時啟動的 rolling instance refresh。欄位：`min_healthy_percentage`（0–100，預設 `90`）。 |
+| `cpu_target` | `number` | `null` | 否 | target tracking policy（`ASGAverageCPUUtilization`）的平均 CPU 目標百分比，大於 0、最多 100；`null` 時不建 scaling policy。 |
+| `tags` | `map(string)` | `{}` | 否 | launch template 與每台 instance 的 tag（`propagate_at_launch`）；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `asg_name` | `string` | ASG 名稱 |
-| `asg_arn` | `string` | ASG ARN |
-| `launch_template_id` | `string` | launch template ID |
-| `launch_template_latest_version` | `string` | launch template 最新版本，ASG 啟動機器用的版本 |
+| 名稱 | 說明 |
+|---|---|
+| `asg_name` | Auto Scaling group 名稱。 |
+| `asg_arn` | Auto Scaling group ARN。 |
+| `launch_template_id` | launch template ID。 |
+| `launch_template_latest_version` | launch template 的最新版本，也就是 ASG 啟動機器用的版本。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

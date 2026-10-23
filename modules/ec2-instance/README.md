@@ -53,36 +53,34 @@ aws ssm start-session --target "$(terraform output -raw instance_id)"
 - 讀 SSM 參數取 AMI（只有 `ssm-read` 可以讀 SSM）。
 - 多台、自動補機器（用 `ec2-asg`）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | instance 名稱，也是 `Name` tag；小寫英數字與連字號 |
-| `subnet_id` | `string` | 無 | 是 | 放 instance 的 private subnet |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 security group |
-| `instance_profile_name` | `string` | 無 | 是 | instance profile，要帶 SSM Session Manager 權限 |
-| `instance_type` | `string` | 無 | 是 | 必須跟 `architecture` 搭配 |
-| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64` |
-| `ami_id` | `string` | `null` | 否 | `null` 時找最新 Amazon Linux 2023 |
-| `root_volume` | `object({ size, kms_key_arn })` | `{ size = 20, kms_key_arn = null }` | 否 | root volume（gp3、加密）；`size` 8 到 16384 的整數 GiB |
-| `ebs_volumes` | `map(object({ device_name, size, type, kms_key_arn }))` | `{}` | 否 | 資料碟，一律加密；`type` 預設 `gp3`，`kms_key_arn` 預設 `null` |
-| `user_data` | `string` | `null` | 否 | 開機腳本；明文，不要放 secret，像 secret 的字樣會被擋 |
-| `disable_api_termination` | `bool` | `true` | 否 | 終止保護 |
-| `sns_topic_arns` | `list(string)` | `[]` | 否 | 空的就不建告警；最多 4 個 |
-| `tags` | `map(string)` | `{}` | 否 | instance、volume、告警的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | instance 名稱，也是 `Name` tag，以及告警與資料碟名稱的前綴。2–63 字元，限小寫英數字與連字號，字母開頭。 |
+| `subnet_id` | `string` | 無 | 是 | 放 instance 的 private subnet（`subnet-…` 格式）。instance 不會拿到 public IP。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | instance 的 security group（`sg-…` 格式），至少一個。 |
+| `instance_profile_name` | `string` | 無 | 是 | instance profile 名稱，1–128 字元，要帶 SSM Session Manager 權限；沒有 SSH key。 |
+| `instance_type` | `string` | 無 | 是 | instance type，例如 `t4g.small`，必須跟 `architecture` 搭配：Graviton 家族（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。 |
+| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64`。`ami_id` 為 `null` 時依這個值找 Amazon Linux 2023 AMI；給了 `ami_id` 也要一致。 |
+| `ami_id` | `string` | `null` | 否 | 要啟動的 AMI（`ami-…` 格式）；`null` 時用 data source 找依 `architecture` 的最新 Amazon Linux 2023。 |
+| `root_volume` | `object` | `{}` | 否 | root volume，一律是加密的 gp3。欄位：`size`（GiB，8–16384 的整數，預設 `20`）、`kms_key_arn`（KMS key ARN，不收 alias；預設 `null`，用帳號預設的 EBS key）。 |
+| `ebs_volumes` | `map(object)` | `{}` | 否 | 額外的資料碟，key（小寫英數字與連字號，字母開頭，最多 41 字元）對應一顆 volume，一律加密，建在 instance 所在的 AZ。欄位：`device_name`（必填，`/dev/sdf`–`/dev/sdp` 或 `/dev/xvdf`–`/dev/xvdp`，不可重複）、`size`（必填，GiB，1–16384 的整數）、`type`（預設 `gp3`，可為 `gp3`、`gp2`、`io1`、`io2`、`st1`、`sc1`）、`kms_key_arn`（預設 `null`，用帳號預設的 EBS key；不收 alias）。 |
+| `user_data` | `string` | `null` | 否 | 第一次開機執行的 cloud-init 或 shell script，上限 16384 bytes。以明文存在 state，也看得到在 EC2 console，不要放 secret：看起來像 secret 的明文值或私鑰會被擋下。 |
+| `disable_api_termination` | `bool` | `true` | 否 | 終止保護。`terraform destroy` 前要先關掉。 |
+| `sns_topic_arns` | `list(string)` | `[]` | 否 | `StatusCheckFailed_System` 告警（alarm 與 OK）的 SNS topic ARN，最多 4 個，因為告警還帶一個 recover action。空 list 時不建告警；這是 repo「告警必須有 SNS topic」慣例的唯一例外（D16）。 |
+| `tags` | `map(string)` | `{}` | 否 | instance、volume 與告警的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `instance_id` | `string` | instance ID，`aws ssm start-session` 的 target |
-| `private_ip` | `string` | 私有 IP |
-| `ami_id` | `string` | `ami_id` 輸入，或查到的最新 AMI；因為 `ignore_changes = [ami]`，不一定是這台實際在用的 |
-| `alarm_arns` | `map(string)` | 告警 ARN，key 是 `status_check_failed_system`；沒建時是空 map |
+| 名稱 | 說明 |
+|---|---|
+| `instance_id` | instance ID，`aws ssm start-session` 的 target。 |
+| `private_ip` | instance 的私有 IP。 |
+| `ami_id` | 有給 `ami_id` 時就是它，否則是最近一次 plan 時查到的最新 AMI。因為 `ignore_changes = [ami]`，不一定是這台實際在用的。 |
+| `alarm_arns` | 告警名稱對應 ARN 的 map，key 是 `status_check_failed_system`；`sns_topic_arns` 為空時是空 map。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

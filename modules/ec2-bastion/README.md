@@ -43,30 +43,28 @@ aws ssm start-session --target "$(terraform output -raw instance_id)"
 - user data、額外的 EBS volume、自訂 KMS key。
 - IAM role 與 instance profile（用 `iam-role` 建）、security group（用 `security-group` 建）。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | instance 名稱，也是 `Name` tag；小寫英數字與連字號 |
-| `subnet_id` | `string` | 無 | 是 | 放 instance 的 private subnet |
-| `security_group_ids` | `list(string)` | 無 | 是 | 至少一個 security group |
-| `instance_profile_name` | `string` | 無 | 是 | 帶 SSM Session Manager 權限的 instance profile |
-| `instance_type` | `string` | `"t4g.nano"` | 否 | 必須跟 `architecture` 搭配 |
-| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64` |
-| `root_volume_size` | `number` | `8` | 否 | root volume GiB，8 到 16384 的整數 |
-| `tags` | `map(string)` | `{}` | 否 | instance 與 root volume 的 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | instance 名稱，也是 `Name` tag。2–63 字元，限小寫英數字與連字號，字母開頭。 |
+| `subnet_id` | `string` | 無 | 是 | 放 instance 的 private subnet（`subnet-…` 格式）。instance 不會拿到 public IP。 |
+| `security_group_ids` | `list(string)` | 無 | 是 | instance 的 security group（`sg-…` 格式），至少一個。 |
+| `instance_profile_name` | `string` | 無 | 是 | 帶 SSM Session Manager 權限的 instance profile 名稱，1–128 字元。沒有 SSH key，只能透過 Session Manager 進入。 |
+| `instance_type` | `string` | `"t4g.nano"` | 否 | instance type，例如 `t4g.nano`，必須跟 `architecture` 搭配：Graviton 家族（`t4g`、`m7g`、`c6gn` 等）用 `arm64`，其他用 `x86_64`。 |
+| `architecture` | `string` | `"arm64"` | 否 | `arm64` 或 `x86_64`，決定用哪個 Amazon Linux 2023 AMI。 |
+| `root_volume_size` | `number` | `8` | 否 | root volume 大小（GiB），8–16384 的整數。Amazon Linux 2023 快照是 8 GiB，所以最小 `8`。 |
+| `tags` | `map(string)` | `{}` | 否 | instance 與 root volume 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `instance_id` | `string` | instance ID，`aws ssm start-session` 的 target |
-| `private_ip` | `string` | 私有 IP |
-| `ami_id` | `string` | 目前查到的最新 AMI；因為 `ignore_changes = [ami]`，不一定是這台實際在用的 |
+| 名稱 | 說明 |
+|---|---|
+| `instance_id` | instance ID，`aws ssm start-session` 的 target。 |
+| `private_ip` | instance 的私有 IP。 |
+| `ami_id` | 目前查到的最新 Amazon Linux 2023 AMI。因為 `ignore_changes = [ami]`，不一定是這台實際在用的。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

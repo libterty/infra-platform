@@ -59,31 +59,29 @@ module "alarms" {
 - 不分嚴重度與 topic 路由：所有告警送同一組 `sns_topic_arns`。
 - 不建 IAM。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 告警名稱前綴，小寫英數字與連字號 |
-| `cluster_name` | `string` | 無 | 是 | ECS cluster 名稱 |
-| `service_name` | `string` | 無 | 是 | ECS service 名稱 |
-| `sns_topic_arns` | `list(string)` | 無 | 是 | 告警與恢復通知的 SNS topic；至少一個 |
-| `load_balancer` | `object({ alb_arn_suffix, target_group_arn_suffix })` | `null` | 否 | 給了才建 ALB target 告警；suffix 格式 `app/...`、`targetgroup/...` |
-| `max_capacity` | `number` | `null` | 否 | 給了才建 `at_max_capacity` |
-| `alarm_config` | 巢狀 `object` | `{}` | 否 | `ecs.{cpu_threshold, memory_threshold}`、`container.{cpu_throttling_threshold, memory_pressure_threshold}`、`alb.{target_5xx_ratio_threshold, target_4xx_ratio_threshold, latency_p95_threshold_ms, healthy_host_min}`，每個欄位都有預設 |
-| `dashboard_name` | `string` | `null` | 否 | 給了才建 dashboard |
-| `tags` | `map(string)` | `{}` | 否 | 告警的 tag |
+| `name` | `string` | 無 | 是 | 告警名稱前綴，通常就是 service 名稱；告警名稱為 `<name>-<key>`。限小寫英數字與連字號，字母開頭，2–201 字元。 |
+| `cluster_name` | `string` | 無 | 是 | ECS cluster 名稱（CloudWatch `ClusterName` 維度）。 |
+| `service_name` | `string` | 無 | 是 | ECS service 名稱（CloudWatch `ServiceName` 維度）。 |
+| `sns_topic_arns` | `list(string)` | 無 | 是 | 接收告警（`alarm_actions`）與恢復通知（`ok_actions`）的 SNS topic ARN，至少一個：沒人收的告警不算告警。 |
+| `load_balancer` | `object` | `null` | 否 | ALB 的 CloudWatch 維度；`null` 時不建 ALB target 告警。欄位：`alb_arn_suffix`（`app/<name>/<id>`）、`target_group_arn_suffix`（`targetgroup/<name>/<id>`），都要用 suffix，不是完整 ARN。 |
+| `max_capacity` | `number` | `null` | 否 | autoscaling 的最大 task 數；給了數字才建 `at_max_capacity` 告警。 |
+| `alarm_config` | `object` | `{}` | 否 | 告警門檻。欄位：`ecs`（`cpu_threshold`、`memory_threshold`，預設皆 `80`）、`container`（`cpu_throttling_threshold` 預設 `0.9`、`memory_pressure_threshold` 預設 `0.85`）、`alb`（`target_5xx_ratio_threshold` 預設 `0.01`、`target_4xx_ratio_threshold` 預設 `0.05`、`latency_p95_threshold_ms` 預設 `800`、`healthy_host_min` 預設 `1`）。各告警見〈告警清單〉。 |
+| `dashboard_name` | `string` | `null` | 否 | dashboard 名稱；`null` 時不建 dashboard。 |
+| `tags` | `map(string)` | `{}` | 否 | 告警的 tag。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `alarm_arns` | `map(string)` | 告警 ARN，key 同上表 |
-| `alarm_names` | `map(string)` | 告警名稱，key 同上表 |
-| `dashboard_arn` | `string` | dashboard ARN；沒建時為 `null` |
+| 名稱 | 說明 |
+|---|---|
+| `alarm_arns` | 告警 ARN 的 map，key 同〈告警清單〉的 key。 |
+| `alarm_names` | 告警名稱的 map，key 同〈告警清單〉的 key。 |
+| `dashboard_arn` | dashboard ARN；`dashboard_name` 為 `null` 時是 `null`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
