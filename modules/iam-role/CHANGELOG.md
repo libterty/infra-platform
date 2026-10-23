@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/libterty/infra-platform/compare/iam-role-v0.4.0...iam-role-v0.4.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **iam-role:** rewrite the input and output descriptions in Chinese ([3371129](https://github.com/libterty/infra-platform/commit/3371129109d79a55af3da1cebd864b2618e363f8))
+
 ## [0.4.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.3.0...iam-role-v0.4.0) (2026-10-22)
 
 
