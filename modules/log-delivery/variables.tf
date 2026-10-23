@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  description = "Source and destination names are <name_prefix>-<key>."
+  description = "source 與 destination 的名稱前綴，名稱是 `<name_prefix>-<key>`，最多 60 字元。"
 }
 
 variable "sources" {
@@ -9,7 +9,7 @@ variable "sources" {
     log_type     = string
   }))
   default     = {}
-  description = "Delivery sources keyed by a short name. resource_arn is the ARN of any resource that supports vended log delivery (for example an ALB, an EKS cluster, a CloudFront distribution or an AgentCore Runtime). It must carry an account ID that is the current one or listed in allowed_account_ids; an S3 bucket ARN is the only exception because it carries no account. log_type is the value the service defines, such as ALB_ACCESS_LOGS or S3_SERVER_ACCESS_LOGS."
+  description = "delivery source，key 是短名。欄位：`resource_arn`（產生 log 的資源 ARN，任何支援 vended log delivery 的資源都可以，例如 ALB、EKS cluster、CloudFront distribution、AgentCore Runtime；必須帶 12 位數帳號，帳號是目前帳號或在 `allowed_account_ids` 裡，S3 bucket ARN 不帶帳號，是唯一例外）、`log_type`（服務定義的值，例如 `ALB_ACCESS_LOGS`、`S3_SERVER_ACCESS_LOGS`，1–255 個英數字或底線）。"
   validation {
     condition     = alltrue([for s in values(var.sources) : can(regex("^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$", s.resource_arn)) || can(regex(local.destination_arn_patterns.S3, s.resource_arn))])
     error_message = "Each source resource_arn must be an ARN that includes a 12-digit account ID, or an S3 bucket ARN."
@@ -30,7 +30,7 @@ variable "destinations" {
     resource_arn = optional(string)
   }))
   default     = {}
-  description = "Delivery destinations keyed by a short name. type is CWL, S3, FH or XRAY; resource_arn is the log group ARN for CWL, the bucket ARN for S3, the delivery stream ARN for FH, and must be null for XRAY. CWL and FH destinations must be in the current account or in allowed_account_ids; S3 bucket ARNs carry no account and are not checked."
+  description = "delivery destination，key 是短名。欄位：`type`（`CWL`、`S3`、`FH` 或 `XRAY`）、`resource_arn`（`CWL` 是 log group ARN、`S3` 是 bucket ARN、`FH` 是 delivery stream ARN，`XRAY` 必須是 `null`）。`CWL`、`FH` 的帳號必須是目前帳號或在 `allowed_account_ids` 裡；S3 bucket ARN 不帶帳號，不檢查。"
   validation {
     condition     = alltrue([for d in values(var.destinations) : contains(["CWL", "S3", "FH", "XRAY"], d.type)])
     error_message = "Destination type must be CWL, S3, FH or XRAY."
@@ -51,7 +51,7 @@ variable "allowed_account_ids" {
   type        = set(string)
   default     = []
   nullable    = false
-  description = "Accounts other than the current one that sources and CWL destinations may live in. Empty means both must be in the current account."
+  description = "除了目前帳號，source 與 `CWL`、`FH` 目的地還可以放在哪些帳號（12 位數字）。空的時候都必須在目前帳號。"
   validation {
     condition     = alltrue([for a in var.allowed_account_ids : can(regex("^[0-9]{12}$", a))])
     error_message = "allowed_account_ids must contain 12-digit AWS account IDs."
@@ -64,7 +64,7 @@ variable "deliveries" {
     destination = string
   }))
   default     = {}
-  description = "Deliveries keyed by a short name; source and destination are keys in sources and destinations."
+  description = "delivery，key 是短名。欄位：`source`、`destination`，分別是 `sources`、`destinations` 裡存在的 key；同一組 source 與 destination 不能接兩次。"
   validation {
     condition     = alltrue([for d in values(var.deliveries) : contains(keys(var.sources), d.source) && contains(keys(var.destinations), d.destination)])
     error_message = "Every delivery must name an existing key in sources and in destinations."
@@ -78,5 +78,5 @@ variable "deliveries" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for every resource. Name is added to sources and destinations by the module."
+  description = "每個資源的 tag；source 與 destination 另外由 module 加上 `Name`。"
 }

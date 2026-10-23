@@ -71,28 +71,26 @@ module "runtime_logs" {
 - `record_fields`、`field_delimiter`、S3 的 `s3_delivery_configuration`、`output_format`，一律用服務預設。
 - 建 IAM。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name_prefix` | `string` | 無 | 是 | source 與 destination 的名稱是 `<name_prefix>-<key>`，最多 60 字 |
-| `sources` | `map(object)` | `{}` | 否 | `resource_arn`（產生 log 的資源，必須是帶帳號的 ARN，帳號是目前帳號或在 `allowed_account_ids` 裡；S3 bucket ARN 例外）、`log_type`（服務定義的值，1–255 個英數字或底線） |
-| `destinations` | `map(object)` | `{}` | 否 | `type`（`CWL`／`S3`／`FH`／`XRAY`）、`resource_arn`（`CWL` 是 log group ARN、`FH` 是 delivery stream ARN，兩者的帳號是目前帳號或在 `allowed_account_ids` 裡；`S3` 是 bucket ARN，不檢查帳號；`XRAY` 必須是 null） |
-| `allowed_account_ids` | `set(string)` | `[]` | 否 | 除了目前帳號，source 與 `CWL`、`FH` 目的地還可以放在哪些帳號（12 位數字）。空的時候都必須在目前帳號 |
-| `deliveries` | `map(object)` | `{}` | 否 | `source`、`destination`，分別是 `sources`、`destinations` 裡存在的 key；同一組不能接兩次 |
-| `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；source 與 destination 另外加 `Name` |
+| `name_prefix` | `string` | 無 | 是 | source 與 destination 的名稱前綴，名稱是 `<name_prefix>-<key>`，最多 60 字元。 |
+| `sources` | `map(object)` | `{}` | 否 | delivery source，key 是短名。欄位：`resource_arn`（產生 log 的資源 ARN，任何支援 vended log delivery 的資源都可以，例如 ALB、EKS cluster、CloudFront distribution、AgentCore Runtime；必須帶 12 位數帳號，帳號是目前帳號或在 `allowed_account_ids` 裡，S3 bucket ARN 不帶帳號，是唯一例外）、`log_type`（服務定義的值，例如 `ALB_ACCESS_LOGS`、`S3_SERVER_ACCESS_LOGS`，1–255 個英數字或底線）。 |
+| `destinations` | `map(object)` | `{}` | 否 | delivery destination，key 是短名。欄位：`type`（`CWL`、`S3`、`FH` 或 `XRAY`）、`resource_arn`（`CWL` 是 log group ARN、`S3` 是 bucket ARN、`FH` 是 delivery stream ARN，`XRAY` 必須是 `null`）。`CWL`、`FH` 的帳號必須是目前帳號或在 `allowed_account_ids` 裡；S3 bucket ARN 不帶帳號，不檢查。 |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 除了目前帳號，source 與 `CWL`、`FH` 目的地還可以放在哪些帳號（12 位數字）。空的時候都必須在目前帳號。 |
+| `deliveries` | `map(object)` | `{}` | 否 | delivery，key 是短名。欄位：`source`、`destination`，分別是 `sources`、`destinations` 裡存在的 key；同一組 source 與 destination 不能接兩次。 |
+| `tags` | `map(string)` | `{}` | 否 | 每個資源的 tag；source 與 destination 另外由 module 加上 `Name`。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `source_names` | `map(string)` | 每個 `sources` key 對應的 delivery source 名稱 |
-| `destination_arns` | `map(string)` | 每個 `destinations` key 對應的 delivery destination ARN |
-| `delivery_ids` | `map(string)` | 每個 `deliveries` key 對應的 delivery id |
+| 名稱 | 說明 |
+|---|---|
+| `source_names` | key 同 `sources` 的 map，值是 delivery source 名稱。 |
+| `destination_arns` | key 同 `destinations` 的 map，值是 delivery destination ARN。 |
+| `delivery_ids` | key 同 `deliveries` 的 map，值是 delivery id。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

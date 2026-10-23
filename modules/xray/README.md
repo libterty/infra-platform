@@ -45,25 +45,23 @@ module "xray" {
 - Transaction Search（span 進 `aws/spans`、indexing 比例）：帳號加 region 層的設定，用 [`xray-transaction-search`](../xray-transaction-search/README.md)。
 - IAM：寫入與抽樣權限由 `iam-app` 給 task role。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name_prefix` | `string` | 無 | 是 | rule 與 group 名稱前綴，名稱為 `<name_prefix>-<key>`，總長不得超過 32 字元 |
-| `sampling_rules` | `map(object)` | `{}` | 否 | key 為 rule 短名。欄位：`priority`（1–9999，必填、不可重複）、`fixed_rate`（0–1，必填）、`reservoir_size`（預設 1，不得為負）、`service_name`、`service_type`、`host`、`http_method`、`url_path`（預設都是 `*`）、`attributes`（預設 `{}`） |
-| `groups` | `map(object)` | `{}` | 否 | key 為 group 短名。欄位：`filter_expression`（必填、不可為空白）、`insights_enabled`（預設 `false`）、`notifications_enabled`（預設 `false`，為 `true` 時 `insights_enabled` 也要是 `true`） |
-| `tags` | `map(string)` | `{}` | 否 | 套用到每個 rule 與 group 的 tag |
+| `name_prefix` | `string` | 無 | 是 | rule 與 group 的名稱前綴，名稱是 `<name_prefix>-<key>`，X-Ray 限制總長最多 32 字元。 |
+| `sampling_rules` | `map(object)` | `{}` | 否 | sampling rule，key 是 rule 短名。欄位：`priority`（必填，1–9999，越小越先套用，不可重複）、`fixed_rate`（必填，0–1）、`reservoir_size`（每秒先抽的 trace 數，超過才套用 `fixed_rate`，預設 `1`，不得為負）、`service_name`、`service_type`、`host`、`http_method`、`url_path`（預設都是 `*`）、`attributes`（預設 `{}`）。 |
+| `groups` | `map(object)` | `{}` | 否 | X-Ray group，key 是 group 短名。欄位：`filter_expression`（必填，不可為空白，例如 `fault = true OR error = true`、`responsetime > 3`）、`insights_enabled`（預設 `false`）、`notifications_enabled`（預設 `false`，為 `true` 時 `insights_enabled` 也必須是 `true`）。 |
+| `tags` | `map(string)` | `{}` | 否 | 套用到每個 rule 與 group 的 tag。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `sampling_rule_arns` | `map(string)` | sampling rule 的 ARN，key 為 `sampling_rules` 的 key |
-| `group_arns` | `map(string)` | group 的 ARN，key 為 `groups` 的 key |
+| 名稱 | 說明 |
+|---|---|
+| `sampling_rule_arns` | key 同 `sampling_rules` 的 map，值是 sampling rule ARN。 |
+| `group_arns` | key 同 `groups` 的 map，值是 group ARN。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 

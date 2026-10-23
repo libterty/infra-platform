@@ -43,30 +43,47 @@ module "log_alarms" {
 - 一次處理多個 log group；多個 log group 就呼叫多次。
 - composite alarm、anomaly detection。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name_prefix` | `string` | 無 | 是 | 名稱前綴，小寫英數字與連字號 |
-| `log_group_name` | `string` | 無 | 是 | metric filter 讀取的 log group |
-| `namespace` | `string` | 無 | 是 | 自訂指標 namespace，不可以 `AWS/` 開頭 |
-| `alarms` | `map(object)` | `{}` | 否 | key（snake_case）對應 `pattern`、`metric_name`、`description`，以及可選的 `metric_value`（`"1"`）、`default_value`（`0`）、`statistic`（`Sum`）、`period`（`60`）、`evaluation_periods`（`1`）、`datapoints_to_alarm`（`null`）、`threshold`（`1`）、`comparison_operator`（`GreaterThanOrEqualToThreshold`）、`treat_missing_data`（`notBreaching`） |
-| `metrics` | `map(object)` | `{}` | 否 | 只建 metric filter 的項目：key（snake_case）對應 `pattern`、`metric_name`，以及可選的 `metric_value`（`"1"`）、`default_value`（`0`）；key 不可與 `alarms` 重複 |
-| `sns_topic_arns` | `list(string)` | `[]` | 視情況 | `alarms` 非空時至少一個 SNS topic ARN，同時用於 `alarm_actions` 與 `ok_actions`；只給 `metrics` 時可不給 |
-| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上（metric filter 不支援 tag） |
+| `name_prefix` | `string` | 無 | 是 | filter 與 alarm 的名稱前綴，名稱是 `<name_prefix>-<key 的 _ 換成 ->`。小寫字母開頭，2–101 個小寫英數字或連字號。 |
+| `log_group_name` | `string` | 無 | 是 | metric filter 讀取的 log group 名稱。 |
+| `namespace` | `string` | 無 | 是 | 自訂指標的 namespace，例如 `Alpha/dev`。1–255 字元，不可以 `AWS/` 開頭。 |
+| `alarms` | `map(object)` | `{}` | 否 | key（snake\_case）對應一組 metric filter 加 alarm；非空時必須給 `sns_topic_arns`，key 不可與 `metrics` 重複。欄位見〈`alarms` 欄位〉。 |
+| `metrics` | `map(object)` | `{}` | 否 | 只建 metric filter、不建 alarm 的項目，給 dashboard 或在別處管理的告警用。key（snake\_case）對應 `pattern`（必填，不可為空白）、`metric_name`（必填），以及 `metric_value`（預設 `"1"`）、`default_value`（預設 `0`）；key 不可與 `alarms` 重複。`alarms`、`metrics`、`sns_topic_arns` 不可全空。 |
+| `sns_topic_arns` | `list(string)` | `[]` | 否 | `alarms` 非空時必填，至少一個。SNS topic ARN，同時用於每個 alarm 的 `alarm_actions` 與 `ok_actions`；只給 `metrics` 時可不給。 |
+| `tags` | `map(string)` | `{}` | 否 | alarm 的 tag；`Name` 由 module 加上（metric filter 不支援 tag）。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
+| 名稱 | 說明 |
+|---|---|
+| `alarm_arns` | key 同 `alarms` 的 map，值是 alarm ARN。 |
+| `alarm_names` | key 同 `alarms` 的 map，值是 alarm 名稱。 |
+| `metric_filter_names` | key 為 `alarms` 與 `metrics` 的 key 的 map，值是 metric filter 名稱。 |
+| `metric_names` | key 為 `alarms` 與 `metrics` 的 key 的 map，值是指標名稱；搭配 `namespace` 給 dashboard 或在別處管理的告警用。 |
+<!-- END_TF_DOCS -->
 
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `alarm_arns` | `map(string)` | alarm ARN，key 同 `alarms` |
-| `alarm_names` | `map(string)` | alarm 名稱，key 同 `alarms` |
-| `metric_filter_names` | `map(string)` | metric filter 名稱，key 為 `alarms` 與 `metrics` 的 key |
-| `metric_names` | `map(string)` | 指標名稱（搭配 `namespace` 使用），key 為 `alarms` 與 `metrics` 的 key |
+## `alarms` 欄位
+
+每個 `alarms` 項目建一個 metric filter 與一個 alarm。key 必須是 snake_case，不可與 `metrics` 重複。
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `pattern` | `string` | 必填 | metric filter 的 log pattern，不可為空白 |
+| `metric_name` | `string` | 必填 | 自訂指標名稱 |
+| `description` | `string` | 必填 | 告警代表什麼、先查什麼，不可為空白 |
+| `metric_value` | `string` | `"1"` | 每筆符合的事件寫入的值 |
+| `default_value` | `number` | `0` | 沒有符合事件時的值 |
+| `statistic` | `string` | `Sum` | `Sum`、`Average`、`Maximum`、`Minimum` 或 `SampleCount` |
+| `period` | `number` | `60` | 秒數，只接受 10、30 或 60 的倍數 |
+| `evaluation_periods` | `number` | `1` | 評估幾期 |
+| `datapoints_to_alarm` | `number` | `null` | 幾期超標就告警，不可大於 `evaluation_periods` |
+| `threshold` | `number` | `1` | 門檻 |
+| `comparison_operator` | `string` | `GreaterThanOrEqualToThreshold` | `GreaterThanOrEqualToThreshold`、`GreaterThanThreshold`、`LessThanThreshold` 或 `LessThanOrEqualToThreshold` |
+| `treat_missing_data` | `string` | `notBreaching` | `missing`、`ignore`、`breaching` 或 `notBreaching` |
 
 ## 測試
 
