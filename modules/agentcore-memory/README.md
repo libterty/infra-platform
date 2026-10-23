@@ -46,28 +46,26 @@ module "memory" {
 - log 與 trace delivery：用 `log-delivery`。
 - IAM。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | Memory 的完整名稱。字母開頭，只能用字母、數字、底線，最長 48 字 |
-| `description` | `string` | `null` | 否 | Memory 的說明 |
-| `event_expiry_days` | `number` | `90` | 否 | 短期事件保留天數，7–365 的整數 |
-| `strategies` | `map(object)` | `{}` | 否 | key 為 strategy 名稱（規則同 `name`）。欄位：`type`（`SEMANTIC`、`SUMMARIZATION`、`USER_PREFERENCE`，必填）、`namespaces`（至少一個、以 `/` 開頭，例如 `/actors/{actorId}/facts`，必填）、`description`（選填） |
-| `kms_key_arn` | `string` | `null` | 否 | 自管 KMS key 的 ARN（`key/<uuid>`，不收 alias 與 `*`）；`null` 用 AWS 管的 key |
-| `tags` | `map(string)` | `{}` | 否 | 套用到 Memory 的 tag，另外自動加 `Name` |
+| `name` | `string` | 無 | 是 | Memory 的完整名稱。字母開頭，只能用字母、數字、`_`，最多 48 字元。 |
+| `description` | `string` | `null` | 否 | Memory 的說明。 |
+| `event_expiry_days` | `number` | `90` | 否 | 短期事件保留天數，7–365 的整數。改了只影響之後寫入的事件。 |
+| `strategies` | `map(object)` | `{}` | 否 | 內建的長期記憶 strategy，key 是 strategy 名稱（規則同 `name`）；空的時候只有短期記憶。欄位：`type`（必填，`SEMANTIC`、`SUMMARIZATION` 或 `USER_PREFERENCE`）、`namespaces`（必填，至少一個，每個以 `/` 開頭的樣板，例如 `/actors/{actorId}/facts`）、`description`（選填）。 |
+| `kms_key_arn` | `string` | `null` | 否 | Memory 用的自管 KMS key ARN（`key/<uuid>` 或 `key/mrk-<32 碼>`，不收 alias 與 `*`），key policy 要允許 AgentCore 使用。`null` 時用 AWS 擁有的 key。 |
+| `tags` | `map(string)` | `{}` | 否 | 套用到 Memory 的 tag，另外自動加 `Name`；strategy 沒有 tag。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `memory_id` | `string` | Memory 的 id，給 Runtime 的環境變數用 |
-| `memory_arn` | `string` | Memory 的 ARN，給 Runtime execution role 的權限用 |
-| `strategy_ids` | `map(string)` | strategy 的 id，key 為 `strategies` 的 key |
+| 名稱 | 說明 |
+|---|---|
+| `memory_id` | Memory id，給 Runtime 當 `memory_id`，以及放進 `MEMORY_ID_<KEY>` 環境變數。 |
+| `memory_arn` | Memory ARN，當 Runtime execution role 權限的 Resource。 |
+| `strategy_ids` | key 同 `strategies` 的 map，值是 strategy id。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
