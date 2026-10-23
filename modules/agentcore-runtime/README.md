@@ -44,36 +44,34 @@ module "agent" {
 - 不支援 `code_configuration`（S3 程式碼型 artifact）、`filesystem_configuration`、多個 endpoint。
 - 不建 IAM 資源。
 
+<!-- BEGIN_TF_DOCS -->
 ## 輸入
-
-> 之後改由 terraform-docs 產生。
 
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
-| `name` | `string` | 無 | 是 | 字母開頭、只有字母數字底線，最多 48 字 |
-| `description` | `string` | `null` | 否 | Runtime 說明 |
-| `role_arn` | `string` | 無 | 是 | execution role ARN，可以帶 path |
-| `container_uri` | `string` | 無 | 是 | ECR 映像，明確 tag（不得 `latest`，不分大小寫）或 sha256 digest；registry 帳號必須是目前帳號或在 `allowed_account_ids` 裡 |
-| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、`container_uri` 可以使用的 ECR registry 帳號（12 位數字）。空的時候映像必須在目前帳號 |
-| `network` | `object({ mode, subnet_ids, security_group_ids })` | 無 | 是 | `mode` 預設 `VPC`，只收 `VPC`、`PUBLIC` |
-| `session_lifecycle` | `object({ idle_session_timeout, max_lifetime })` | `{}`（900／28800） | 否 | 秒；兩個值都在 60–1209600，且 idle 不大於 max |
-| `protocol` | `string` | `"HTTP"` | 否 | `HTTP`、`MCP`、`A2A` |
-| `environment_variables` | `map(string)` | `{}` | 否 | 一般環境變數；空的時候不送。名稱看起來像 secret 的會被擋下（見〈注意〉），secret 放 Secrets Manager |
-| `jwt_authorizer` | `object({ discovery_url, allowed_audience, allowed_clients })` | `null` | 否 | 入站 JWT 驗證；`discovery_url` 要 https 且以 `/.well-known/openid-configuration` 結尾，audience 與 clients 至少一個非空，且不可有空字串或只有空白的項目 |
-| `request_header_allowlist` | `set(string)` | `[]` | 否 | 轉給容器的 request header；空的時候不送。不收帶憑證或簽章的 header（見〈注意〉） |
-| `tags` | `map(string)` | `{}` | 否 | 額外 tag；`Name` 由 module 加上 |
+| `name` | `string` | 無 | 是 | Runtime 名稱。字母開頭，只能用字母、數字、`_`（AgentCore 不收 `-`），最多 48 字元。 |
+| `description` | `string` | `null` | 否 | Runtime 說明，選填。 |
+| `role_arn` | `string` | 無 | 是 | Runtime assume 的 execution role ARN，可以帶 path；role 在 module 外建立。 |
+| `container_uri` | `string` | 無 | 是 | ECR 映像，要有明確 tag（不能是 `latest`，不分大小寫）或 `sha256` digest。tag 由 Terraform 管：在這裡改 tag 再 apply。registry 帳號必須是目前帳號，或在 `allowed_account_ids` 裡。 |
+| `allowed_account_ids` | `set(string)` | `[]` | 否 | 目前帳號以外、`container_uri` 可以使用的 ECR registry 帳號（12 位數字）。空的時候映像必須在目前帳號。 |
+| `network` | `object` | 無 | 是 | 網路設定，預設 VPC 模式。欄位：`mode`（`VPC` 或 `PUBLIC`，預設 `VPC`；`PUBLIC` 要明寫，會繞過 security group 與 VPC endpoint）、`subnet_ids`（預設 `[]`；`VPC` 時至少 2 個且不重複）、`security_group_ids`（預設 `[]`；`VPC` 時 1–5 個且不重複）。`PUBLIC` 時 `subnet_ids`、`security_group_ids` 都必須是空的。 |
+| `session_lifecycle` | `object` | `{}` | 否 | session 生命週期，單位秒。欄位：`idle_session_timeout`（預設 900）、`max_lifetime`（預設 28800），兩者都在 60–1209600，且 `idle_session_timeout` 不大於 `max_lifetime`。兩個值一律成對送出：API 會整組取代設定，少送一個就會默默回到 AWS 預設。idle timeout 拉長不會減少冷啟動，只會佔用更多帳號的 session 配額。 |
+| `protocol` | `string` | `"HTTP"` | 否 | 容器的 server protocol：`HTTP`、`MCP` 或 `A2A`。 |
+| `environment_variables` | `map(string)` | `{}` | 否 | 一般環境變數；空的時候不送。secret 放 Secrets Manager，這裡只放 ARN。名稱看起來像 secret 的會被擋下，除非名稱以 `_ARN` 結尾且值是 ARN（規則見〈注意〉）。 |
+| `jwt_authorizer` | `object` | `null` | 否 | 入站 JWT 驗證；`null` 時維持預設的 IAM（SigV4）入站驗證。欄位：`discovery_url`（必填，`https://` 開頭、以 `/.well-known/openid-configuration` 結尾）、`allowed_audience`、`allowed_clients`（預設 `[]`，兩者至少一個非空，且不能有空字串或只有空白的項目）。 |
+| `request_header_allowlist` | `set(string)` | `[]` | 否 | 轉給容器的 request header；空的時候不送 header 設定。不收帶呼叫端憑證或簽章的 header（`Cookie`、`Proxy-Authorization`、`Host`、`X-Amz-Security-Token`、`X-Amz-Date`，不分大小寫）；`Authorization` 只在設了 `jwt_authorizer` 時可以轉，那時 AgentCore 已經驗過 token。 |
+| `tags` | `map(string)` | `{}` | 否 | 額外的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
 
-> 之後改由 terraform-docs 產生。
-
-| 名稱 | 型別 | 說明 |
-|---|---|---|
-| `runtime_arn` | `string` | Runtime ARN |
-| `runtime_id` | `string` | Runtime ID |
-| `runtime_name` | `string` | Runtime 名稱 |
-| `runtime_version` | `string` | Runtime 版本，每次更新都會變 |
-| `workload_identity_arn` | `string` | AWS 為 Runtime 建的 workload identity ARN；沒有回報時為 `null` |
+| 名稱 | 說明 |
+|---|---|
+| `runtime_arn` | Runtime ARN。 |
+| `runtime_id` | Runtime ID。 |
+| `runtime_name` | Runtime 名稱。 |
+| `runtime_version` | Runtime 版本，每次更新都會變。 |
+| `workload_identity_arn` | AWS 為 Runtime 建立的 workload identity ARN；沒有回報時是 `null`。 |
+<!-- END_TF_DOCS -->
 
 ## 測試
 
