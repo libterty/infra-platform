@@ -1,6 +1,6 @@
 variable "name" {
   type        = string
-  description = "Web ACL name. Also the CloudWatch metric name and the suffix of the log group aws-waf-logs-<name>."
+  description = "Web ACL 名稱，也是 CloudWatch metric 名稱與 log group `aws-waf-logs-<name>` 的後綴。1–128 字元，限英數字、`_`、`-`。"
   validation {
     condition     = can(regex("^[A-Za-z0-9_-]{1,128}$", var.name))
     error_message = "name must be 1-128 chars of letters, digits, _ or -."
@@ -13,7 +13,7 @@ variable "kill_switch" {
     response_json = optional(string)
   })
   default     = null
-  description = "Optional kill switch that matches every request. action is count (observe only) or block. With block, response_json is returned as the body of a 503 response. Set to null to turn the kill switch off."
+  description = "比對所有請求的緊急開關，`null` 時關閉。欄位：`action`（`count` 只觀察，`block` 擋下）、`response_json`（只有 `block` 能給，是 503 回應的 body，必須是合法 JSON，最多 10240 字元）。"
   validation {
     condition = var.kill_switch == null ? true : (
       contains(["count", "block"], var.kill_switch.action) &&
@@ -33,7 +33,7 @@ variable "rate_limit" {
     allowlist_cidrs = optional(list(string), [])
   })
   default     = null
-  description = "Optional rate limit: requests per source IP in 5 minutes, above which requests are blocked. allowlist_cidrs (IPv4) are exempt from the rate limit only; they stay subject to every other rule."
+  description = "流量限制，`null` 時不限。欄位：`limit`（每個來源 IP 每 5 分鐘的請求數上限，超過就擋，10–2000000000）、`allowlist_cidrs`（IPv4 CIDR，前綴長度 1–32，預設 `[]`；只免除流量限制，其他規則照樣套用）。"
   validation {
     condition = var.rate_limit == null ? true : (
       var.rate_limit.limit >= 10 && var.rate_limit.limit <= 2000000000 &&
@@ -53,7 +53,7 @@ variable "managed_rule_groups" {
     count_overrides = optional(list(string), [])
   }))
   default     = []
-  description = "Managed rule groups in evaluation order. count_overrides lists rules inside the group that only count instead of block. The group itself always keeps its own actions."
+  description = "依評估順序排列的 managed rule group，`vendor` 加 `name` 不可重複。欄位：`name`、`vendor`（預設 `AWS`），兩者皆 1–100 字元，限英數字、`_`、`-`；`count_overrides`（預設 `[]`，群組內改成只 count 不擋的規則名稱，不可重複）。群組本身一律維持自己的 action。"
   validation {
     condition = alltrue([
       for g in var.managed_rule_groups :
@@ -73,7 +73,7 @@ variable "managed_rule_groups" {
 variable "body_size_exempt_path_prefixes" {
   type        = list(string)
   default     = []
-  description = "Path prefixes exempt from the 8 KB body size limit. Needs AWSManagedRulesCommonRuleSet with SizeRestrictions_BODY in count_overrides; the module then adds its own rule that blocks oversized bodies on every other path."
+  description = "不受 8 KB body 大小限制的 path prefix，以 `/` 開頭且後面至少一個字元，不可重複。`managed_rule_groups` 必須有 `AWSManagedRulesCommonRuleSet`（vendor `AWS`），且 `SizeRestrictions_BODY` 在它的 `count_overrides` 裡；module 會另外加一條規則，擋下其他 path 的過大 body。"
   validation {
     condition = length(var.body_size_exempt_path_prefixes) == 0 ? true : anytrue([
       for g in var.managed_rule_groups :
@@ -96,7 +96,7 @@ variable "logging" {
     redacted_headers = optional(list(string), ["authorization", "cookie"])
   })
   default     = null
-  description = "Optional logging to the CloudWatch log group aws-waf-logs-<name>. redacted_headers are added to authorization and cookie, which are always redacted; names are lowercased. Add the origin verify header here."
+  description = "寫到 CloudWatch log group `aws-waf-logs-<name>` 的 log，`null` 時不開。欄位：`retention_days`（預設 14，限 CloudWatch Logs 接受的值，不可為 0）、`kms_key_arn`（預設 `null`）、`redacted_headers`（預設 `[\"authorization\", \"cookie\"]`，在這兩個一律遮蔽的 header 之外追加，名稱轉小寫，1–64 字元）。origin verify header 要加在這裡。"
   validation {
     condition = var.logging == null ? true : (
       contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.logging.retention_days) &&
@@ -109,5 +109,5 @@ variable "logging" {
 variable "tags" {
   type        = map(string)
   default     = {}
-  description = "Tags for the web ACL, the IP set and the log group. Name is added by the module."
+  description = "web ACL、IP set 與 log group 的 tag；`Name` 由 module 加上。"
 }
