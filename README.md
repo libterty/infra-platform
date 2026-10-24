@@ -6,7 +6,7 @@
 
 ## module
 
-共 53 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 54 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -30,6 +30,7 @@
 | 資料平台 | `athena-workgroup` | Athena workgroup：強制 workgroup 設定、結果 SSE_KMS 加密、每次查詢掃描量上限，可附 named query | [![athena-workgroup](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=athena-workgroup-v*&label=)](https://github.com/libterty/infra-platform/releases?q=athena-workgroup-v) |
 | 資料平台 | `redshift-cluster` | provisioned Redshift（RA3）：VPC 內、不公開、KMS 加密、密碼由 Redshift 代管、parameter group 固定 `require_ssl`、稽核 log 寫 CloudWatch Logs、預設做 final snapshot | [![redshift-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=redshift-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=redshift-cluster-v) |
 | 資料平台 | `redshift-serverless` | Redshift Serverless（namespace 加 workgroup）：VPC 內、不公開、KMS 加密、密碼由 Redshift 代管、固定 `require_ssl`、稽核 log 寫 CloudWatch Logs，可設每月 RPU-小時用量上限 | [![redshift-serverless](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=redshift-serverless-v*&label=)](https://github.com/libterty/infra-platform/releases?q=redshift-serverless-v) |
+| 資料平台 | `quicksight-data` | QuickSight 資料層：Athena 與 Redshift（secret 驗證）data source、VPC connection、dataset 與 user／group 權限；不管帳號訂閱 | [![quicksight-data](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=quicksight-data-v*&label=)](https://github.com/libterty/infra-platform/releases?q=quicksight-data-v) |
 | 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
 | 運算             | `ecs-service`               | Fargate service、autoscaling（含排程與 step policy）、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
 | 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |
