@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.1](https://github.com/libterty/infra-platform/compare/lambda-function-v0.1.0...lambda-function-v0.1.1) (2026-10-23)
+## [0.1.1](https://github.com/libterty/infra-platform/compare/lambda-function-v0.1.0...lambda-function-v0.1.1) (2026-10-24)
 
 
 ### Bug Fixes
