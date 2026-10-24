@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/ecs-service-alarms-v0.1.0...ecs-service-alarms-v0.1.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **ecs-service-alarms:** rewrite the input and output descriptions in Chinese ([5607c4d](https://github.com/libterty/infra-platform/commit/5607c4db0f9cabecde7d7e6899ee23b20dba9e2e))
+
 ## 0.1.0（2026-10-15）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
