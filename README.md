@@ -6,7 +6,7 @@
 
 ## module
 
-共 42 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 43 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -19,6 +19,7 @@
 | 網路與入口 | `lb-traffic-breaker` | ALB／NLB 斷路器：canary 出錯時由 alarm 觸發 Lambda，把權重切回舊系統 | [![lb-traffic-breaker](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=lb-traffic-breaker-v*&label=)](https://github.com/libterty/infra-platform/releases?q=lb-traffic-breaker-v) |
 | 資料             | `rds`                       | RDS、Aurora、Aurora Serverless v2，可選 RDS Proxy                                  | [![rds](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=rds-v*&label=)](https://github.com/libterty/infra-platform/releases?q=rds-v) |
 | 資料 | `elasticache-redis` | ElastiCache Redis（cluster mode）：固定加密與 multi-AZ、可選 shard autoscaling、告警 | [![elasticache-redis](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=elasticache-redis-v*&label=)](https://github.com/libterty/infra-platform/releases?q=elasticache-redis-v) |
+| 資料平台 | `kinesis-stream` | Kinesis Data Stream：on-demand 或 provisioned，固定 KMS 加密 | [![kinesis-stream](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=kinesis-stream-v*&label=)](https://github.com/libterty/infra-platform/releases?q=kinesis-stream-v) |
 | 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
 | 運算             | `ecs-service`               | Fargate service、autoscaling（含排程與 step policy）、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
 | 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |

@@ -27,6 +27,7 @@
     "modules/iam-oidc-provider": { "release-type": "terraform-module", "component": "iam-oidc-provider", "initial-version": "0.1.0" },
     "modules/iam-role": { "release-type": "terraform-module", "component": "iam-role" },
     "modules/iam-role-policy": { "release-type": "terraform-module", "component": "iam-role-policy" },
+    "modules/kinesis-stream": { "release-type": "terraform-module", "component": "kinesis-stream", "initial-version": "0.1.0" },
     "modules/kms-key": { "release-type": "terraform-module", "component": "kms-key" },
     "modules/lambda-function": { "release-type": "terraform-module", "component": "lambda-function" },
     "modules/lb-traffic-breaker": { "release-type": "terraform-module", "component": "lb-traffic-breaker", "initial-version": "0.1.0" },
