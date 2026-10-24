@@ -13,6 +13,7 @@
     "modules/bedrock-guardrail": { "release-type": "terraform-module", "component": "bedrock-guardrail" },
     "modules/bedrock-inference-profile": { "release-type": "terraform-module", "component": "bedrock-inference-profile" },
     "modules/bedrock-knowledge-base": { "release-type": "terraform-module", "component": "bedrock-knowledge-base" },
+    "modules/client-vpn": { "release-type": "terraform-module", "component": "client-vpn", "initial-version": "0.1.0" },
     "modules/dynamodb-table": { "release-type": "terraform-module", "component": "dynamodb-table", "initial-version": "0.1.0" },
     "modules/ec2-asg": { "release-type": "terraform-module", "component": "ec2-asg", "initial-version": "0.1.0" },
     "modules/ec2-bastion": { "release-type": "terraform-module", "component": "ec2-bastion" },
