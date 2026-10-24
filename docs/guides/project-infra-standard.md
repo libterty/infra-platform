@@ -4,7 +4,7 @@
 
 這份以 `project-infra` 範本為準。repo 另有三份拆法不同的範本：`templates/example2/`（11 個 stack，環境是 `dev`、`sit`）、它的 EKS 版 `templates/example3/`（13 個 stack），以及資料平台 `templates/example4/`（12 個 stack，環境是 `dev`、`sit`）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
 
-這份講「怎麼做、為什麼」；stack 清單、SSM 合約表、單一決定點、流量規格表的完整內容在範本自己的 `templates/project-infra/infra/README.md`，複製出去之後就是專案的 `infra/README.md`，這裡不重複。
+這份講「怎麼做、為什麼」；stack 清單、SSM 合約表、單一決定點、流量規格表的完整內容在範本的 `templates/project-infra/infra/README.md` 與 `REFERENCE.md`，複製出去之後就是專案的 `infra/README.md`、`infra/REFERENCE.md`，這裡不重複。
 
 ## 開 `infra/` 目錄：六個步驟
 
@@ -20,7 +20,7 @@ cp -R <platform-repo>/templates/project-infra/infra ./infra
 | 3 | 每份 `envs/<env>.tfbackend` 的 `bucket`（`<state-bucket>` 佔位符）與 key 的 `alpha` 前綴 | `infra/terraform/*/envs/*.tfbackend` |
 | 4 | 每份 `envs/<env>.tfvars` 的 `project`、`expected_account_id`；以及告警 email、`image_tag`、ACM 憑證 ARN、`alb_ingress` 的來源 | `infra/terraform/*/envs/*.tfvars` |
 | 5 | 環境不只 dev、prod 時，每個 stack 加一組 `envs/<env>.tfvars` 與 `envs/<env>.tfbackend`，並在 `common.tf` 的 `accounts_by_env` 加一列 | 同上 |
-| 6 | 範本 README 裡指向設計文件的相對連結會失效，改成指向本 repo 的網址或刪掉 | `infra/README.md` |
+| 6 | 範本 README 與 REFERENCE 裡指向設計文件的相對連結會失效，改成指向本 repo 的網址或刪掉 | `infra/README.md`、`infra/REFERENCE.md` |
 
 在本 repo，`scripts/validate.sh` 的 S5 會比對雜湊，確認 `common.tf` 一字不差；複製出去之後要由專案 CI 自己比，最簡單的寫法：
 
@@ -65,7 +65,7 @@ destroy 反過來（9 到 1，`stacks.sh <env> all destroy`），之前先做三
 - 目錄、`common.tf`（複製，一字不差）、`versions.tf`、`providers.tf`（只改 `Stack` tag）、`envs/` 照範本。
 - 只呼叫 module。真的需要原生 resource 時，先跟 platform team 討論要不要做成 module。
 - 讀上游值寫在 `ssm-inputs.tf`，發布寫在 `ssm-outputs.tf`；只能讀 apply 順序比自己早的 stack。
-- 把 stack 加進 `infra/terraform/stacks.sh` 的 `ORDER`，並在 `infra/README.md` 的 apply 順序與 SSM 合約表加上它；`check-ssm-contract.sh` 會檢查它讀的 key 都由更早的 stack 發布。
+- 把 stack 加進 `infra/terraform/stacks.sh` 的 `ORDER`，並在 `infra/README.md` 的 apply 順序表與 `infra/REFERENCE.md` 的 SSM 合約表加上它；`check-ssm-contract.sh` 會檢查它讀的 key 都由更早的 stack 發布。
 
 ## stack 只呼叫 module：例外清單
 
@@ -90,13 +90,13 @@ destroy 反過來（9 到 1，`stacks.sh <env> all destroy`），之前先做三
 | `iam-base` | `data` 之前 | execution role、Proxy role（只有 trust，沒有 policy）、Enhanced Monitoring role |
 | `iam-app` | `data` 之後 | 對 Proxy role 附加讀 secret 的 policy（Resource 恰為那個 secret）、各服務 task role、ECS Exec 開關 |
 
-Proxy role 還沒有讀 secret 的權限時，AWS 是讓 Proxy 建立失敗，還是建立成功但連不上，**未驗證**。兩種結果的第一次部署步驟寫在 `infra/README.md`〈RDS Proxy 第一次部署：兩段式步驟〉。
+Proxy role 還沒有讀 secret 的權限時，AWS 是讓 Proxy 建立失敗，還是建立成功但連不上，**未驗證**。兩種結果的第一次部署步驟寫在 `infra/REFERENCE.md`〈RDS Proxy 第一次部署：兩段式步驟〉。
 
 ## 單一決定點
 
 兩個以上的 stack 都要知道的開關，只由上游一個 stack 決定並發布到 SSM，下游讀同一個 key，並用 precondition 檢查自己的設定跟它一致。不一致時 plan 就停，不會 apply 出「SG 以為有 HTTPS、ALB 實際只開 HTTP」這種組合。
 
-範本目前有這些：`containerimage/services`、`containerimage/mirrored_images`、`network/alb_https`、`network/db_proxy`、`network/data_access`、`iam-app/ecs_exec_<service>`、`iam-app/tracing`。各自誰決定、誰讀、怎麼檢查，見 `infra/README.md`〈單一決定點〉。
+範本目前有這些：`containerimage/services`、`containerimage/mirrored_images`、`network/alb_https`、`network/db_proxy`、`network/data_access`、`iam-app/ecs_exec_<service>`、`iam-app/tracing`。各自誰決定、誰讀、怎麼檢查，見 `infra/REFERENCE.md`〈單一決定點〉。
 
 自己加開關時照同一個做法：
 
@@ -107,7 +107,7 @@ Proxy role 還沒有讀 secret 的權限時，AWS 是讓 Proxy 建立失敗，�
 
 ## SSM 合約
 
-路徑 `/<project>/<env>/<stack>/<key>`，整個專案只有一棵樹。純量用 `String`、清單用 `StringList`、可有可無或多欄位的值用 `String` 裝 JSON；SSM 只放非機密值，secret 只放 ARN。服務名稱的 `-` 在 key 裡換成 `_`（`order-api` → `sg_order_api_id`）。完整的 key 清單在 `infra/README.md`〈SSM 合約〉。
+路徑 `/<project>/<env>/<stack>/<key>`，整個專案只有一棵樹。純量用 `String`、清單用 `StringList`、可有可無或多欄位的值用 `String` 裝 JSON；SSM 只放非機密值，secret 只放 ARN。服務名稱的 `-` 在 key 裡換成 `_`（`order-api` → `sg_order_api_id`）。完整的 key 清單在 `infra/REFERENCE.md`〈SSM 合約〉。
 
 ### 讀取寫法
 
@@ -163,7 +163,7 @@ module "in_services" {
 
 ## 流量規格與 IP 規劃
 
-規格不放進 module，放在 `network`、`data`、`loadbalancer`、`application` 的 `envs/examples/{poc,standard,high}.tfvars`。挑一份最接近的複製成 `envs/<env>.tfvars` 再改。對照表在 `infra/README.md`〈依流量調整規格〉；大流量那一欄與所有抽樣比例都沒有實測依據，第一個用到的專案要自己量。
+規格不放進 module，放在 `network`、`data`、`loadbalancer`、`application` 的 `envs/examples/{poc,standard,high}.tfvars`。挑一份最接近的複製成 `envs/<env>.tfvars` 再改。對照表在 `infra/REFERENCE.md`〈依流量調整規格〉；大流量那一欄與所有抽樣比例都沒有實測依據，第一個用到的專案要自己量。
 
 app tier 的 subnet 大小用這個公式估（一個 Fargate task 佔 1 個 IP，每個 subnet AWS 保留 5 個）：
 
