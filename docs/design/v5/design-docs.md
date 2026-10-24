@@ -1,6 +1,6 @@
 # infra-platform v5 設計文件：tflint aws ruleset 與 terraform-docs
 
-> 狀態：設計草案，第一版。§3 是使用者拍板的決策（2026-10-23）。審過才進實作，步驟見 [`implement-process.md`](./implement-process.md)。
+> 狀態：已實作（2026-10-23，E0–E10，見 [`implement-process.md`](./implement-process.md)）。§3 是使用者拍板的決策。
 > 範圍：平台本身的兩件待辦：tflint 加上 `tflint-ruleset-aws`；42 個 module 的 README 輸入／輸出表改由 terraform-docs 產生，`description` 改寫成台灣繁體中文。範本的 stack 程式碼與行為不變。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。工具版本與實測數字是 2026-10-23 查證的結果，來源列在 §10。
 
@@ -55,7 +55,7 @@
 | K6 | 列的順序照程式碼（`sort.enabled = false`） | 37/42 個 README 的列順序本來就跟程式碼一致，diff 最小 |
 | K7 | S11 只在 repo 根目錄有 `.terraform-docs.yml` 時執行，只檢查 `modules/*` | vendor 到客戶 repo 時不會因為缺設定或缺工具而失敗 |
 | K8 | terraform-docs 跟 tflint 一樣是必要工具，找不到就失敗 | 跳過的話 S11 等於沒有 |
-| K9 | 最後一個 Phase 打開 `terraform_documented_variables`、`terraform_documented_outputs` | 6 個缺 description 的變數在改寫時補上，以後不會再出現空白描述 |
+| K9 | 最後一個 Phase 對 module 根目錄打開 `terraform_documented_variables`、`terraform_documented_outputs`（由 `validate.sh` 加 `--enable-rule`；examples 與 stack 不套） | 6 個缺 description 的變數在改寫時補上，以後不會再出現空白描述 |
 | K10 | 改寫分 7 批，依 README 的 module 分類；第一批挑小的 module | 第一批發版後先到 HCP 確認中文顯示正常，再做後面的批次 |
 
 ## 4. tflint
