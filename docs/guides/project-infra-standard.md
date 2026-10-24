@@ -1,6 +1,6 @@
 # 專案 infra 規範：怎麼照範本開 `infra/` 目錄
 
-給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 8 個 stack 的順序 apply。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
+給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 9 個 stack 的順序 apply（`infra/terraform/stacks.sh` 依順序執行）。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
 這份以 `project-infra` 範本為準。repo 另有兩份拆法不同的範本：`templates/example2/`（11 個 stack，環境是 `dev`、`sit`）與它的 EKS 版 `templates/example3/`（13 個 stack）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
 
@@ -39,9 +39,10 @@ test "$(sha256sum infra/terraform/*/common.tf | cut -d' ' -f1 | sort -u | wc -l)
 | 3 | `network` | VPC（或登記既有 VPC）、interface endpoint、所有 SG | 低 |
 | 4 | `iam-base` | execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role | 低 |
 | 5 | `data` | 資料庫（可選 Proxy）與資料庫告警 | 低 |
-| 6 | `iam-app` | Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | 低到中 |
-| 7 | `loadbalancer` | ALB、listener、ELB 5xx 告警 | 低到中 |
-| 8 | `application` | ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣 | 高 |
+| 6 | `agent` | AgentCore 與 Bedrock（Runtime、guardrail、Memory、Gateway、Knowledge Base）；預設關閉，沒設定時什麼都不建 | 中 |
+| 7 | `iam-app` | Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關 | 低到中 |
+| 8 | `loadbalancer` | ALB、listener、ELB 5xx 告警 | 低到中 |
+| 9 | `application` | ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣 | 高 |
 
 state key 固定是 `<project>-<env>/<stack>/terraform.tfstate`，例如 `alpha-dev/application/terraform.tfstate`；bucket 開 versioning、SSE、Block Public Access，用 `use_lockfile = true`（S3 原生 lock，不用 DynamoDB）。bucket 本身不在專案 stack 裡建。
 
@@ -49,9 +50,9 @@ state key 固定是 `<project>-<env>/<stack>/terraform.tfstate`，例如 `alpha-
 
 ### apply 與 destroy 的順序
 
-apply 照上表 1 到 8。範本不提供一鍵跑全部的腳本，靠人照順序跑。
+apply 照上表 1 到 9。`infra/terraform/stacks.sh <env> all apply` 依這個順序跑，順序寫在它的 `ORDER`；先加 `--dry-run` 看會執行哪些指令。
 
-destroy 反過來（8 到 1），之前先做三件事，否則會失敗：
+destroy 反過來（9 到 1，`stacks.sh <env> all destroy`），之前先做三件事，否則會失敗：
 
 1. `loadbalancer` 的 `deletion_protection`、`data` 的 `db.deletion_protection` 改成 `false` 並 apply。
 2. 清空每個 ECR repository（`force_delete = false`，有映像時刪不掉）。
@@ -64,7 +65,7 @@ destroy 反過來（8 到 1），之前先做三件事，否則會失敗：
 - 目錄、`common.tf`（複製，一字不差）、`versions.tf`、`providers.tf`（只改 `Stack` tag）、`envs/` 照範本。
 - 只呼叫 module。真的需要原生 resource 時，先跟 platform team 討論要不要做成 module。
 - 讀上游值寫在 `ssm-inputs.tf`，發布寫在 `ssm-outputs.tf`；只能讀 apply 順序比自己早的 stack。
-- 在 `infra/README.md` 的 apply 順序與 SSM 合約表加上這個 stack。
+- 把 stack 加進 `infra/terraform/stacks.sh` 的 `ORDER`，並在 `infra/README.md` 的 apply 順序與 SSM 合約表加上它；`check-ssm-contract.sh` 會檢查它讀的 key 都由更早的 stack 發布。
 
 ## stack 只呼叫 module：例外清單
 

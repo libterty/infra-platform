@@ -1,6 +1,6 @@
 # infra-platform v6 實作流程：project-infra 的 SSM 合約檢查
 
-> 狀態：F0（設計）審閱中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
+> 狀態：F0（設計）審閱中；F1–F3 已實作，等設計審過後合併。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 design-docs.md 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。project-infra 的路徑都在 `templates/project-infra/infra/terraform/` 底下。
 
 ## 結論
@@ -21,7 +21,7 @@
 | F0 | v6 設計文件與實作流程 | 審閱中 | — |
 | F1 | `stacks.sh` | 完成：`bash -n`、shellcheck 通過；`--dry-run` 依 ORDER 印出 9 個 stack，`destroy` 反向，`init` 帶 tfbackend；錯誤輸入 exit 2 | `d0ae1e9` |
 | F2 | `check-ssm-contract.sh` | 完成：9 個 stack、82 個讀取（15 個樣式）、2 個 env 通過；9 種突變都被抓到；`validate.sh` 會執行 | — |
-| F3 | README 與指南 | 未開始 | — |
+| F3 | README 與指南 | 完成：README 的目錄、〈apply 順序〉、〈日常操作與環境切換〉、〈SSM 合約〉的〈合約檢查〉；指南補上原本漏掉的 `agent`（8 → 9 個 stack）與 `stacks.sh` | — |
 
 ## 每個 Phase 的做法與驗收
 
