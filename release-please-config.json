@@ -13,6 +13,7 @@
     "modules/bedrock-guardrail": { "release-type": "terraform-module", "component": "bedrock-guardrail" },
     "modules/bedrock-inference-profile": { "release-type": "terraform-module", "component": "bedrock-inference-profile" },
     "modules/bedrock-knowledge-base": { "release-type": "terraform-module", "component": "bedrock-knowledge-base" },
+    "modules/client-vpn": { "release-type": "terraform-module", "component": "client-vpn", "initial-version": "0.1.0" },
     "modules/dynamodb-table": { "release-type": "terraform-module", "component": "dynamodb-table", "initial-version": "0.1.0" },
     "modules/ec2-asg": { "release-type": "terraform-module", "component": "ec2-asg", "initial-version": "0.1.0" },
     "modules/ec2-bastion": { "release-type": "terraform-module", "component": "ec2-bastion" },
@@ -56,6 +57,7 @@
     "modules/vpc": { "release-type": "terraform-module", "component": "vpc" },
     "modules/vpc-interface-endpoints": { "release-type": "terraform-module", "component": "vpc-interface-endpoints" },
     "modules/vpc-peering": { "release-type": "terraform-module", "component": "vpc-peering" },
+    "modules/vpn-site-to-site": { "release-type": "terraform-module", "component": "vpn-site-to-site", "initial-version": "0.1.0" },
     "modules/waf-web-acl": { "release-type": "terraform-module", "component": "waf-web-acl" },
     "modules/xray": { "release-type": "terraform-module", "component": "xray" },
     "modules/xray-transaction-search": { "release-type": "terraform-module", "component": "xray-transaction-search", "initial-version": "0.1.0" }
