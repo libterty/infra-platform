@@ -6,7 +6,7 @@
 
 ## module
 
-共 50 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 51 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -27,6 +27,7 @@
 | 資料平台 | `opensearch-domain` | VPC 內的 OpenSearch domain：hot、可選 dedicated master／UltraWarm／cold，固定加密與 FGAC，master 帳密從 Secrets Manager 讀 | [![opensearch-domain](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=opensearch-domain-v*&label=)](https://github.com/libterty/infra-platform/releases?q=opensearch-domain-v) |
 | 資料平台 | `opensearch-config` | OpenSearch domain 內部設定（opensearch provider）：ISM policy（hot、UltraWarm、cold、刪除）、寫入用 FGAC role 與 mapping、index template | [![opensearch-config](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=opensearch-config-v*&label=)](https://github.com/libterty/infra-platform/releases?q=opensearch-config-v) |
 | 資料平台 | `firehose-stream` | Firehose delivery stream：Kinesis 或 Direct PUT 來源，送到 S3（GZIP、時間 prefix）或 VPC 內的 OpenSearch（失敗文件備份到 S3），固定 KMS 加密與 CloudWatch logging | [![firehose-stream](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=firehose-stream-v*&label=)](https://github.com/libterty/infra-platform/releases?q=firehose-stream-v) |
+| 資料平台 | `athena-workgroup` | Athena workgroup：強制 workgroup 設定、結果 SSE_KMS 加密、每次查詢掃描量上限，可附 named query | [![athena-workgroup](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=athena-workgroup-v*&label=)](https://github.com/libterty/infra-platform/releases?q=athena-workgroup-v) |
 | 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
 | 運算             | `ecs-service`               | Fargate service、autoscaling（含排程與 step policy）、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
 | 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |

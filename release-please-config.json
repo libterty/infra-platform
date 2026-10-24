@@ -9,6 +9,7 @@
     "modules/agentcore-memory": { "release-type": "terraform-module", "component": "agentcore-memory" },
     "modules/agentcore-runtime": { "release-type": "terraform-module", "component": "agentcore-runtime" },
     "modules/alb": { "release-type": "terraform-module", "component": "alb" },
+    "modules/athena-workgroup": { "release-type": "terraform-module", "component": "athena-workgroup", "initial-version": "0.1.0" },
     "modules/bedrock-guardrail": { "release-type": "terraform-module", "component": "bedrock-guardrail" },
     "modules/bedrock-inference-profile": { "release-type": "terraform-module", "component": "bedrock-inference-profile" },
     "modules/bedrock-knowledge-base": { "release-type": "terraform-module", "component": "bedrock-knowledge-base" },
