@@ -141,6 +141,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
       }
     }
 
+    dynamic "transition" {
+      for_each = var.transitions
+      content {
+        days          = transition.value.days
+        storage_class = transition.value.storage_class
+      }
+    }
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -171,9 +179,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 }
 
 resource "aws_s3_bucket_notification" "this" {
-  count = length(var.lambda_notifications) == 0 ? 0 : 1
+  count = length(var.lambda_notifications) == 0 && !var.eventbridge ? 0 : 1
 
-  bucket = aws_s3_bucket.this.id
+  bucket      = aws_s3_bucket.this.id
+  eventbridge = var.eventbridge
 
   dynamic "lambda_function" {
     for_each = var.lambda_notifications

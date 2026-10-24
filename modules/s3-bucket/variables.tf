@@ -82,6 +82,43 @@ variable "expiration_prefix" {
   }
 }
 
+variable "transitions" {
+  type = list(object({
+    days          = number
+    storage_class = string
+  }))
+  default     = []
+  nullable    = false
+  description = "目前版本的 lifecycle 分層，依序列出 `days`（物件建立後第幾天，至少 1，必須嚴格遞增）與 `storage_class`（`STANDARD_IA`、`ONEZONE_IA`、`INTELLIGENT_TIERING`、`GLACIER_IR`、`GLACIER`、`DEEP_ARCHIVE`）。每個 `days` 都要小於過期天數（沒給 `expiration_days` 時是 90）；`never_expire = true` 時不比較。跟過期規則共用 `expiration_prefix`。空的就不分層。"
+
+  validation {
+    condition     = alltrue([for t in var.transitions : contains(["STANDARD_IA", "ONEZONE_IA", "INTELLIGENT_TIERING", "GLACIER_IR", "GLACIER", "DEEP_ARCHIVE"], t.storage_class)])
+    error_message = "transitions storage_class must be one of STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER_IR, GLACIER, DEEP_ARCHIVE."
+  }
+
+  validation {
+    condition     = alltrue([for t in var.transitions : t.days >= 1])
+    error_message = "transitions days must be at least 1."
+  }
+
+  validation {
+    condition     = alltrue([for i, t in var.transitions : i == 0 ? true : t.days > var.transitions[i - 1].days])
+    error_message = "transitions days must be strictly increasing."
+  }
+
+  validation {
+    condition     = var.never_expire || alltrue([for t in var.transitions : t.days < coalesce(var.expiration_days, 90)])
+    error_message = "Every transitions days must be less than the expiration days (90 when expiration_days is not set)."
+  }
+}
+
+variable "eventbridge" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "是否把這個 bucket 的所有 S3 事件送到本帳號 default event bus（`aws.s3`，例如 `Object Created`）。為 `true` 時建立 notification，可以跟 `lambda_notifications` 並存；呼叫端另外建 EventBridge rule 與 target。"
+}
+
 variable "lambda_notifications" {
   type = map(object({
     function_arn  = string
