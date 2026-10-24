@@ -56,6 +56,7 @@
     "modules/vpc": { "release-type": "terraform-module", "component": "vpc" },
     "modules/vpc-interface-endpoints": { "release-type": "terraform-module", "component": "vpc-interface-endpoints" },
     "modules/vpc-peering": { "release-type": "terraform-module", "component": "vpc-peering" },
+    "modules/vpn-site-to-site": { "release-type": "terraform-module", "component": "vpn-site-to-site", "initial-version": "0.1.0" },
     "modules/waf-web-acl": { "release-type": "terraform-module", "component": "waf-web-acl" },
     "modules/xray": { "release-type": "terraform-module", "component": "xray" },
     "modules/xray-transaction-search": { "release-type": "terraform-module", "component": "xray-transaction-search", "initial-version": "0.1.0" }

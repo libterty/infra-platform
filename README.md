@@ -6,7 +6,7 @@
 
 ## module
 
-共 54 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 55 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -17,6 +17,7 @@
 | 網路與入口 | `vpc-peering` | VPC peering 請求端與路由 | [![vpc-peering](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=vpc-peering-v*&label=)](https://github.com/libterty/infra-platform/releases?q=vpc-peering-v) |
 | 網路與入口 | `nlb` | NLB、TCP／TLS／UDP listener、加權 target group（金絲雀）、健康主機告警 | [![nlb](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=nlb-v*&label=)](https://github.com/libterty/infra-platform/releases?q=nlb-v) |
 | 網路與入口 | `lb-traffic-breaker` | ALB／NLB 斷路器：canary 出錯時由 alarm 觸發 Lambda，把權重切回舊系統 | [![lb-traffic-breaker](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=lb-traffic-breaker-v*&label=)](https://github.com/libterty/infra-platform/releases?q=lb-traffic-breaker-v) |
+| 網路與入口 | `vpn-site-to-site` | Site-to-Site VPN：customer gateway 加 VPN 連線，終點是自建 VGW 或既有 TGW 擇一；PSK 固定存 Secrets Manager、兩條 tunnel 的 log 寫進 CMK log group、IKE 只收 ikev2 與強演算法 | [![vpn-site-to-site](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=vpn-site-to-site-v*&label=)](https://github.com/libterty/infra-platform/releases?q=vpn-site-to-site-v) |
 | 資料             | `rds`                       | RDS、Aurora、Aurora Serverless v2，可選 RDS Proxy                                  | [![rds](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=rds-v*&label=)](https://github.com/libterty/infra-platform/releases?q=rds-v) |
 | 資料 | `elasticache-redis` | ElastiCache Redis（cluster mode）：固定加密與 multi-AZ、可選 shard autoscaling、告警 | [![elasticache-redis](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=elasticache-redis-v*&label=)](https://github.com/libterty/infra-platform/releases?q=elasticache-redis-v) |
 | 資料平台 | `dynamodb-table` | DynamoDB table：on-demand 或 provisioned、可選 GSI、TTL、Streams；固定 KMS 加密、PITR 與刪除保護 | [![dynamodb-table](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=dynamodb-table-v*&label=)](https://github.com/libterty/infra-platform/releases?q=dynamodb-table-v) |
