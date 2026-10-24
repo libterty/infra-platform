@@ -32,7 +32,7 @@
   "modules/waf-web-acl": "0.1.1",
   "modules/xray": "0.1.1",
   "modules/nlb": "0.2.1",
-  "modules/eks-addons": "0.3.1",
+  "modules/eks-addons": "0.3.0",
   "modules/ec2-asg": "0.1.1",
   "modules/eks-cluster": "0.2.0",
   "modules/ec2-instance": "0.1.1",
