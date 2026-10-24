@@ -1,6 +1,6 @@
 variable "cluster_name" {
   type        = string
-  description = "EKS cluster name. Passed to the AWS Load Balancer Controller and to Karpenter."
+  description = "EKS cluster 名稱，傳給 AWS Load Balancer Controller 與 Karpenter。1–100 字元，限英數字、`-`、`_`，首字元須為英數字。"
   validation {
     condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$", var.cluster_name))
     error_message = "cluster_name must be 1-100 chars of letters, digits, hyphens or underscores, starting with a letter or digit."
@@ -9,7 +9,7 @@ variable "cluster_name" {
 
 variable "region" {
   type        = string
-  description = "AWS region of the cluster. The AWS Load Balancer Controller cannot read it from IMDS when the hop limit is 1, so it is passed explicitly."
+  description = "cluster 所在 region，例如 `ap-northeast-1`。傳給 AWS Load Balancer Controller：hop limit 為 1 時它讀不到 IMDS，所以明確傳入。"
   validation {
     condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", var.region))
     error_message = "region must look like ap-northeast-1."
@@ -18,7 +18,7 @@ variable "region" {
 
 variable "vpc_id" {
   type        = string
-  description = "VPC ID of the cluster. The AWS Load Balancer Controller cannot read it from IMDS when the hop limit is 1, so it is passed explicitly."
+  description = "cluster 的 VPC ID，格式像 `vpc-0123456789abcdef0`。傳給 AWS Load Balancer Controller：hop limit 為 1 時它讀不到 IMDS，所以明確傳入。"
   validation {
     condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
     error_message = "vpc_id must look like vpc-0123456789abcdef0."
@@ -34,11 +34,7 @@ variable "load_balancer_controller" {
   })
   default     = null
   description = <<-EOT
-    AWS Load Balancer Controller release in kube-system; null installs nothing. The IAM role is not created here:
-    the Pod Identity association for the service account lives in eks-cluster. values is merged into the chart
-    values; the inputs above win on conflict. With auto_mode set, enableServiceMutatorWebhook and
-    createIngressClassResource are forced to false (Auto Mode owns Service and Ingress handling) and cannot be
-    turned back on through values.
+    AWS Load Balancer Controller 的 release，namespace 固定 `kube-system`；`null` 不裝。欄位：`chart_version`（預設 `3.6.1`，精確版本）、`service_account`（預設 `aws-load-balancer-controller`）、`replica_count`（預設 `2`，至少 1 的整數）、`values`（預設 `{}`，併進 chart values，衝突時以前面的欄位為準）。IAM role 不在這裡建，service account 的 Pod Identity association 在 `eks-cluster`。設了 `auto_mode` 時 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false`，`values` 改不回來。
   EOT
 
   validation {
@@ -79,11 +75,7 @@ variable "karpenter" {
   })
   default     = null
   description = <<-EOT
-    Karpenter controller release; null installs nothing. interruption_queue_name is the eks-cluster output
-    karpenter_interruption_queue_name. The default NodePool and EC2NodeClass (local chart karpenter-defaults) are
-    installed only when both default_node_class and default_node_pool are set; use default_node_pool = {} for the
-    default limits. The subnet and security group discovery tags are tag maps, for example
-    { "karpenter.sh/discovery" = "alpha-dev" }.
+    Karpenter controller 的 release；`null` 不裝。欄位：`chart_version`（預設 `1.15.0`，精確版本）、`namespace`（預設 `kube-system`）、`service_account`（預設 `karpenter`）、`interruption_queue_name`（必填，SQS queue 名稱，不是 URL 或 ARN，即 `eks-cluster` 的輸出 `karpenter_interruption_queue_name`）、`values`（預設 `{}`）、`default_node_class` 與 `default_node_pool`（預設 `null`，兩個都有值才裝本地 chart `karpenter-defaults`；`default_node_pool = {}` 表示用預設限制）。這兩個的欄位見〈Karpenter 的預設 NodePool 與 EC2NodeClass〉。
   EOT
 
   validation {
@@ -144,7 +136,7 @@ variable "argo_rollouts" {
     values        = optional(any, {})
   })
   default     = null
-  description = "Argo Rollouts release; null installs nothing. values is merged into the chart values. CloudWatch analysis needs a role and a Pod Identity association from eks-cluster."
+  description = "Argo Rollouts 的 release；`null` 不裝。欄位：`chart_version`（預設 `2.43.8`，精確版本）、`namespace`（預設 `argo-rollouts`）、`values`（預設 `{}`，併進 chart values）。CloudWatch 指標分析要的 role 與 Pod Identity association 在 `eks-cluster` 建。"
 
   validation {
     condition     = var.argo_rollouts == null ? true : can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$", var.argo_rollouts.chart_version))
@@ -165,7 +157,7 @@ variable "app_namespaces" {
     labels = optional(map(string), {})
   }))
   default     = {}
-  description = "Application namespaces to create through the local chart app-namespaces. A CI role with the Edit access policy cannot create namespaces, so they are created here. Empty installs nothing."
+  description = "用本地 chart `app-namespaces` 建的應用程式 namespace，key 是 namespace 名稱（RFC 1123 label，不能是 `default` 或 `kube-` 開頭），欄位 `labels` 預設 `{}`；空 map 不裝。掛 Edit access policy 的 CI role 建不了 namespace，所以在這裡建。"
 
   validation {
     condition     = alltrue([for name, _ in var.app_namespaces : can(regex("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$", name))])
@@ -200,14 +192,7 @@ variable "auto_mode" {
   })
   default     = null
   description = <<-EOT
-    EKS Auto Mode node classes and node pools (local chart auto-mode-nodes: eks.amazonaws.com/v1 NodeClass and
-    karpenter.sh/v1 NodePool); null installs nothing. node_role_name is the IAM role name (not ARN) of the node role
-    that eks-cluster gave an EC2 access entry. A selector term is { id = "..." } or { tags = { ... } }, exactly one.
-    pod_subnet_selector_terms and pod_security_group_selector_terms must be set together: Pod security groups are a
-    node class setting and every Pod of the class shares them. network_policy is DefaultDeny (default) or DefaultAllow;
-    network_policy_event_logs is Enabled or Disabled (default). A node class must not be named default.
-    Setting auto_mode also forces enableServiceMutatorWebhook and createIngressClassResource to false on the
-    AWS Load Balancer Controller.
+    EKS Auto Mode 的 NodeClass 與 NodePool（本地 chart `auto-mode-nodes`，`eks.amazonaws.com/v1` NodeClass 與 `karpenter.sh/v1` NodePool）；`null` 不裝。有值時也會把 AWS Load Balancer Controller 的 `enableServiceMutatorWebhook` 與 `createIngressClassResource` 固定為 `false`。欄位見〈`auto_mode` 欄位〉。
   EOT
 
   validation {
@@ -315,13 +300,7 @@ variable "network_policy" {
   })
   default     = null
   description = <<-EOT
-    Turns the NetworkPolicy controller on (ConfigMap amazon-vpc-cni with enable-network-policy-controller) and installs
-    the system NetworkPolicies (local chart system-network-policy) for the components this module installs; null does
-    neither. The caller passes the CIDRs: service_cidr is the cluster service CIDR (DNS is its .10 address),
-    api_server_cidrs are the subnets of the control plane ENIs and aws_api_cidrs are the subnets of the VPC interface
-    endpoints; use ["0.0.0.0/0"] there only when AWS APIs are reached through NAT. Policies cover the AWS Load Balancer
-    Controller (only its Pods in kube-system), KEDA and CloudWatch observability, each only when that component is
-    installed.
+    啟用 NetworkPolicy controller（`kube-system` 的 ConfigMap `amazon-vpc-cni` 設 `enable-network-policy-controller`），並替這個 module 有裝的元件建 system NetworkPolicy（本地 chart `system-network-policy`）；`null` 兩者都不做。欄位都必填，CIDR 由呼叫端給：`service_cidr`（cluster 的 IPv4 service CIDR，DNS 是它的 `.10`）、`api_server_cidrs`（control plane ENI 所在 subnet，不可為空，不接受 `0.0.0.0/0`）、`aws_api_cidrs`（VPC interface endpoint 所在 subnet，不可為空；只有經 NAT 連 AWS API 時才用 `["0.0.0.0/0"]`）。規則見〈NetworkPolicy 與 system 的放行規則〉。
   EOT
 
   validation {
@@ -356,10 +335,7 @@ variable "system_placement" {
   })
   default     = null
   description = <<-EOT
-    Node selector and tolerations for the AWS Load Balancer Controller and KEDA (the Deployments that belong on the
-    system node pool); null leaves their placement alone. They are written at the top level of the chart values and win
-    over the same keys in the component values. CloudWatch observability is not placed: its DaemonSets must cover every
-    node, so they keep the chart default of tolerating everything.
+    AWS Load Balancer Controller 與 KEDA（該跑在 system node pool 的 Deployment）的 node selector 與 toleration；`null` 不改它們的排程。寫在 chart values 最上層，跟元件 `values` 同名的 key 衝突時以這裡為準。欄位：`node_selector`（預設 `{}`，key 不可為空）、`tolerations`（預設 `[]`，每項的 `key`、`operator`、`value`、`effect` 都選填；`operator` 為 `Equal` 或 `Exists`，`effect` 為 `NoSchedule`、`PreferNoSchedule` 或 `NoExecute`）。CloudWatch 採集不套用，它的 DaemonSet 要涵蓋每個 node。
   EOT
 
   validation {
@@ -385,9 +361,7 @@ variable "keda" {
   })
   default     = null
   description = <<-EOT
-    KEDA release (chart kedacore/keda); null installs nothing. service_account is the operator service account, which
-    the Pod Identity association for the CloudWatch scaler lives on (eks-cluster). values is merged into the chart
-    values; system_placement and the service account win on conflict.
+    KEDA 的 release（chart `kedacore/keda`）；`null` 不裝。欄位：`chart_version`（預設 `2.21.0`，精確版本）、`namespace`（預設 `keda`）、`service_account`（預設 `keda-operator`，operator 的 service account，CloudWatch scaler 的 Pod Identity association 建在它上面，在 `eks-cluster`）、`values`（預設 `{}`，併進 chart values，衝突時以 `system_placement` 與 service account 為準）。
   EOT
 
   validation {
@@ -419,11 +393,7 @@ variable "cloudwatch_observability" {
   })
   default     = null
   description = <<-EOT
-    Amazon CloudWatch Observability release (chart amazon-cloudwatch-observability); null installs nothing. Container
-    Insights with enhanced observability is always on. container_logs turns Fluent Bit on; application_signals is off
-    by default. service_account is shared by the CloudWatch agent and Fluent Bit (the chart uses one account for both),
-    so one Pod Identity association covers them. The chart default of tolerating every taint is kept on purpose.
-    values is merged into the chart values; the inputs above win on conflict.
+    Amazon CloudWatch Observability 的 release（chart `amazon-cloudwatch-observability`）；`null` 不裝。Container Insights（enhanced observability）固定開。欄位：`chart_version`（預設 `6.7.0`，精確版本）、`namespace`（預設 `amazon-cloudwatch`）、`service_account`（預設 `cloudwatch-agent`，CloudWatch agent 與 Fluent Bit 共用，一個 Pod Identity association 涵蓋兩者）、`container_logs`（預設 `true`，開 Fluent Bit）、`application_signals`（預設 `false`）、`values`（預設 `{}`，併進 chart values，衝突時以前面的欄位為準）。chart 預設容忍所有 taint，刻意保留。
   EOT
 
   validation {
@@ -448,18 +418,14 @@ variable "aggregate_crd_roles" {
   type        = bool
   default     = false
   description = <<-EOT
-    Aggregate the custom resources that application charts create into the default view, edit and admin roles, so a
-    namespace-scoped edit or admin (for example a CI role with AmazonEKSEditPolicy) can manage them: TargetGroupBinding
-    through the local chart crd-role-aggregation when the AWS Load Balancer Controller is installed, and ScaledObject,
-    TriggerAuthentication and the other KEDA resources through the KEDA chart's rbac.aggregateToDefaultRoles when KEDA
-    is installed.
+    把應用程式 chart 會建的自訂資源權限併進內建的 `view`、`edit`、`admin` role，讓 namespace scope 的 Edit 或 Admin（例如掛 `AmazonEKSEditPolicy` 的 CI role）能管理：有裝 AWS Load Balancer Controller 時用本地 chart `crd-role-aggregation` 加 TargetGroupBinding；有裝 KEDA 時用 KEDA chart 的 `rbac.aggregateToDefaultRoles` 加 ScaledObject、TriggerAuthentication 等 KEDA 資源。見〈CI 用 Helm 部署應用程式的權限〉。
   EOT
 }
 
 variable "chart_repository_overrides" {
   type        = map(string)
   default     = {}
-  description = "Chart repository URL per component, for example an ECR mirror of a private cluster. Keys: load_balancer_controller, karpenter, argo_rollouts, keda, cloudwatch_observability."
+  description = "各元件的 chart repository URL，例如 private cluster 的 ECR mirror。key 只能是 `load_balancer_controller`、`karpenter`、`argo_rollouts`、`keda`、`cloudwatch_observability`；值要是 `https://` 或 `oci://` URL。預設 repository 見〈預設 chart repository〉。"
 
   validation {
     condition     = alltrue([for k, _ in var.chart_repository_overrides : contains(["load_balancer_controller", "karpenter", "argo_rollouts", "keda", "cloudwatch_observability"], k)])

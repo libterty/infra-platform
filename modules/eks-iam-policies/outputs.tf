@@ -1,24 +1,24 @@
 output "load_balancer_controller_policy_json" {
-  description = "Official AWS Load Balancer Controller IAM policy for the selected version, as compact JSON."
+  description = "所選版本的 AWS Load Balancer Controller 官方 IAM policy，去空白的 JSON 字串。"
   value       = local.load_balancer_controller_policy_json
 }
 
 output "karpenter_controller_policy_json" {
-  description = "Karpenter controller IAM policy for the selected version (all official controller policies in one document), as compact JSON. Null when karpenter is null."
+  description = "所選版本的 Karpenter controller IAM policy（官方各份 controller policy 併成一份），去空白的 JSON 字串。`karpenter` 為 `null` 時是 `null`。"
   value       = local.karpenter_controller_policy_json
 }
 
 output "argo_rollouts_cloudwatch_policy_json" {
-  description = "Policy for Argo Rollouts CloudWatch metric analysis: cloudwatch:GetMetricData, as compact JSON."
+  description = "Argo Rollouts 做 CloudWatch 指標分析用的 policy（`cloudwatch:GetMetricData`），去空白的 JSON 字串。"
   value       = local.argo_rollouts_cloudwatch_policy_json
 }
 
 output "keda_cloudwatch_policy_json" {
-  description = "Policy for the KEDA aws-cloudwatch scaler: cloudwatch:GetMetricData, as compact JSON."
+  description = "KEDA `aws-cloudwatch` scaler 用的 policy（`cloudwatch:GetMetricData`），去空白的 JSON 字串。"
   value       = local.keda_cloudwatch_policy_json
 }
 
 output "policy_sizes" {
-  description = "Characters of each policy JSON with whitespace removed, which is how IAM counts against the 10,240-character inline policy limit of a role. Keys: load_balancer_controller, argo_rollouts_cloudwatch, keda_cloudwatch, and karpenter_controller when karpenter is set. Add the sizes of the policies put on the same role."
+  description = "各 policy JSON 去空白後的字元數（`map(number)`），IAM 就是這樣計入 role inline policy 的 10,240 字元上限。key：`load_balancer_controller`、`argo_rollouts_cloudwatch`、`keda_cloudwatch`，`karpenter` 有給時加 `karpenter_controller`。放在同一個 role 的 policy 要把大小加總。"
   value       = local.policy_sizes
 }
