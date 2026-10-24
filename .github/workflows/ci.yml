@@ -4,6 +4,11 @@ name: CI
 # TF_TOKEN_APP_TERRAFORM_IO；fork 來的 PR 拿不到 secret，範本的 stack 會在 init 失敗。
 on:
   pull_request:
+    # release PR 只改 CHANGELOG 與 manifest，合併前人工看 diff（docs/guides/releasing-modules.md）。只改這兩類檔案的 PR
+    # 不產生 run：bot 開的 release PR 的 run 會卡在等待核准，PR 一合併、分支一刪就變成沒有 job 的 failure。
+    paths-ignore:
+      - "**/CHANGELOG.md"
+      - ".release-please-manifest.json"
   push:
     branches: [main]
   schedule:
@@ -26,9 +31,6 @@ env:
 
 jobs:
   validate:
-    # release PR 只改 CHANGELOG 與 manifest，合併前人工看 diff（docs/guides/releasing-modules.md）。重建 release PR 的
-    # force-push 會觸發全量驗證，PR 一合併、分支一刪就被標成 failure，所以這類分支不跑。
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
