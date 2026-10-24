@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/eks-cluster-v0.2.0...eks-cluster-v0.2.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **eks-cluster:** rewrite the input and output descriptions in Chinese ([db370aa](https://github.com/libterty/infra-platform/commit/db370aa94727352ae5301ac17cb3918ac98d8d4e))
+
 ## [0.2.0](https://github.com/libterty/infra-platform/compare/eks-cluster-v0.1.0...eks-cluster-v0.2.0) (2026-10-22)
 
 
