@@ -19,8 +19,8 @@
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
 | F0 | v6 設計文件與實作流程 | 審閱中 | — |
-| F1 | `stacks.sh` | 未開始 | — |
-| F2 | `check-ssm-contract.sh` | 未開始 | — |
+| F1 | `stacks.sh` | 完成：`bash -n`、shellcheck 通過；`--dry-run` 依 ORDER 印出 9 個 stack，`destroy` 反向，`init` 帶 tfbackend；錯誤輸入 exit 2 | `d0ae1e9` |
+| F2 | `check-ssm-contract.sh` | 完成：9 個 stack、82 個讀取（15 個樣式）、2 個 env 通過；9 種突變都被抓到；`validate.sh` 會執行 | — |
 | F3 | README 與指南 | 未開始 | — |
 
 ## 每個 Phase 的做法與驗收
@@ -50,7 +50,7 @@
   4. 算出來的讀取改成沒有樣式涵蓋的樣式（例如 `network/sg_${k}_idx`）；
   5. 拿掉發布端的一個樣式；
   6. `application/agent.tf` 這類 `ssm-inputs.tf` 以外的讀取改成不存在的 key；
-  7. 某個 stack 的 `envs/dev.tfvars` 改掉 `aws_region`；
+  7. 某個 stack 的 `envs/dev.tfvars` 改掉 `expected_account_id`（各 stack 都沒寫 `aws_region`）；
   8. 某個 tfvars 的 `env` 跟檔名不同；
   9. ORDER 列了不存在的 stack。
 - 反向：`"runtime/${r}"` 這類非 stack 字串不被當成讀取。

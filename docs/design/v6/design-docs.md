@@ -39,7 +39,7 @@
 | # | 判斷 | 理由 |
 |---|---|---|
 | K1 | 讀取掃描範圍是 stack 的所有 `.tf`，只認第一段是 ORDER 裡 stack 名稱的 `"<stack>/<key>"` 字串 | 涵蓋 `ssm-inputs.tf` 以外的 `ssm-read` 呼叫（§2 第 3 點），又排除 `"runtime/${r}"` 這類字串 |
-| K2 | 種類：在 `ssm_input_lists` 區塊裡的讀取當 `StringList`，其他都當 `String`；發布端 `published_lists` 的 key 是 `StringList` | project-infra 的 list 只有少數幾個，全在 `ssm_input_lists` |
+| K2 | 種類：在名稱以 `lists` 結尾的 map 或 `merge(...)` 裡的讀取（`ssm_input_lists`、`ssm_agent_lists`、`lists = ...`）當 `StringList`，其他都當 `String`；發布端 `published_lists` 的 key 是 `StringList` | F2 實作時發現 `agent` 用 `ssm_agent_lists`，只認 `ssm_input_lists` 會誤判 |
 | K3 | 樣式涵蓋的判定：把讀的樣式的每個 `${...}` 換成 `x`，看能不能被發布樣式轉成的 regex（`${...}` → `[a-z0-9_]+`）整段比中 | 簡單、可預測；例如 `role_agent_x_execution_arn` 比得中 `role_[a-z0-9_]+_arn` |
 | K4 | `stacks.sh` 從 example2 改寫，拿掉 bridge、外部共用 env；保留 `--dry-run`、`--yes`、`--` 傳參 | 三份範本操作一致；不加 example2 沒有的功能 |
 | K5 | `stacks.sh` 不寫自己的測試，只在驗收時用 `--dry-run` 檢查指令與順序 | example2 的 `stacks.sh` 也沒有測試；邏輯只是依 ORDER 組指令 |
@@ -55,7 +55,7 @@
   - `# planned_strings:`／`# planned_lists:` 註解（同 example2，保留給還沒有 resource 的 stack）。
 - **讀取**：掃描 stack 的所有 `.tf`，取出 `"<stack>/<key 或樣式>"`，第一段要是 ORDER 裡的 stack；`${...}` 可以含引號與括號（例如 `${replace(r, "-", "_")}`），解析時要處理巢狀。
 - **檢查 1**：每個讀取，在 ORDER 裡比讀取 stack 更早的那個發布 stack，要有寫死的 key 相同，或有樣式涵蓋它（K3），而且種類一致。不通過時印出讀取的檔案與行號、要找的 key、發布 stack 實際發布的 key 與樣式。
-- **檢查 2**：每個 env，各 stack `envs/<env>.tfvars` 裡的 `project`、`env`、`aws_region`、`expected_account_id` 必須一致，`env` 等於檔名。
+- **檢查 2**：每個 env，各 stack `envs/<env>.tfvars` 裡的 `project`、`env`、`aws_region`、`expected_account_id` 必須一致，`env` 等於檔名。沒寫的 key 略過；目前各 stack 的 tfvars 都沒寫 `aws_region`（用 `common.tf` 的預設），寫了才會比對。
 - 跟 example2 一樣，失敗時 exit 1，`validate.sh` 會把它算成靜態規則失敗。
 
 ## 5. `stacks.sh`
