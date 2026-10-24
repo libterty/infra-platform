@@ -331,7 +331,7 @@ canary = {
 ```
 
 - 設了 `canary`：多一個 `api-canary` target group，api 的三條 rule（`/api/stream`、`/api/quota`、`/api/admin`）依權重轉送；`dev_page` 不加權。
-- 設了 `breaker`：每條加權 rule 一組 alarm（canary target group 的 5xx 錯誤率與健康主機數），任何一個觸發就由 Lambda 把那條 rule 改成 stable 100、canary 0。Lambda 的 image 是 `<project>-traffic-breaker:<image_tag>`，程式碼在 [`modules/lb-traffic-breaker/lambda`](../../../modules/lb-traffic-breaker/lambda)，要用 arm64 build 後推上去。
+- 設了 `breaker`：每條加權 rule 一組 alarm（canary target group 的 5xx 錯誤率與健康主機數），任何一個觸發就由 Lambda 把那條 rule 的 canary 權重改成 0，stable 維持原本的權重（例如 90），所以流量全部進 stable。Lambda 的 image 是 `<project>-traffic-breaker:<image_tag>`，程式碼在 [`modules/lb-traffic-breaker/lambda`](../../../modules/lb-traffic-breaker/lambda)，要用 arm64 build 後推上去。
 - `weight > 0` 卻沒有 `breaker`、target group 名稱超過 32 字元（`<project>-<env>-alb-api-canary`）時，plan 直接擋下。
 
 ALB 不會因為 canary 是空的或不健康就把流量轉走，所以權重只能在 canary 有健康的 target 之後才調高。流程：
@@ -434,6 +434,8 @@ node 與 pod 都在 app subnet，每個 AZ 一個 /19（8,187 個可用 IP）。
 - **ALB 與 WAF**（沿用 example2）：ALB access log 用 `log-delivery` 的 vended delivery，`depends_on` 是否足以讓 bucket policy 先到位，以及 apply 身分建 delivery 需要的權限；WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`。
 - **AgentCore 與 Bedrock**（沿用 example2）：`/aws/vendedlogs/...` 當 log delivery 的目的地、Runtime 的 `APPLICATION_LOGS` delivery 能否建立；guardrail 的 `STANDARD` tier 加 cross-region profile 的實際行為。
 - **跟應用程式的約定**（沿用 example2）：pg_cron 的 log 告警靠 SQL 寫出 `partition_maintenance_failed`、`partition_maintenance_heartbeat`、`default_partition_not_empty` 三個字串；import-load 由 `extracted/` 加 `ready.json` 後綴觸發。這兩項沒有東西檢查。
+- **canary 告警一建立就會響**：`healthy-hosts` 告警把沒有資料當成不健康（`treat_missing_data = "breaching"`），canary target group 還沒有 pod 時就進入 ALARM 並發 SNS；流量本來就不在 canary，Lambda 不做任何事。開 canary 時先部署 canary pod，或接受這一次的通知。
+- **健康檢查路徑**：target group 檢查 `/health`（`loadbalancer/alb.tf`），範例 chart 的 readiness 只做 TCP 檢查。應用程式必須在 `app_port` 回應 `/health`，否則 pod 顯示 Ready、target 卻是 unhealthy。
 - **技術債**：`bastion_enabled`、`guardrail_cross_region_profile_id`、`nat_mode` 的一致性檢查沒有自動化 fixture；`app_port` 的三份變數沒有一致性檢查。
 
 ## 驗證
@@ -458,7 +460,7 @@ scripts/validate.sh templates/example3
 
 ### 雲端整合待驗證
 
-要真實帳號與叢集，這個里程碑沒有做。
+要真實帳號與叢集，這個里程碑沒有做。逐項的前提、指令、預期結果與紀錄方式見 [`docs/guides/cloud-verification-example3.md`](../../../docs/guides/cloud-verification-example3.md)。
 
 | 項目 | 怎麼確認 |
 |---|---|
@@ -470,5 +472,5 @@ scripts/validate.sh templates/example3
 | CloudWatch 採集 | Container Insights 指標與 log 涵蓋 `app` 與 `system` node；log 欄位符合 `postdeploy` 的 filter |
 | 告警 | `eks-workload-alarms` 每一條、stream 與 log 告警都能觸發 |
 | no-NAT | `nat_mode = "none"` 時，node、pod、controller 都只經 interface endpoint 就能運作 |
-| canary | 權重調整、斷路器觸發後權重改成 stable 100、`traffic-breaker/tripped` tag、觸發後的處理流程 |
+| canary | 權重調整、斷路器觸發後 canary 權重變成 0、流量全部進 stable、`traffic-breaker/tripped` tag、觸發後的處理流程 |
 | CI 權限 | `AmazonEKSEditPolicy` 能建 TargetGroupBinding、ScaledObject、TriggerAuthentication、NetworkPolicy |
