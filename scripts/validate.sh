@@ -349,10 +349,12 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
       scan_pattern S7 'modules 不得使用 random_password' "$f" 'random_password'
       ;;
   esac
-  # S7: rds must not declare a password variable
-  if [ "$r" = "modules/rds/variables.tf" ]; then
-    scan_pattern S7 'rds 不得宣告含 password 的變數' "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
-  fi
+  # S7: modules whose password is managed by the service or read from Secrets Manager must not declare a password variable
+  case "$r" in
+    modules/rds/variables.tf | modules/opensearch-domain/variables.tf)
+      scan_pattern S7 "$(basename "$(dirname "$r")") 不得宣告含 password 的變數" "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
+      ;;
+  esac
   # S8: template stacks only declare the aws_* resources listed in s8_allowed
   if root="$(stack_root_of "$r")"; then
     stack="${r#"${root}"/}"

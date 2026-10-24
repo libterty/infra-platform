@@ -158,8 +158,8 @@ state bucket 由 platform team 或帳號開通流程在範本外建立（§2 第
 
 - 責任：domain 內部的設定：ISM policy、FGAC role 與 mapping、index template。
 - resource：`opensearch_ism_policy`、`opensearch_role`、`opensearch_roles_mapping`、`opensearch_composable_index_template`。
-- 輸入：`ism_policies`（policy id → `{ index_patterns, hot_days, warm_days, cold_days, delete_days, timestamp_field }`，module 產生 hot → `warm_migration` → `cold_migration`（帶 `timestamp_field`）→ `cold_delete`）；`writer_roles`（FGAC role 名稱 → `{ index_patterns, backend_role_arns }`，權限固定為 §2 第 5 點那組）；`role_mappings`（內建 role，如 `ultrawarm_manager`、`cold_manager` → `{ users, backend_role_arns }`）；`index_templates`。
-- validation：天數遞增；有 `cold_days` 就要 `warm_days` 與 `timestamp_field`；backend role 是 IAM role ARN；不准 mapping `all_access`、`security_manager`。
+- 輸入：`ism_policies`（policy id → `{ index_patterns, warm_days, cold_days, delete_days, timestamp_field }`，天數都是 index 的累計年齡（ISM 只有「年齡到 N 天進下一階段」的轉換，hot 停留到 `warm_days`），module 產生 hot → `warm_migration` → `cold_migration`（帶 `timestamp_field`）→ `cold_delete`）；`writer_roles`（FGAC role 名稱 → `{ index_patterns, backend_role_arns }`，權限固定為 §2 第 5 點那組）；`role_mappings`（內建 role，如 `ultrawarm_manager`、`cold_manager` → `{ users, backend_role_arns }`）；`index_templates`。
+- validation：天數遞增；`delete_days` 必填；有 `cold_days` 就要 `warm_days` 與 `timestamp_field`；backend role 是 IAM role ARN；不准 mapping `all_access`、`security_manager`。
 - 輸出：`ism_policy_ids`、`writer_role_names`。
 - 刻意不做：`opensearch_user`、snapshot repository、Dashboards saved object、自訂 action group。provider 設定在 stack。
 
@@ -357,7 +357,7 @@ example4 的 bucket（都 SSE-KMS）：`raw`（過期 365、30 天 `STANDARD_IA`
 | Firehose（S3） | buffer 64 MiB／900 秒、GZIP | 同 dev |
 | Firehose（OpenSearch） | buffer 5 MiB／60 秒 | 同 dev |
 | OpenSearch（D6、K17） | 2 × `m7g.large.search`（20 GiB gp3）、3 × `m7g.large.search` master、2 × `ultrawarm1.medium.search`、cold、2 AZ | 同 dev |
-| ISM | hot 1 天 → warm 3 天 → cold 7 天 → 刪除 30 天 | hot 1 天 → warm 7 天 → cold 30 天 → 刪除 90 天 |
+| ISM（index 年齡，累計） | 第 3 天進 warm、第 7 天進 cold、第 30 天刪除 | 第 7 天進 warm、第 30 天進 cold、第 90 天刪除 |
 | Glue | 事件觸發 job（batch 100／900 秒）；raw crawler 每日 | 同 dev |
 | Redshift（K16） | Serverless base 4、max 8、每月 100 RPU-小時 | base 4、max 16、200 RPU-小時 |
 | Athena | 每查詢 10 GiB | 同 dev |

@@ -59,7 +59,7 @@ Phase 代號用 G，避開 v4 的 C、v5 的 E、v6 的 F。
 
 每個新 module：
 
-1. 建目錄：`versions.tf`、`variables.tf`、`main.tf`、`outputs.tf`、`README.md`（用法、〈注意〉、〈刻意不做〉、marker）、`CHANGELOG.md`（只有 `# Changelog`）、`examples/<name>/main.tf`、`tests/*.tftest.hcl`。
+1. 建目錄：`versions.tf`、`variables.tf`、`main.tf`、`outputs.tf`、`README.md`（用法、〈注意〉、〈刻意不做〉、marker）、`examples/<name>/main.tf`、`tests/*.tftest.hcl`。
 2. TDD：先寫 design §9 的 run（正向與每條 validation 的負向），跑 `scripts/validate.sh modules/<m>` 看到失敗，再實作到全過。
 3. `release-please-config.json` 加 `"initial-version": "0.1.0"` 的一列；manifest 不加。
 4. repo 根 `README.md` 的 module 表加一列（分類「資料平台」或「網路與入口」），module 數量改正（最後是 56）。
@@ -81,7 +81,7 @@ Phase 代號用 G，避開 v4 的 C、v5 的 E、v6 的 F。
 2. 每個 module 一個 release PR；看過 diff，**一次合併一個**，等 Release run 跑完、`gh release view <m>-v<ver>` 查得到才合下一個（衝突時照〈同時有多個 release PR〉重建）。
 3. release-please 一次只建一個 tag，自然符合「一次 push 最多 3 個 tag」；不手動打 tag。
 4. 新 module 照 [`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md) §3 登記，§4 從消費端抓一次確認。HCP 登記要 organization 的 token，先問使用者。
-5. 第一次發版後，`chore(<m>)` commit 刪掉 CHANGELOG 尾端被降級的 `## Changelog`。
+5. 不先建 `CHANGELOG.md`，第一次發版時由 release-please 產生（先建 `# Changelog` 的話，它會在尾端留下被降級的 `## Changelog`，事後刪掉又會讓 module 目錄跟 tag 不一致，2026-10-24 G1、G2 遇到）。
 6. 額度：15 版分散在 7 個 Phase，不會用完 `GITHUB_TOKEN` 的每小時 1000 次；真的用完就等一小時 `gh run rerun`。
 7. 「tag 已經存在」的空 release PR 直接關掉並刪分支。
 
