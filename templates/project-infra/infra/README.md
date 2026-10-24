@@ -18,7 +18,9 @@ infra/
     ├── agent/            # AgentCore Runtime、Memory、Gateway，Bedrock guardrail、inference profile、Knowledge Base 與語料 bucket；預設關閉
     ├── iam-app/          # Proxy 讀 secret 的 policy、各服務 task role、ECS Exec 開關、追蹤開關、AgentCore 與 Bedrock 的權限
     ├── loadbalancer/     # ALB、listener
-    └── application/      # ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣、ADOT collector sidecar
+    ├── application/      # ECS cluster、service、autoscaling、服務告警、log 告警、X-Ray 抽樣、ADOT collector sidecar
+    ├── stacks.sh         # 依 env 對單一或全部 stack 跑 terraform；ORDER 是 apply 順序（見〈日常操作與環境切換〉）
+    └── check-ssm-contract.sh  # SSM 合約與共用 tfvars 的靜態檢查（見〈SSM 合約〉）
 ```
 
 每個 stack 都有同一組檔案：
@@ -37,7 +39,7 @@ infra/
 
 ## apply 順序
 
-依賴是單向的：下游只讀上游發布的 key。apply 照下面的順序，destroy 反過來。
+依賴是單向的：下游只讀上游發布的 key。apply 照下面的順序，destroy 反過來。順序寫在 `terraform/stacks.sh` 的 `ORDER`（單行），`stacks.sh` 與〈SSM 合約〉的檢查都讀它；改順序就改那一行，並同步下表。
 
 | 順序 | stack | 讀（來源 stack） | 發布 |
 |---|---|---|---|
@@ -71,6 +73,17 @@ destroy 前要先處理三件事，否則會失敗：把 ALB 與資料庫的 `de
 | backend | `-backend-config=envs/<env>.tfbackend` | 讀寫到別的環境的 state |
 | 變數 | `-var-file=envs/<env>.tfvars` | 用錯的設定規劃 |
 | 工作目錄 | `TF_DATA_DIR=.terraform-<env>` | 沿用上一個環境的 backend 設定與 provider 快取 |
+
+`terraform/stacks.sh` 把後三個綁在一起：依 env 選 backend、tfvars 與 `TF_DATA_DIR`，可以跑單一 stack，或依 `ORDER` 跑全部（destroy 反向）。AWS 身分仍然自己帶：
+
+```bash
+aws-vault exec <profile> -- infra/terraform/stacks.sh dev application init
+aws-vault exec <profile> -- infra/terraform/stacks.sh dev application plan
+aws-vault exec <profile> -- infra/terraform/stacks.sh dev all plan --dry-run   # 只印出會執行的指令
+infra/terraform/stacks.sh dev all destroy --dry-run                           # 看 destroy 的順序
+```
+
+`--yes` 讓 apply、destroy 不再詢問；`--` 之後的參數原樣交給 terraform（例如 `-- -target=...`）。手打 `terraform` 也可以，四個選擇要自己對齊：
 
 ```bash
 cd infra/terraform/application
@@ -181,6 +194,22 @@ terraform plan -var-file=envs/dev.tfvars
 ```
 
 沒有資料庫時是 `{"enabled":false}`。應用程式只讀 `app_endpoint`、`app_reader_endpoint`、`port`、`name`、`secret_arn` 這五個。有沒有開 Proxy、資料庫是哪種型態，都由 `rds` module 決定，應用程式不需要知道；其餘欄位給維運與除錯用（例如直接連 writer 跑 migration）。`cluster_arn`（`rds` 型態是 `null`）與 `data_api` 給 `agent` 的 Knowledge Base 與 `iam-app` 的 KB role 用。新增欄位是相容的，刪除或改名欄位要當成破壞性變更，並同時改所有讀取端。
+
+### 合約檢查
+
+`terraform/check-ssm-contract.sh` 只讀 HCL 與 tfvars，不跑 terraform、不連 AWS；本 repo 的 `scripts/validate.sh` 每次都會跑它，複製出去之後也可以直接執行。兩項檢查：
+
+1. 每個 stack 讀的 `"<stack>/<key>"`，都要由 `ORDER` 裡更早的 stack 發布，而且型別一致（`String` 或 `StringList`）。
+2. 同一個 env，各 stack `envs/<env>.tfvars` 的 `project`、`env`、`aws_region`、`expected_account_id` 一致，`env` 等於檔名（沒寫的略過）。
+
+它看得懂的寫法：
+
+- 發布：`ssm-outputs.tf` 的 `published_strings`／`published_lists`，可以是 map 或 `merge(...)`。map 的 key 是發布的 key；`{ for ... : "sg_${k}_id" => ... }` 這種參數發布一個樣式。
+- 讀取：stack 裡所有 `.tf` 的字串 `"<stack>/<key>"`，第一段要是 `ORDER` 裡的 stack。寫在名稱以 `lists` 結尾的 map 或 `merge(...)` 裡（`ssm_input_lists`、`lists = ...`）算 `StringList`，其他算 `String`。
+
+依 tfvars 算出來的 key 用樣式比對：每個 `${...}` 當成萬用字元，讀的樣式要被發布的樣式涵蓋（例如讀 `iam-base/role_agent_${k}_execution_arn` 由 `role_${k}_arn` 涵蓋）。**限制**：它不知道 tfvars 裡實際有哪些服務，所以抓不到「讀了某個服務的 key，但上游沒有這個服務」；這種錯會在 `plan` 時由 `ssm-read` 讀不到參數而失敗。
+
+新增 stack 或改 key 時，照上面的寫法寫，檢查就會涵蓋到；它看不懂的寫法不會被當成讀取或發布，所以樣式要寫成字串字面值。
 
 ## 開啟 LLM 與 AgentCore
 
