@@ -1,4 +1,6 @@
-# 本機未安裝 pre-commit，這份設定尚未驗證。
+# 跟 scripts/validate.sh 用同一份設定：terraform fmt、tflint（.tflint.hcl，含 aws ruleset，hook 會先跑 tflint --init）、
+# module README 的輸入／輸出表（.terraform-docs.yml，只套在 modules/<module>/ 根目錄）。
+# 安裝：pip install pre-commit && pre-commit install。需要 terraform、tflint、terraform-docs 0.24.x。
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.109.2
@@ -7,3 +9,8 @@ repos:
       - id: terraform_tflint
         args:
           - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_docs
+        files: ^modules/[^/]+/[^/]+\.tf$
+        args:
+          # The hook prefixes a relative --config with the repo root itself; __GIT_WORKING_DIR__ would be prefixed twice.
+          - --args=--config=.terraform-docs.yml
