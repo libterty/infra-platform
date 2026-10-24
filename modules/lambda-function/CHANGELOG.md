@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/lambda-function-v0.1.0...lambda-function-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **lambda-function:** rewrite the input and output descriptions in Chinese ([c0000ac](https://github.com/libterty/infra-platform/commit/c0000acae2e242e00248061d2f456707bf177583))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
