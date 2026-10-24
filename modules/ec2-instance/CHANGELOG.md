@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/ec2-instance-v0.1.0...ec2-instance-v0.1.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **ec2-instance:** rewrite the input and output descriptions in Chinese ([6c53ec1](https://github.com/libterty/infra-platform/commit/6c53ec178125b40c16439a50b77011e4ac8770d9))
+
 ## 0.1.0 (2026-10-21)
 
 

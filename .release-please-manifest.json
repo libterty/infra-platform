@@ -35,7 +35,7 @@
   "modules/eks-addons": "0.3.0",
   "modules/ec2-asg": "0.1.1",
   "modules/eks-cluster": "0.2.0",
-  "modules/ec2-instance": "0.1.0",
+  "modules/ec2-instance": "0.1.1",
   "modules/lb-traffic-breaker": "0.1.1",
   "modules/eks-iam-policies": "0.2.0",
   "modules/iam-oidc-provider": "0.1.1",
