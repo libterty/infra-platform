@@ -6,7 +6,7 @@
 
 ## module
 
-共 47 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 48 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -24,6 +24,7 @@
 | 資料平台 | `glue-catalog` | Glue Data Catalog 的 database：多個 database，名稱與 `location_uri` 在 validation 檢查 | [![glue-catalog](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=glue-catalog-v*&label=)](https://github.com/libterty/infra-platform/releases?q=glue-catalog-v) |
 | 資料平台 | `glue-catalog-encryption` | 帳號層：用客戶管理的 KMS key 加密 Glue Data Catalog 與 connection 密碼（每個帳號、每個 region 只能由一處呼叫） | [![glue-catalog-encryption](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=glue-catalog-encryption-v*&label=)](https://github.com/libterty/infra-platform/releases?q=glue-catalog-encryption-v) |
 | 資料平台 | `glue-etl` | Glue ETL：security configuration、crawler、Spark job（含 Flex）、trigger、workflow，可選 S3 事件經 EventBridge 批次觸發 workflow | [![glue-etl](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=glue-etl-v*&label=)](https://github.com/libterty/infra-platform/releases?q=glue-etl-v) |
+| 資料平台 | `opensearch-domain` | VPC 內的 OpenSearch domain：hot、可選 dedicated master／UltraWarm／cold，固定加密與 FGAC，master 帳密從 Secrets Manager 讀 | [![opensearch-domain](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=opensearch-domain-v*&label=)](https://github.com/libterty/infra-platform/releases?q=opensearch-domain-v) |
 | 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
 | 運算             | `ecs-service`               | Fargate service、autoscaling（含排程與 step policy）、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
 | 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |
