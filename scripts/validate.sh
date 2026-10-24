@@ -351,7 +351,7 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
   esac
   # S7: modules whose password is managed by the service or read from Secrets Manager must not declare a password variable
   case "$r" in
-    modules/rds/variables.tf | modules/opensearch-domain/variables.tf)
+    modules/rds/variables.tf | modules/opensearch-domain/variables.tf | modules/redshift-serverless/variables.tf | modules/redshift-cluster/variables.tf)
       scan_pattern S7 "$(basename "$(dirname "$r")") 不得宣告含 password 的變數" "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
       ;;
   esac
