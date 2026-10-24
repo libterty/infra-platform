@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.3.1...s3-bucket-v0.4.0) (2026-10-24)
+
+
+### Features
+
+* **s3-bucket:** add lifecycle transitions and EventBridge notifications ([b6cdce4](https://github.com/libterty/infra-platform/commit/b6cdce47d8f01f14820400eeb2862053546acb9b))
+
 ## [0.3.1](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.3.0...s3-bucket-v0.3.1) (2026-10-23)
 
 
