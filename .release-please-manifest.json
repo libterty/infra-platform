@@ -48,5 +48,6 @@
   "modules/glue-etl": "0.1.0",
   "modules/opensearch-domain": "0.1.0",
   "modules/opensearch-config": "0.1.0",
-  "modules/firehose-stream": "0.1.0"
+  "modules/firehose-stream": "0.1.0",
+  "modules/athena-workgroup": "0.1.0"
 }
