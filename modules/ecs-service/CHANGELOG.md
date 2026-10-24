@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/libterty/infra-platform/compare/ecs-service-v0.2.0...ecs-service-v0.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **ecs-service:** rewrite the input and output descriptions in Chinese ([8e07d59](https://github.com/libterty/infra-platform/commit/8e07d59e3723e60592cc1d645545c5c960edbbb8))
+
 ## 0.2.0（2026-10-20）
 
 新增功能，升 MINOR。tag 在驗收後由人手動打。
