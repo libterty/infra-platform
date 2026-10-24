@@ -26,6 +26,9 @@ env:
 
 jobs:
   validate:
+    # release PR 只改 CHANGELOG 與 manifest，合併前人工看 diff（docs/guides/releasing-modules.md）。重建 release PR 的
+    # force-push 會觸發全量驗證，PR 一合併、分支一刪就被標成 failure，所以這類分支不跑。
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -2,7 +2,7 @@
 
 結論：一個 commit 只動一個 module 目錄、message 照 Conventional Commits，合併到 `main` 之後 release-please 會為那個 module 開 release PR，合併 release PR 就打出 `<module>-v<semver>` tag 並更新 CHANGELOG。例外是兩批手動打的 tag：v1 的 19 個 `<module>-v0.1.0`，以及 LLM 增補動到的 10 個 `<module>-v0.1.1`，都由人在整體驗收通過的 commit 上手動打。步驟在最後兩節。
 
-2026-10-21 起，push 到 `main` 就會跑 release-please；同一天第一次透過它發了 11 個版本（v3）。設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。release PR 是用 `GITHUB_TOKEN` 開的，GitHub 不會替它觸發 CI，所以合併前要自己看過 diff。
+2026-10-21 起，push 到 `main` 就會跑 release-please；同一天第一次透過它發了 11 個版本（v3）。設定檔是 `release-please-config.json`、`.release-please-manifest.json`、`.github/workflows/release.yml`。release PR 只改 CHANGELOG 與 manifest，CI 不跑 `release-please--` 開頭的分支（重建 release PR 時的 force-push 也一樣），所以合併前要自己看過 diff。
 
 ## 改一個 module
 
