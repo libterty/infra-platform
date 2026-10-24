@@ -295,10 +295,24 @@ required_providers_of() {
 
 # S1: every test file declares a mock_provider for each provider in the required_providers of the directory it
 # tests (the directory above tests/). Without required_providers the directory is assumed to use aws only.
+# Exception: mock providers cannot serve ephemeral resources, so a directory that declares ephemeral "aws_*" may test
+# with a real aws provider pinned offline: all skip_* checks on and every URL in the file on http://127.0.0.1.
+offline_aws_provider() {
+  local f="$1" dir="$2"
+  grep -Eqs '^[[:space:]]*ephemeral[[:space:]]+"aws_' "$dir"/*.tf || return 1
+  grep -Eq '^[[:space:]]*provider[[:space:]]+"aws"' "$f" || return 1
+  local k
+  for k in skip_credentials_validation skip_requesting_account_id skip_metadata_api_check; do
+    grep -Eq "^[[:space:]]*${k}[[:space:]]*=[[:space:]]*true" "$f" || return 1
+  done
+  grep -Eq 'https?://' "$f" || return 1
+  ! grep -Eo 'https?://[^"[:space:]]*' "$f" | grep -Evq '^http://127[.]0[.]0[.]1:'
+}
 for f in ${files_tftest[@]+"${files_tftest[@]}"}; do
   providers="$(required_providers_of "${f%/tests/*}")"
   [ -n "$providers" ] || providers=aws
   for p in $providers; do
+    [ "$p" = aws ] && offline_aws_provider "$f" "${f%/tests/*}" && continue
     if ! grep -Eq "^[[:space:]]*mock_provider[[:space:]]+\"${p}\"" "$f"; then
       echo "S1 $(rel "$f"): 測試檔缺 mock_provider \"${p}\"（required_providers 有 ${p}）" >&2
       fail_static=1
