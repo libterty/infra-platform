@@ -45,5 +45,6 @@
   "modules/kinesis-stream": "0.1.0",
   "modules/glue-catalog": "0.1.0",
   "modules/glue-catalog-encryption": "0.1.0",
-  "modules/glue-etl": "0.1.0"
+  "modules/glue-etl": "0.1.0",
+  "modules/opensearch-domain": "0.1.0"
 }
