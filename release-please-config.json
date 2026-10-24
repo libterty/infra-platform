@@ -46,6 +46,7 @@
     "modules/opensearch-domain": { "release-type": "terraform-module", "component": "opensearch-domain", "initial-version": "0.1.0" },
     "modules/rds": { "release-type": "terraform-module", "component": "rds" },
     "modules/redshift-cluster": { "release-type": "terraform-module", "component": "redshift-cluster", "initial-version": "0.1.0" },
+    "modules/redshift-serverless": { "release-type": "terraform-module", "component": "redshift-serverless", "initial-version": "0.1.0" },
     "modules/s3-bucket": { "release-type": "terraform-module", "component": "s3-bucket" },
     "modules/security-group": { "release-type": "terraform-module", "component": "security-group" },
     "modules/sns-alarm-topic": { "release-type": "terraform-module", "component": "sns-alarm-topic" },
