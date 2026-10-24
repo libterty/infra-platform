@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/libterty/infra-platform/compare/ec2-bastion-v0.1.0...ec2-bastion-v0.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **ec2-bastion:** rewrite the input and output descriptions in Chinese ([441d9e5](https://github.com/libterty/infra-platform/commit/441d9e53a99d64913b4d8feb4a68f1aa33077b73))
+
 ## 0.1.0（2026-10-20）
 
 初版。第一個 tag 由人手動打，release-please 從下一版才接手。
