@@ -33,6 +33,20 @@ module "flow_logs" {
   kms_key_arn  = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 }
 
+module "raw" {
+  source = "../.."
+
+  name            = "alpha-dev-raw"
+  kms_key_arn     = "arn:aws:kms:ap-northeast-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  expiration_days = 365
+  eventbridge     = true
+
+  transitions = [
+    { days = 30, storage_class = "STANDARD_IA" },
+    { days = 90, storage_class = "GLACIER_IR" },
+  ]
+}
+
 output "access_logs_bucket" {
   value = module.access_logs.bucket_name
 }
