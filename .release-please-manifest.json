@@ -42,5 +42,6 @@
   "modules/eks-workload-alarms": "0.1.1",
   "modules/xray-transaction-search": "0.1.1",
   "modules/dynamodb-table": "0.1.0",
-  "modules/kinesis-stream": "0.1.0"
+  "modules/kinesis-stream": "0.1.0",
+  "modules/glue-catalog": "0.1.0"
 }
