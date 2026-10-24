@@ -40,6 +40,7 @@
     "modules/log-metric-alarm": { "release-type": "terraform-module", "component": "log-metric-alarm" },
     "modules/metric-alarm": { "release-type": "terraform-module", "component": "metric-alarm" },
     "modules/nlb": { "release-type": "terraform-module", "component": "nlb", "initial-version": "0.1.0" },
+    "modules/opensearch-config": { "release-type": "terraform-module", "component": "opensearch-config", "initial-version": "0.1.0" },
     "modules/opensearch-domain": { "release-type": "terraform-module", "component": "opensearch-domain", "initial-version": "0.1.0" },
     "modules/rds": { "release-type": "terraform-module", "component": "rds" },
     "modules/s3-bucket": { "release-type": "terraform-module", "component": "s3-bucket" },
