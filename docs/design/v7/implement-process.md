@@ -1,6 +1,6 @@
 # infra-platform v7 實作流程：資料平台 module 與 templates/example4
 
-> 狀態：設計審閱中（2026-10-24）。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：G0–G13 全部完成（2026-10-24；G0–G9 是 #172–#206，G10–G13 是本 PR 系列）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。example4 的路徑都在 `templates/example4/infra/terraform/` 底下。
 
 ## 結論
@@ -27,21 +27,21 @@ Phase 代號用 G，避開 v4 的 C、v5 的 E、v6 的 F。
 
 | Phase | 內容 | 狀態 | commit |
 |---|---|---|---|
-| G0 | v7 設計文件與實作流程 | 審閱中 | — |
-| G1 | `s3-bucket` 0.4.0（`transitions`、`eventbridge`）、`kinesis-stream`、`dynamodb-table` | 未開始 | — |
-| G1r | G1 合併、發版、HCP 登記並確認（之後每個 module Phase 照做） | 未開始 | — |
-| G2 | `glue-catalog`、`glue-catalog-encryption`（帳號層）、`glue-etl`（含 EventBridge 事件觸發） | 未開始 | — |
-| G3 | `opensearch-domain`（internal user database、S7 擴充）、`opensearch-config` | 未開始 | — |
-| G4 | `firehose-stream`、`athena-workgroup` | 未開始 | — |
-| G5 | `redshift-serverless`、`redshift-cluster`（S7 擴充） | 未開始 | — |
-| G6 | `quicksight-data` | 未開始 | — |
-| G7 | `vpn-site-to-site`、`client-vpn` | 未開始 | — |
-| G8 | example4 骨架：`stacks.sh`、`check-ssm-contract.sh`、`foundation`、`network` | 未開始 | — |
-| G9 | `vpn`、`storage`（raw bucket 開 EventBridge）、`iam-base` | 未開始 | — |
-| G10 | `search`（dev、sit 都冷熱）、`search-config`（lock 由使用者產生） | 未開始 | — |
-| G11 | `analytics`、`iam-app`、`pipeline`（事件觸發 workflow） | 未開始 | — |
-| G12 | `warehouse`（雙模式與 `prevent_destroy` 防呆）、`bi` | 未開始 | — |
-| G13 | README（成本、安全例外、前置作業、runbook）、文件、全量驗證、驗證表 | 未開始 | — |
+| G0 | v7 設計文件與實作流程 | 完成：審過並合併 | #172 |
+| G1 | `s3-bucket` 0.4.0（`transitions`、`eventbridge`）、`kinesis-stream`、`dynamodb-table` | 完成：`s3-bucket` 既有測試不改全過，新增 transition、`eventbridge` 的正負向 run | #173 |
+| G1r | G1 合併、發版、HCP 登記並確認（之後每個 module Phase 照做） | 完成：G1–G7 每個 module 照做，14 個 `v0.1.0` 加 `s3-bucket-v0.4.0` 都有 tag 與 GitHub Release、在 HCP 登記並從消費端抓到；新 module 不先建 CHANGELOG | — |
+| G2 | `glue-catalog`、`glue-catalog-encryption`（帳號層）、`glue-etl`（含 EventBridge 事件觸發） | 完成：`glue-etl` 的 EVENT trigger、rule pattern、target 用 `jsondecode` 斷言；另加「一個 workflow 只有一個起始 trigger」的 validation | #179 |
+| G3 | `opensearch-domain`（internal user database、S7 擴充）、`opensearch-config` | 完成：S7 擴充到 `opensearch-domain`；`opensearch-config` 用 `mock_provider "opensearch"` | #186 |
+| G4 | `firehose-stream`、`athena-workgroup` | 完成：`athena-workgroup` 的 cutoff 下限是 provider 的 10485760 | #194 |
+| G5 | `redshift-serverless`、`redshift-cluster`（S7 擴充） | 完成：S7 擴充到兩個 module；輸出名稱一致；`check-output-parity.sh` 在只 vendor 一個 module 時跳過 | #188 |
+| G6 | `quicksight-data` | 完成：credentials 只收 `secret_arn` | #189 |
+| G7 | `vpn-site-to-site`、`client-vpn` | 完成：PSK 固定 `SecretsManager`；弱演算法依通行的密碼學建議擋掉 | #190 |
+| G8 | example4 骨架：`stacks.sh`、`check-ssm-contract.sh`、`foundation`、`network` | 完成：`foundation`、`network`、`stacks.sh`、`check-ssm-contract.sh` | #195 |
+| G9 | `vpn`、`storage`（raw bucket 開 EventBridge）、`iam-base` | 完成：`vpn` 預設零資源、`storage` 只有 raw 開 EventBridge、`iam-base` 的 Resource 斷言 | #206 |
+| G10 | `search`（dev、sit 都冷熱）、`search-config`（lock 由使用者產生） | 完成：dev、sit 都是冷熱；`search-config` 改用離線 aws provider 測試（S1 放寬，使用者選擇） | 本 PR 系列 |
+| G11 | `analytics`、`iam-app`、`pipeline`（事件觸發 workflow） | 完成：workflow 與 rule 的命名規則兩個 stack 各自斷言 | 本 PR 系列 |
+| G12 | `warehouse`（雙模式與 `prevent_destroy` 防呆）、`bi` | 完成：`check-warehouse-guard.sh`；Serverless `enhanced_vpc_routing` 預設 `false` | 本 PR 系列 |
+| G13 | README（成本、安全例外、前置作業、runbook）、文件、全量驗證、驗證表 | 完成：example4 README、範例 Glue job、根 README、規範文件；全量 `validate.sh`：12 個 stack、305 個 run 通過 | 本 PR 系列 |
 
 發版數量：14 個 `v0.1.0` 加 `s3-bucket-v0.4.0`，共 15 版，分散在 7 個 Phase。
 
@@ -213,10 +213,10 @@ Phase 代號用 G，避開 v4 的 C、v5 的 E、v6 的 F。
   - destroy 前要做的事：清空 bucket、warm／cold index 先刪或搬回、DynamoDB 關 deletion protection、Redshift final snapshot 或 UNLOAD。
   - 已知限制、兩張驗證表。
 - repo 根 `README.md`：範本表加 example4、module 表 56 個、〈文件地圖〉加 v7。
-- [`project-infra-standard.md`](../../guides/project-infra-standard.md)：提到 example4；〈例外清單〉加 `search-config` 的 ephemeral 讀取。
+- [`project-infra-standard.md`](../../guides/project-infra-standard.md)：提到 example4；〈例外清單〉加 `search-config` 的 ephemeral 讀取，以及 S1 對「有 ephemeral 的 stack 可用離線 aws provider 測試」的例外。
 - 全量 `scripts/validate.sh`。
 - 驗證紀錄：
   - **靜態驗證通過**：`validate.sh`、`check-ssm-contract.sh`、`check-warehouse-guard.sh`、`stacks.sh --dry-run`、環境名稱 `grep`。
-  - **雲端整合待驗證**：冷熱搬移（ISM）、warm 最小台數、Firehose 寫進 VPC 內的 OpenSearch（SigV4＋FGAC mapping）、Dashboards 的 basic auth 只能從 VPN 連、master 密碼輪替、S3 → EventBridge → Glue workflow 的批次觸發與實際次數、Glue job 成本、catalog 加密後各角色的 KMS 權限、Redshift Spectrum、`warehouse_mode` 切換被 `prevent_destroy` 擋下與解除流程、QuickSight 兩種來源、Client VPN、Site-to-Site 的 PSK 是否出現在 state、log group 層的 resource policy、`.tfbackend` 的 `kms_key_id`。
+  - **雲端整合待驗證**：冷熱搬移（ISM）、warm 最小台數、Firehose 寫進 VPC 內的 OpenSearch（SigV4＋FGAC mapping）、Dashboards 的 basic auth 只能從 VPN 連、master 密碼輪替、S3 → EventBridge → Glue workflow 的批次觸發與實際次數、Glue job 成本、catalog 加密後各角色的 KMS 權限、Redshift Spectrum、`warehouse_mode` 切換被 `prevent_destroy` 擋下與解除流程、QuickSight 兩種來源、Client VPN、Site-to-Site 的 PSK 是否出現在 state、log group 層的 resource policy、`.tfbackend` 的 `kms_key_id`；實作後加入：Site-to-Site 的 `customer_gateway_configuration` 在 SecretsManager 模式下是否含 PSK、VPN 與 Client VPN 的 log 用 CMK 能否寫入、`ra3.large` single-node 在 Tokyo 的可用性、flow log 用 CMK 寫 S3、QuickSight VPC connection 的 ENI 權限、IAM 動作清單、OpenSearch 告警的 `ClientId`、範例 Glue job、`search-config` 從 Client VPN 執行。
 
 驗收：全量通過；使用者審過 README 與兩張驗證表；`docs/design/v7` 的狀態改成已實作。

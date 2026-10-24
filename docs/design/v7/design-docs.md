@@ -1,6 +1,6 @@
 # infra-platform v7 設計文件：資料平台 module 與 templates/example4
 
-> 狀態：設計審閱中（2026-10-24）。§3.1 的 D1–D16 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。實作步驟見 [`implement-process.md`](./implement-process.md)。
+> 狀態：已實作（2026-10-24，G0–G13，見 [`implement-process.md`](./implement-process.md)）。§3.1 的 D1–D16 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷。實作時跟設計不同的決定記在 §14，兩邊不同時以 §14 與程式碼為準。
 > 範圍：新增資料平台用的 module（OpenSearch、DynamoDB、Glue、Redshift、Athena、QuickSight、Kinesis、Firehose、Site-to-Site VPN、Client VPN，以及 Glue Data Catalog 的帳號層加密），`s3-bucket` 升 0.4.0，照 `templates/project-infra` 的標準新建獨立範本 `templates/example4`。不改 example2、example3、project-infra。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。example4 的路徑都在 `templates/example4/infra/terraform/` 底下，下文省略這段前綴。
 > provider schema、AWS 行為與價格是 2026-10-24 查證的結果，怎麼查與來源列在 §13。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
@@ -503,3 +503,30 @@ OpenSearch 的 7 台節點佔每個環境約九成。範本 README 第一段寫�
 - [`releasing-modules.md`](../../guides/releasing-modules.md)、[`project-infra-standard.md`](../../guides/project-infra-standard.md)、[`hcp-registry-setup.md`](../../guides/hcp-registry-setup.md)。
 - [v1 design §5.5](../v1/design-docs.md)（state bucket）、[v4 design](../v4/design-docs.md)（第二個 provider 與 lock 的前例）、[v6 design](../v6/design-docs.md)（`check-ssm-contract.sh`）。
 - [`scripts/validate.sh`](../../../scripts/validate.sh)（S1–S11、Step 6b）；[`modules/s3-bucket`](../../../modules/s3-bucket/README.md)、[`modules/iam-role`](../../../modules/iam-role/README.md)、[`modules/xray-transaction-search`](../../../modules/xray-transaction-search/README.md)、[`modules/rds`](../../../modules/rds/README.md)；[`templates/project-infra/infra/README.md`](../../../templates/project-infra/infra/README.md)（`iam-base`、`iam-app`、`foundation/secrets.tf`）。
+
+## 14. 實作後的變更
+
+實作時跟上面的設計不同、或設計沒寫到的決定。標「使用者選擇」的是使用者拍板，其他照慣例判斷。
+
+**module**
+
+- **新 module 不先建 `CHANGELOG.md`**（改 K1）：先建 `# Changelog` 的話，release-please 第一次發版會在尾端留下被降級的 `## Changelog`，事後刪掉又會讓 module 目錄跟 tag 不一致（G1、G2 遇到）。
+- **`glue-etl` 擋同一個 workflow 的第二個起始 trigger**：AWS 文件寫每個 workflow 只有一個 start trigger。有 `event_trigger` 時不准再有 `workflow = true` 的 SCHEDULED trigger，SCHEDULED 的起始 trigger 也最多一個。
+- **`athena-workgroup` 的 cutoff 最小 10485760**：這是 provider 的下限（AWS API 文件寫 10000000），validation 照 provider。
+- **`redshift-serverless` 的 `enhanced_vpc_routing`**：module 預設維持 §5.10 的 `true`，`warehouse` stack 傳 `false`（provisioned 也是），因為 Serverless 開 EVR 要 3 個 AZ，範本只有 2 個。`tests/check-output-parity.sh` 比對兩個 Redshift module 的輸出名稱，只 vendor 其中一個 module 時跳過。
+- **VPN**：`vpn-site-to-site` 擋掉的弱演算法（SHA1、DH group 2、5）是依通行的密碼學建議，不是 AWS 明文規定。`client-vpn` 需要 `vpc_cidr_blocks`，範本傳 `network` 的 `vpc_cidr`。
+
+**範本**
+
+- **ISM 天數是 index 的累計年齡**（使用者選擇）：dev 第 3 天進 warm、第 7 天進 cold、第 30 天刪；sit 7／30／90（§7.5）。index pattern `<name_prefix>-events*`，Firehose 寫 `<name_prefix>-events`，`timestamp_field = "@timestamp"`；`search-config` 另建 index template 把 `@timestamp` 設成 `date`，cold 搬移才有欄位可用。
+- **S1 放寬：`search-config` 用離線 aws provider 測試**（使用者選擇；取代 §11 的 `override_module` 備案）：Terraform 1.15 的 mock provider 不支援 ephemeral resource。測試檔用真的 aws provider，假帳密、三個 skip 全開、所有網址都是 `http://127.0.0.1:`；`validate.sh` 的 `offline_aws_provider` 只在 stack 有 `ephemeral "aws_...` 時接受這種寫法。`read_master_secret` 只為離線測試存在，`tests/check-read-master-secret.sh` 擋任何 tfvars 設它。ephemeral 本身與 provider 的帳密接線只有 `terraform validate` 與雲端驗證覆蓋。[`project-infra-standard.md`](../../guides/project-infra-standard.md)〈例外清單〉記了這兩個例外。
+- **`warehouse` 的防呆檢查**：`tests/check-warehouse-guard.sh` 靜態確認 `prevent_destroy = true`、`triggers_replace = var.warehouse_mode`、兩個 module 都 `depends_on` guard；`terraform test` 驗不到 `prevent_destroy` 本身（§2 第 19 點），列為雲端驗證。
+- **`foundation`**：`glue_catalog_encryption = {}` 用 `foundation` 自己的 CMK，物件裡給 `kms_key_arn` 才用別把 key。flow log bucket 用 SSE-KMS，CMK 的 key policy 給 `delivery.logs.amazonaws.com`（條件 `aws:SourceAccount`）。
+- **`bi`**：VPC connection 用 data subnet（Redshift 在 data tier）；`datasets` 由 tfvars 給，表名與欄位要跟 Glue job 的輸出一致；dev、sit 只建 Athena 來源。人工步驟寫在 README〈前置作業〉：QuickSight 訂閱手動開（VPC connection 要 Enterprise 版）；給 `redshift_reader_secret_arn` 時 secret 在 repo 外建、QuickSight 管理者在主控台授權、執行 Terraform 的身分要 `secretsmanager:GetSecretValue`；secret 用 CMK 時 `aws-quicksight-secretsmanager-role-v0` 要 `kms:Decrypt`；QuickSight user 與 group 在 Terraform 外管理。
+- **`network`：Redshift 沒有 S3 egress**。EVR 預設關閉，Spectrum 與 COPY 走 Redshift 自己的網路；開 EVR 時要加 S3 prefix list 的 443 egress，列為已知限制。
+- **IAM 動作清單沒有對真實帳號驗證**（`iam-base`、`iam-app`）：Glue 可能還需要 `glue:GetSecurityConfiguration`；Glue 帶 security configuration 時實際的 log group 名稱未驗證（範圍是 `/aws-glue/*`）；Firehose 多給了 `es:DescribeDomain*`。
+- **告警門檻是起始值**（`storage`、`search`、`pipeline`）：OpenSearch 告警的 `ClientId` dimension 用帳號 ID（未驗證）；JVM 告警用 180 秒 period 的 Maximum，取代「連續 3 分鐘」，避開 `evaluation_periods`：這個字含有 `uat`，會讓範本的環境名稱 `grep` 誤判。
+- **`search-config` 的執行環境**（G13 發現）：VPC 沒有 NAT 與 interface endpoint，`search_admin` SG 也只有到 domain 的 egress，所以 VPC 內只掛這個 SG 的 runner 連不到 SSM、Secrets Manager、STS 與 registry。README 建議從 Client VPN（split tunnel）執行；要用 VPC 內的 runner，對外的路由專案自己補。
+- **範例 Glue job**（K10）：`templates/example4/etl/raw_to_curated.py` 逐一讀 raw database 的 table，用 bookmark 增量處理，寫 Parquet 並以 `enableUpdateCatalog` 更新 curated catalog。crawler 把 `raw/` 建成 `raw` table 是推論，腳本把它改名成 `bi` 的 dataset 讀的 `events`，partition 欄位改名成 `year`、`month`、`day`、`hour`。沒有在 Glue 上跑過。
+
+**加入雲端驗證清單的項目**：Site-to-Site 的 `customer_gateway_configuration` 在 SecretsManager 模式下是否含 PSK；VPN 與 Client VPN 的 log 用 CMK 能否寫入；`ra3.large` single-node 在 Tokyo 的可用性；flow log 用 CMK 寫 S3；QuickSight VPC connection 的 ENI 權限；IAM 動作清單；OpenSearch 告警的 `ClientId`；範例 Glue job；`search-config` 從 Client VPN 執行。完整清單在 example4 README〈驗證〉。
