@@ -460,7 +460,7 @@ scripts/validate.sh templates/example3
 
 ### 雲端整合待驗證
 
-要真實帳號與叢集，這個里程碑沒有做。
+要真實帳號與叢集，這個里程碑沒有做。逐項的前提、指令、預期結果與紀錄方式見 [`docs/guides/cloud-verification-example3.md`](../../../docs/guides/cloud-verification-example3.md)。
 
 | 項目 | 怎麼確認 |
 |---|---|
