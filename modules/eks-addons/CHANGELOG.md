@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/libterty/infra-platform/compare/eks-addons-v0.3.1...eks-addons-v0.3.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **eks-addons:** publish the corrected note about Karpenter values ([f52c49a](https://github.com/libterty/infra-platform/commit/f52c49a7ac3015a4991d734c00bddcb59ce517dd))
+
 ## [0.3.1](https://github.com/libterty/infra-platform/compare/eks-addons-v0.3.0...eks-addons-v0.3.1) (2026-10-24)
 
 
