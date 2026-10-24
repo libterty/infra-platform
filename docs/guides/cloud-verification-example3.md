@@ -19,7 +19,7 @@
 
 | 編號 | 項目 | 來源 |
 |---|---|---|
-| 1–10 | node 加入叢集、DNS、Pod Identity、TargetGroupBinding、KEDA、CloudWatch 採集、告警、no-NAT、canary、CI 權限 | `templates/example3/infra/README.md:463-474` |
+| 1–10 | node 加入叢集、DNS、Pod Identity、TargetGroupBinding、KEDA、CloudWatch 採集、告警、no-NAT、canary、CI 權限 | `templates/example3/infra/REFERENCE.md`〈雲端整合待驗證〉 |
 | S1–S10 | design §11 裡上表沒涵蓋的部分（對照見下表） | `docs/design/v4/design-docs.md` §11 |
 | X | X-Ray Transaction Search | `modules/xray-transaction-search/README.md:30-35` |
 
@@ -62,8 +62,8 @@ design §11 各點的去處：
 | 用途 | 身分 | 依據 |
 |---|---|---|
 | apply 前 7 個 stack 與其他不碰 Kubernetes API 的 stack | 各 stack 的 apply 身分；`eks-cluster` 的身分要有 secrets key 的 `kms:CreateGrant`、`kms:DescribeKey` | README〈執行環境〉 |
-| apply `eks-addons` | 必須是 `eks-cluster` 的 `addons_apply_principal_arn` | `eks-addons/providers.tf:2`、README:123 |
-| CI 部署 api、worker | `eks-cluster` 的 `ci_deploy_principal_arn` | README:300 |
+| apply `eks-addons` | 必須是 `eks-cluster` 的 `addons_apply_principal_arn` | `eks-addons/providers.tf:2`、REFERENCE〈執行環境的條件〉 |
+| CI 部署 api、worker | `eks-cluster` 的 `ci_deploy_principal_arn` | REFERENCE〈部署的細節〉 |
 | 執行本文的 `kubectl` | `cluster_admin_principal_arns` 裡的一個 | `eks-cluster/cluster.tf:32-36` |
 | 第 10 項 | 能 assume `ci_deploy_principal_arn`，或直接在 CI runner 上跑 | — |
 
@@ -115,13 +115,13 @@ aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
 | B | 把 secret 的值寫進 `foundation` 建的兩個 secret 容器（`foundation/secrets.tf:3-4`） | 同上 | — |
 | C | `./stacks.sh <env> eks-addons apply` | VPC 或可連通的網路，身分是 `addons_apply_principal_arn` | 第 1 項的 system pool、S3、S6、第 10 項的 ClusterRole |
 | D | `loadbalancer`、`agent`、`application` | 任何地方 | — |
-| E | CI 部署 api、worker（README:305-313 的指令，release 名稱固定 `api`、`worker`） | VPC 或可連通的網路，身分是 `ci_deploy_principal_arn` | 第 1 項的 app pool、第 2–4 項、S4、S5、S10、第 10 項 |
+| E | CI 部署 api、worker（README〈部署〉 的指令，release 名稱固定 `api`、`worker`） | VPC 或可連通的網路，身分是 `ci_deploy_principal_arn` | 第 1 項的 app pool、第 2–4 項、S4、S5、S10、第 10 項 |
 | F | `operation`、`postdeploy` | 任何地方 | S9、第 5–7 項 |
 | G | canary（第 9 項自己的步驟） | 混合 | 第 9 項 |
 | H | no-NAT：另開一個 env，或在 dev 改 `nat_mode` 後重跑 A–F | 混合 | 第 8 項，接著重跑第 1–6 項 |
 | X | 帳號 baseline 開 Transaction Search；`postdeploy` 的 `tracing_enabled = true` | 帳號 baseline 的 stack | X |
 
-`application` 之後、`postdeploy` 之前一定要先部署 api 與 worker：`postdeploy` 的 log 告警要等 Container Insights 的 log group 存在（README:102）。
+`application` 之後、`postdeploy` 之前一定要先部署 api 與 worker：`postdeploy` 的 log 告警要等 Container Insights 的 log group 存在（REFERENCE〈各 stack 建什麼、讀什麼、發布什麼〉）。
 
 ---
 
@@ -331,7 +331,7 @@ kubectl -n "$NS" delete targetgroupbindings.elbv2.k8s.aws "$REL"
 aws elbv2 describe-target-groups --names "$P-$E-alb-$REL" --query 'TargetGroups[].TargetGroupArn'
 aws elbv2 describe-target-health --target-group-arn "$(aws elbv2 describe-target-groups --names "$P-$E-alb-$REL" --query 'TargetGroups[0].TargetGroupArn' --output text)" \
   --query 'TargetHealthDescriptions[].[Target.Id,TargetHealth.State]' --output text
-# 復原：重跑 CI 的 helm upgrade --install（README:305-313，canary 用 README:342-343）
+# 復原：重跑 CI 的 helm upgrade --install（README〈部署〉，canary 用 REFERENCE〈canary〉）
 ```
 
 名稱怎麼來的：target group 名稱是 `"${var.name}-${each.key}"`（`modules/alb/main.tf:92`），ALB 名稱 `"${local.name_prefix}-alb"`（`loadbalancer/alb.tf:2`），key 是 `api` 與 `api-canary`（`loadbalancer/alb.tf:30-31`）；binding 名稱是 release 名稱（`targetgroupbinding.yaml:7`）；`app_port` 預設 8080（`application/variables.tf:4`）。
@@ -559,9 +559,9 @@ crash_loop、oom_killed、pending、replicas_below_desired 的真實觸發要部
 
 **前提**
 
-- `network` 與 `eks-addons` 的 tfvars 都設 `nat_mode = "none"`（`network/variables.tf:22`、`eks-addons/variables.tf:1`；`check-ssm-contract.sh` 會比對兩邊一致，README:271）。`network` 的 `bedrock_endpoints_enabled = true`（`network/envs/dev.tfvars`）。
+- `network` 與 `eks-addons` 的 tfvars 都設 `nat_mode = "none"`（`network/variables.tf:22`、`eks-addons/variables.tf:1`；`check-ssm-contract.sh` 會比對兩邊一致，REFERENCE〈check-ssm-contract.sh〉）。`network` 的 `bedrock_endpoints_enabled = true`（`network/envs/dev.tfvars`）。
 - 建議另開一個 env 從頭 apply。在原本的 dev 從 `per_az` 改成 `none` 會刪掉 NAT gateway，執行中的 pod 會斷線。
-- 跑 `eks-addons` 的 runner 要能抓 chart（README:124）；完全沒有對外連線時改用 `chart_repository_overrides`。
+- 跑 `eks-addons` 的 runner 要能抓 chart（REFERENCE〈執行環境的條件〉）；完全沒有對外連線時改用 `chart_repository_overrides`。
 - 先知道的風險（見〈結論〉）：平台元件的映像來自公開 registry（推測）。`secretsmanager` endpoint 已補上，api 與 worker 讀 secret 應該要成功。
 
 **指令**
@@ -602,7 +602,7 @@ kubectl get events -A --field-selector type=Warning | grep -iE 'pull|timeout|dia
 
 **前提**
 
-- `containerimage` 的 `services` 有 `traffic-breaker`（`containerimage/envs/dev.tfvars:6`），斷路器的映像用 arm64 build 後推到 `<project>-traffic-breaker:<tag>`（README:334）。
+- `containerimage` 的 `services` 有 `traffic-breaker`（`containerimage/envs/dev.tfvars:6`），斷路器的映像用 arm64 build 後推到 `<project>-traffic-breaker:<tag>`（REFERENCE〈canary〉）。
 - `loadbalancer/envs/<env>.tfvars` 加上：
 
   ```hcl
@@ -626,7 +626,7 @@ kubectl get events -A --field-selector type=Warning | grep -iE 'pull|timeout|dia
 | Lambda 與 log group | `<project>-<env>-traffic-breaker`、`/aws/lambda/<project>-<env>-traffic-breaker` | `loadbalancer/canary.tf:6`、`modules/lambda-function/main.tf:2` |
 | tag | key `traffic-breaker/tripped`，value 是觸發的告警名稱 | `modules/lb-traffic-breaker/lambda/breaker.py:15`、`handler.py:67` |
 | SSM | `/<project>/<env>/loadbalancer/api_canary_target_group_arn` | `loadbalancer/ssm-outputs.tf:12-14` |
-| canary release | `api-canary` | README:343 |
+| canary release | `api-canary` | REFERENCE〈canary〉 |
 
 **指令**
 
@@ -650,7 +650,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix "$P-$E-canary-" --query 'Metr
 步驟（照 README〈canary〉）：
 
 1. `weight = 0` apply 之後跑上面的指令。
-2. 【寫入】CI 部署 canary release（README:342-343）。然後：
+2. 【寫入】CI 部署 canary release（REFERENCE〈canary〉）。然後：
 
    ```bash
    aws elbv2 describe-target-health --target-group-arn "$CANARY_TG" --query 'TargetHealthDescriptions[].[Target.Id,TargetHealth.State]' --output text
@@ -671,7 +671,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix "$P-$E-canary-" --query 'Metr
      --query 'events[].message' --output text
    ```
 
-5. 觸發後的處理（README:348-353）：**先**把 tfvars 改回 `weight = 0` 並 apply `loadbalancer`。apply 前看 plan，記下它是否要拿掉 `traffic-breaker/tripped` tag。再 `helm uninstall api-canary -n "$NS"`（【寫入】）或修好重新部署。
+5. 觸發後的處理（REFERENCE〈canary〉）：**先**把 tfvars 改回 `weight = 0` 並 apply `loadbalancer`。apply 前看 plan，記下它是否要拿掉 `traffic-breaker/tripped` tag。再 `helm uninstall api-canary -n "$NS"`（【寫入】）或修好重新部署。
 6. 收尾：`canary = null` 並 apply，`<project>-<env>-alb-api-canary` 與 6 條告警都應該消失。
 
 **預期結果**
@@ -724,7 +724,7 @@ kubectl --context "$CLUSTER-ci" auth can-i create namespaces
 - 兩個 `eks-addons:targetgroupbindings-*` ClusterRole 存在；`edit` 的規則含 `elbv2.k8s.aws` 的 `targetgroupbindings` 與 `keda.sh` 的 `scaledobjects`、`triggerauthentications`。
 - 7 個 `can-i create` 都是 `yes`。
 - `kube-system` 與 `namespaces` 都是 `no`。
-- CI 實際跑 README:305-313 的部署成功（階段 E）。
+- CI 實際跑 README〈部署〉 的部署成功（階段 E）。
 - 如果 CRD 三個是 `no` 而 `edit` 的規則有它們：表示 access policy 沒有吃到 RBAC aggregation（§11 第 15 點不成立），記在備註並開 issue。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
@@ -900,7 +900,7 @@ aws logs describe-log-groups --log-group-name-prefix "/aws/containerinsights/$CL
 
 然後 `./stacks.sh <env> postdeploy apply`。
 
-**預期結果**：log group 已經存在、`retentionInDays` 是 `None`；`postdeploy` apply 成功，沒有 `ResourceNotFoundException`（metric filter 找不到 log group）。如果在 log group 出現前 apply 過，記下錯誤訊息，那就是 README:102 順序的證據。
+**預期結果**：log group 已經存在、`retentionInDays` 是 `None`；`postdeploy` apply 成功，沒有 `ResourceNotFoundException`（metric filter 找不到 log group）。如果在 log group 出現前 apply 過，記下錯誤訊息，那就是 REFERENCE〈各 stack 建什麼、讀什麼、發布什麼〉 順序的證據。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
 
@@ -979,7 +979,7 @@ aws xray update-trace-segment-destination --destination XRay     # 【寫入】
 | 回寫到哪裡 | 誰改 | 怎麼改 | 誰審 |
 |---|---|---|---|
 | 本 runbook 的「結果紀錄」 | 執行人 | 每一項填完那一行；不通過的附 issue 連結 | 跟下一列同一個 PR |
-| `templates/example3/infra/README.md`〈雲端整合待驗證〉表 | 執行人 | 表格加一欄「結果」，寫 `通過（YYYY-MM-DD，dev）` 或 `不通過：<一句話>（#issue）`。10 項都通過時，比照〈靜態驗證通過（2026-10-23）〉另開一節〈雲端驗證通過（日期）〉把表搬過去；〈已知限制〉裡已經確認的條目刪掉；檔案開頭的狀態句（README:3）改成實際狀態 | platform team ＋ 專案代表（`/templates/` 的 CODEOWNERS） |
+| `templates/example3/infra/REFERENCE.md`〈雲端整合待驗證〉表 | 執行人 | 表格加一欄「結果」，寫 `通過（YYYY-MM-DD，dev）` 或 `不通過：<一句話>（#issue）`。10 項都通過時，比照〈靜態驗證通過（2026-10-23）〉另開一節〈雲端驗證通過（日期）〉把表搬過去；README〈已知限制〉與 REFERENCE〈已知限制：細節〉裡已經確認的條目刪掉；README 開頭的狀態句改成實際狀態 | platform team ＋ 專案代表（`/templates/` 的 CODEOWNERS） |
 | `docs/design/v4/design-docs.md` §11 | platform team | 每一點後面加 `→ 已確認（YYYY-MM-DD，runbook S<n> 或第 <n> 項）`，或 `→ 不成立：<實際行為>，改法見 #issue`。不成立而要改設計的，在文末加一個附錄記下決定 | platform team |
 | `modules/xray-transaction-search/README.md:35` 與其他 module README 的「還沒在真實帳號 apply 過」 | platform team | X 通過後改成實際驗證的日期與帳號類型 | platform team |
 

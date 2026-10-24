@@ -126,11 +126,11 @@
 | 輪替 | 每 90 天或有人離職時：`put-secret-value` 新密碼 → apply `search`（domain 更新 master 密碼）→ apply `search-config`（ephemeral 重新讀）→ 確認 state bucket 裡含舊密碼的舊版本在 30 天後過期 |
 | owner | `search` stack 的擁有者（搜尋／觀測團隊）；範本寫佔位，複製出去填人名。platform team 追蹤例外 |
 | 移除例外的 checkpoint | 1. aws provider 加了 `master_user_password_wo`（每次升 aws provider 的 MINOR 時看 CHANGELOG）：改用 ephemeral 讀 secret 餵 write-only 屬性；2. 組織有 IdP：接 SAML 取代 Dashboards 的 basic auth，master 換成 IAM role；3. 最晚 2027-04-24 重新審查 |
-| 記錄在哪裡 | 這一節、example4 README〈安全例外〉、`opensearch-domain` README〈注意〉 |
+| 記錄在哪裡 | 這一節、example4 REFERENCE〈安全例外：OpenSearch master 帳密進 state〉、`opensearch-domain` README〈注意〉 |
 
 ### 4.2 state bucket 的強化（D15）
 
-state bucket 由 platform team 或帳號開通流程在範本外建立（§2 第 18 點），範本不建也不改它。example4 README〈前置作業〉要求 bucket 擁有者落地下列控制，§4.1 的補償控制引用這份清單：
+state bucket 由 platform team 或帳號開通流程在範本外建立（§2 第 18 點），範本不建也不改它。example4 REFERENCE〈前置作業的細節〉第 1 項要求 bucket 擁有者落地下列控制，§4.1 的補償控制引用這份清單：
 
 | 控制 | 落地的地方 | 範本這邊做什麼 |
 |---|---|---|
@@ -529,4 +529,4 @@ OpenSearch 的 7 台節點佔每個環境約九成。範本 README 第一段寫�
 - **`search-config` 的執行環境**（G13 發現）：VPC 沒有 NAT 與 interface endpoint，`search_admin` SG 也只有到 domain 的 egress，所以 VPC 內只掛這個 SG 的 runner 連不到 SSM、Secrets Manager、STS 與 registry。README 建議從 Client VPN（split tunnel）執行；要用 VPC 內的 runner，對外的路由專案自己補。
 - **範例 Glue job**（K10）：`templates/example4/etl/raw_to_curated.py` 逐一讀 raw database 的 table，用 bookmark 增量處理，寫 Parquet 並以 `enableUpdateCatalog` 更新 curated catalog。crawler 把 `raw/` 建成 `raw` table 是推論，腳本把它改名成 `bi` 的 dataset 讀的 `events`，partition 欄位改名成 `year`、`month`、`day`、`hour`。沒有在 Glue 上跑過。
 
-**加入雲端驗證清單的項目**：Site-to-Site 的 `customer_gateway_configuration` 在 SecretsManager 模式下是否含 PSK；VPN 與 Client VPN 的 log 用 CMK 能否寫入；`ra3.large` single-node 在 Tokyo 的可用性；flow log 用 CMK 寫 S3；QuickSight VPC connection 的 ENI 權限；IAM 動作清單；OpenSearch 告警的 `ClientId`；範例 Glue job；`search-config` 從 Client VPN 執行。完整清單在 example4 README〈驗證〉。
+**加入雲端驗證清單的項目**：Site-to-Site 的 `customer_gateway_configuration` 在 SecretsManager 模式下是否含 PSK；VPN 與 Client VPN 的 log 用 CMK 能否寫入；`ra3.large` single-node 在 Tokyo 的可用性；flow log 用 CMK 寫 S3；QuickSight VPC connection 的 ENI 權限；IAM 動作清單；OpenSearch 告警的 `ClientId`；範例 Glue job；`search-config` 從 Client VPN 執行。完整清單在 example4 REFERENCE〈驗證〉。
