@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/libterty/infra-platform/compare/eks-addons-v0.3.0...eks-addons-v0.3.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **eks-addons:** rewrite the input and output descriptions in Chinese ([eabc012](https://github.com/libterty/infra-platform/commit/eabc012b5237071245d14f1b0c65db614a54ed57))
+
 ## [0.3.0](https://github.com/libterty/infra-platform/compare/eks-addons-v0.2.0...eks-addons-v0.3.0) (2026-10-23)
 
 
