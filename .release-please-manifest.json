@@ -52,5 +52,6 @@
   "modules/athena-workgroup": "0.1.0",
   "modules/redshift-cluster": "0.1.0",
   "modules/redshift-serverless": "0.1.0",
-  "modules/quicksight-data": "0.1.0"
+  "modules/quicksight-data": "0.1.0",
+  "modules/vpn-site-to-site": "0.1.0"
 }
