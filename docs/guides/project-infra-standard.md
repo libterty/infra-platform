@@ -2,7 +2,7 @@
 
 給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 9 個 stack 的順序 apply（`infra/terraform/stacks.sh` 依順序執行）。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
-這份以 `project-infra` 範本為準。repo 另有兩份拆法不同的範本：`templates/example2/`（11 個 stack，環境是 `dev`、`sit`）與它的 EKS 版 `templates/example3/`（13 個 stack）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
+這份以 `project-infra` 範本為準。repo 另有三份拆法不同的範本：`templates/example2/`（11 個 stack，環境是 `dev`、`sit`）、它的 EKS 版 `templates/example3/`（13 個 stack），以及資料平台 `templates/example4/`（12 個 stack，環境是 `dev`、`sit`）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
 
 這份講「怎麼做、為什麼」；stack 清單、SSM 合約表、單一決定點、流量規格表的完整內容在範本自己的 `templates/project-infra/infra/README.md`，複製出去之後就是專案的 `infra/README.md`，這裡不重複。
 
@@ -74,8 +74,10 @@ destroy 反過來（9 到 1，`stacks.sh <env> all destroy`），之前先做三
 | stack | resource | 理由 |
 |---|---|---|
 | `foundation` | `aws_secretsmanager_secret`（應用程式 secret 的容器，不含值） | 只有一個 resource、兩三個屬性，包成 module 省不到東西 |
+| `search-config`（example4） | `ephemeral "aws_secretsmanager_secret_version"`（讀 OpenSearch master 帳密） | opensearch provider 的帳密只能在 stack 設定；ephemeral 值不進 state 與 plan 檔（v7 design K19）。這是範本 stack 唯一的 ephemeral block |
+| 有 ephemeral 讀取的 stack 的測試（example4 `search-config`） | 用離線的 `provider "aws"` 取代 S1 要求的 `mock_provider "aws"` | Terraform 1.15 的 mock provider 不能開 ephemeral resource。`validate.sh` 的 `offline_aws_provider` 只在 stack 有 `ephemeral "aws_..."` 時放行，而且測試檔的 provider 要把 `skip_credentials_validation`、`skip_requesting_account_id`、`skip_metadata_api_check` 三個都設 `true`、所有網址都是 `http://127.0.0.1:`，連不出這台機器。ephemeral 本身與 provider 的帳密接線只有 `terraform validate` 與雲端驗證覆蓋 |
 
-可以留在 stack 的：`data "aws_caller_identity"`、`data "aws_region"`、模式 A 的 `data "aws_vpc"`／`data "aws_subnet"`、`terraform_data`（範本用它放 precondition）。不可以的：`data "aws_ssm_parameter"`（只能經 `ssm-read`）、任何 `aws_iam_*`（只能經 `iam-role`、`iam-role-policy`）、任何 SG 資源（只能經 `security-group`）。
+可以留在 stack 的：`data "aws_caller_identity"`、`data "aws_region"`、模式 A 的 `data "aws_vpc"`／`data "aws_subnet"`、`terraform_data`（範本用它放 precondition；example4 的 `warehouse` 用它加 `prevent_destroy` 擋住誤切 `warehouse_mode`）。不可以的：`data "aws_ssm_parameter"`（只能經 `ssm-read`）、任何 `aws_iam_*`（只能經 `iam-role`、`iam-role-policy`）、任何 SG 資源（只能經 `security-group`）。
 
 只有 `iam-base`、`iam-app` 兩個 stack 會呼叫 IAM module，所以權限審查只要看這兩個地方；客戶的部署 role 不能改 IAM 時，也只要把這兩個 stack 交給客戶。
 
@@ -230,7 +232,7 @@ aws-vault exec <dev-profile> -- terraform plan -var-file=envs/dev.tfvars
 
 ## 驗證
 
-複製出去之後，每個 stack 的 `tests/` 仍然可以離線跑（全部 `mock_provider "aws"`）：
+複製出去之後，每個 stack 的 `tests/` 仍然可以離線跑（`mock_provider "aws"`；example4 的 `search-config` 用離線的 aws provider，見〈例外清單〉）：
 
 ```bash
 cd infra/terraform/network
