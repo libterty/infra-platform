@@ -23,7 +23,25 @@ scripts/validate.sh modules/<module>     # 只跑指定目錄
 scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
 ```
 
-這支腳本做哪些檢查，見 [README〈開發〉](./README.md#開發)。CI 在 PR 上跑同一支腳本的 `--changed-since`，只驗證這個 PR 影響得到的目錄。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
+`scripts/validate.sh` 依序跑：
+
+1. `terraform fmt -check`。
+2. 靜態規則 S1 到 S11。S11 用 terraform-docs 檢查 module README 的輸入／輸出表跟程式碼一致。
+3. `terraform init -backend=false`、`validate`。
+4. `test`：`required_providers` 裡的每個 provider 都要有 `mock_provider`。
+5. `tflint`：內建的 terraform ruleset 加上 aws ruleset。`.tflint.hcl` 釘版本，不開 `deep_check`，不需要 AWS 憑證；第一次跑時 `tflint --init` 會下載 plugin，之後不連網。範本的 stack 另外用 `--call-module-type=all` 逐一帶入 `envs/` 底下的每份 tfvars 再跑一次，tfvars 裡的規格值（例如 ElastiCache 的 node type）也會被檢查。aws ruleset 沒有對應規則的 resource（例如 Aurora 的 `aws_rds_cluster_instance`）檢查不到。
+
+腳本一開頭就清掉所有 `AWS_*`、`KUBE*`、`HELM*` 環境變數，並把 AWS 設定檔與 `KUBECONFIG` 指到 `/dev/null`，所以漏寫 mock 的測試會失敗，不會拿到本機的 session 或叢集。module 裡有本地 Helm chart（`charts/`）或 Lambda 程式碼的測試（`lambda/test_*.py`）時，裝了 `helm`、`python3` 也會一起檢查。
+
+加 `--changed-since <rev>` 時，fmt 與靜態規則仍然掃全部，`init` 到 `tflint` 只跑受影響的目錄：
+
+- 改到的目錄。
+- 用本地路徑（`./`、`../`）引用它的目錄，例如 module 的 examples。
+- 改到範本 stack 之外的檔案時，該範本的全部 stack。
+
+範本從 registry 抓 module，所以只改 module 不會重跑範本。`docs/`、`*.md` 不算改動；`scripts/`、`.tflint.hcl`、`.github/` 這類其他檔案一改就跑全部。
+
+CI（`.github/workflows/ci.yml`）跑同一支腳本：PR 用 `--changed-since`，只驗證這個 PR 影響得到的目錄；push 到 main、每週排程與手動觸發跑全部。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
 
 ## 不能做的事
 
