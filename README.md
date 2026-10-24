@@ -6,7 +6,7 @@
 
 ## module
 
-共 45 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 46 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類             | module                        | 用途                                                                               | 最新版 |
 | ---------------- | ----------------------------- | ---------------------------------------------------------------------------------- | --- |
@@ -22,6 +22,7 @@
 | 資料平台 | `dynamodb-table` | DynamoDB table：on-demand 或 provisioned、可選 GSI、TTL、Streams；固定 KMS 加密、PITR 與刪除保護 | [![dynamodb-table](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=dynamodb-table-v*&label=)](https://github.com/libterty/infra-platform/releases?q=dynamodb-table-v) |
 | 資料平台 | `kinesis-stream` | Kinesis Data Stream：on-demand 或 provisioned，固定 KMS 加密 | [![kinesis-stream](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=kinesis-stream-v*&label=)](https://github.com/libterty/infra-platform/releases?q=kinesis-stream-v) |
 | 資料平台 | `glue-catalog` | Glue Data Catalog 的 database：多個 database，名稱與 `location_uri` 在 validation 檢查 | [![glue-catalog](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=glue-catalog-v*&label=)](https://github.com/libterty/infra-platform/releases?q=glue-catalog-v) |
+| 資料平台 | `glue-catalog-encryption` | 帳號層：用客戶管理的 KMS key 加密 Glue Data Catalog 與 connection 密碼（每個帳號、每個 region 只能由一處呼叫） | [![glue-catalog-encryption](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=glue-catalog-encryption-v*&label=)](https://github.com/libterty/infra-platform/releases?q=glue-catalog-encryption-v) |
 | 運算             | `ecs-cluster`               | Fargate cluster                                                                    | [![ecs-cluster](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-cluster-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-cluster-v) |
 | 運算             | `ecs-service`               | Fargate service、autoscaling（含排程與 step policy）、Service Connect、可選 sidecar                        | [![ecs-service](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-v) |
 | 運算             | `ecs-service-alarms`        | 服務告警                                                                           | [![ecs-service-alarms](https://img.shields.io/github/v/tag/libterty/infra-platform?filter=ecs-service-alarms-v*&label=)](https://github.com/libterty/infra-platform/releases?q=ecs-service-alarms-v) |
