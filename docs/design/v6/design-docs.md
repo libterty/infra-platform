@@ -1,6 +1,6 @@
 # infra-platform v6 設計文件：project-infra 的 SSM 合約檢查
 
-> 狀態：設計草案，第一版。§3 是使用者拍板的決策（2026-10-24）。審過才進實作，步驟見 [`implement-process.md`](./implement-process.md)。
+> 狀態：已實作（2026-10-24，F0–F3，見 [`implement-process.md`](./implement-process.md)）。§3 是使用者拍板的決策。
 > 範圍：替 `templates/project-infra` 加上跟 example2、example3 一樣的 SSM 合約靜態檢查，並補上 `stacks.sh`。stack 的程式碼與行為不變；example2、example3 不動。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。project-infra 的路徑都在 `templates/project-infra/infra/terraform/` 底下，下文省略這段前綴。
 
