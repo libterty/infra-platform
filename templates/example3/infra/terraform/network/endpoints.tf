@@ -1,10 +1,11 @@
 locals {
   interface_endpoints = {
     # Without a NAT the private EKS cluster, its Auto Mode nodes, KEDA and the CloudWatch collector reach AWS only here
-    # (design v4 §6; S3 is the gateway endpoint). The list's completeness is still to be confirmed in a real account.
+    # (design v4 §6; S3 is the gateway endpoint). api and worker read their secrets from Secrets Manager.
+    # The list's completeness is still to be confirmed in a real account.
     services = setunion(
       var.bedrock_endpoints_enabled ? toset(["bedrock", "bedrock-agentcore", "bedrock-runtime"]) : toset([]),
-      local.no_nat ? toset(["eks", "eks-auth", "ec2", "ecr.api", "ecr.dkr", "sts", "elasticloadbalancing", "logs", "monitoring"]) : toset([]),
+      local.no_nat ? toset(["eks", "eks-auth", "ec2", "ecr.api", "ecr.dkr", "sts", "elasticloadbalancing", "logs", "monitoring", "secretsmanager"]) : toset([]),
     )
     allowed_cidrs = [var.vpc_cidr]
     subnet_ids    = module.vpc.subnet_ids["app"]

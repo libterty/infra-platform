@@ -264,9 +264,9 @@ run "eks_endpoints_with_no_nat" {
   assert {
     condition = local.interface_endpoints.services == toset([
       "bedrock", "bedrock-agentcore", "bedrock-runtime",
-      "eks", "eks-auth", "ec2", "ecr.api", "ecr.dkr", "sts", "elasticloadbalancing", "logs", "monitoring",
+      "eks", "eks-auth", "ec2", "ecr.api", "ecr.dkr", "sts", "elasticloadbalancing", "logs", "monitoring", "secretsmanager",
     ])
-    error_message = "Without a NAT the private cluster needs the EKS, ECR, STS, ELB, logs and metrics endpoints (S3 is the gateway endpoint)"
+    error_message = "Without a NAT the private cluster needs the EKS, ECR, STS, ELB, logs, metrics and Secrets Manager endpoints (S3 is the gateway endpoint)"
   }
 }
 
