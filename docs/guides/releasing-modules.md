@@ -101,6 +101,12 @@ gh pr merge "$p" --squash
 
 合併後等 `main` 上的 Release run 跑完、`gh release view <module>-v<version>` 查得到，再做下一個。Release run 偶爾在建完 release 之後遇到 GitHub GraphQL 的暫時錯誤而變紅；tag 與 Release 都在、PR 標成 `autorelease: tagged` 就不用重跑。
 
+一次發很多版（2026-10-23 v5 一口氣發了 42 個 PATCH）時會遇到三件事：
+
+- **Actions 的 API 額度用完**：release-please 每一輪都掃全部 module，Release run 用的 `GITHUB_TOKEN` 每個 repo 每小時 1000 次。連續發約 30 版之後，Release run 失敗在 `API rate limit exceeded for installation`。如果失敗時 release 已經建好（PR 標成 `autorelease: tagged`），就不用處理；如果 release 還沒建，就等額度重置（最多一小時）後用 `gh run rerun <run-id>` 重跑那一輪。
+- **重複的空 release PR**：合併一個 release PR 時，前一輪還沒跑完的 Release run 會依舊狀態，替剛發完的 module 再開一個同版本、沒有任何檔案變更的 release PR。看到「tag 已經存在」的 release PR，直接關掉並刪掉分支，不要合併。
+- **節奏**：一次合併一個、等 `gh release view` 查得到再做下一個。HCP 的版本可以全部發完後再一起檢查（`version-statuses` 是 `ok`），漏掉的照 [`hcp-registry-setup.md`](./hcp-registry-setup.md) 重新登記。
+
 tag 由 GitHub ruleset 保護 `*-v*`，不准刪除與移動。打錯了就發下一個 PATCH 版，不要改舊 tag。
 
 ## 第一次發版：手動打 19 個 `<module>-v0.1.0` tag
