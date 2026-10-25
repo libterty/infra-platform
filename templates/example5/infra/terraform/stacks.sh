@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Apply order, on one line: check-ssm-contract.sh parses it from here. Destroy runs it backwards.
-ORDER=(foundation network vpn)
+ORDER=(foundation network vpn pki)
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
