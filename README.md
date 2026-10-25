@@ -6,7 +6,7 @@
 
 ## module
 
-共 67 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 70 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -77,6 +77,9 @@
 | IoT 與邊緣 | `greengrass-component` | Greengrass v2 元件版本（awscc） | [![greengrass-component](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fgreengrass-component%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=greengrass-component-v) |
 | IoT 與邊緣 | `greengrass-deployment` | Greengrass v2 部署（awscc） | [![greengrass-deployment](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fgreengrass-deployment%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=greengrass-deployment-v) |
 | IoT 與邊緣 | `iot-job-template` | IoT Job template（awscc） | [![iot-job-template](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-job-template%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-job-template-v) |
+| IoT 與邊緣 | `kinesis-video-stream` | Kinesis Video Streams | [![kinesis-video-stream](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fkinesis-video-stream%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=kinesis-video-stream-v) |
+| IoT 與邊緣 | `iot-device-defender` | Device Defender 稽核與 mitigation action（awscc） | [![iot-device-defender](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-device-defender%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-device-defender-v) |
+| IoT 與邊緣 | `iotsitewise` | SiteWise asset model、asset、gateway（awscc） | [![iotsitewise](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiotsitewise%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iotsitewise-v) |
 
 消費端寫法：
 
