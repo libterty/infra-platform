@@ -261,7 +261,7 @@ s8_is_allowed() {
   return 1
 }
 
-# S8: report every resource "aws_*" in a stack file that is not in s8_allowed. $1=file, $2=stack
+# S8: report every resource "aws_*" or "awscc_*" in a stack file that is not in s8_allowed (awscc is never allowed). $1=file, $2=stack
 scan_stack_resources() {
   local ln type
   while IFS=: read -r ln type; do
@@ -271,7 +271,7 @@ scan_stack_resources() {
       fail_static=1
     fi
   done < <(awk '/^[[:space:]]*(#|\/\/)/ { next }
-    match($0, /^[[:space:]]*resource[[:space:]]+"aws_[^"]*"/) {
+    match($0, /^[[:space:]]*resource[[:space:]]+"aws(cc)?_[^"]*"/) {
       t = substr($0, RSTART, RLENGTH); sub(/^[^"]*"/, "", t); sub(/"$/, "", t); print FNR ":" t
     }' "$1")
 }
@@ -343,6 +343,9 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
         modules/iam-oidc-provider/*) scan_pattern S4 'modules/iam-oidc-provider 只允許 aws_iam_openid_connect_provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_openid_connect_provider"' ;;
         *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role、modules/iam-role-policy 與 modules/iam-oidc-provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
       esac
+      # S4: awscc has its own IAM and security group types; no module or stack may declare them
+      scan_pattern S4 'awscc_iam_* 不得出現在 modules 與 templates（IAM 只經 iam-role、iam-role-policy、iam-oidc-provider）' "$f" '^[[:space:]]*resource[[:space:]]+"awscc_iam_'
+      scan_pattern S4 'awscc_ec2_security_group* 不得出現在 modules 與 templates（SG 只經 security-group）' "$f" '^[[:space:]]*resource[[:space:]]+"awscc_ec2_security_group'
       # S4: security groups and their rules only in security-group and vpc-interface-endpoints
       case "$r" in
         modules/security-group/* | modules/vpc-interface-endpoints/*) ;;
@@ -369,7 +372,7 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
       scan_pattern S7 "$(basename "$(dirname "$r")") 不得宣告含 password 的變數" "$f" '^[[:space:]]*variable[[:space:]]+"[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"'
       ;;
   esac
-  # S8: template stacks only declare the aws_* resources listed in s8_allowed
+  # S8: template stacks only declare the aws_* resources listed in s8_allowed, and no awscc_* resource
   if root="$(stack_root_of "$r")"; then
     stack="${r#"${root}"/}"
     scan_stack_resources "$f" "${stack%%/*}"
