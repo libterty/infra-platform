@@ -62,5 +62,6 @@
   "modules/iot-topic-rule": "0.1.0",
   "modules/iot-fleet": "0.1.0",
   "modules/ota-signing": "0.1.0",
-  "modules/acm-pca": "0.1.0"
+  "modules/acm-pca": "0.1.0",
+  "modules/greengrass-component": "0.1.0"
 }
