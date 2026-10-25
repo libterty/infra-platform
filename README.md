@@ -6,7 +6,7 @@
 
 ## module
 
-共 56 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 59 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -66,6 +66,9 @@
 | LLM 與 AgentCore | `agentcore-memory` | AgentCore Memory | [![agentcore-memory](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fagentcore-memory%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=agentcore-memory-v) |
 | LLM 與 AgentCore | `agentcore-gateway` | AgentCore MCP Gateway | [![agentcore-gateway](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fagentcore-gateway%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=agentcore-gateway-v) |
 | LLM 與 AgentCore | `bedrock-knowledge-base` | Bedrock Knowledge Base | [![bedrock-knowledge-base](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fbedrock-knowledge-base%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=bedrock-knowledge-base-v) |
+| 事件與佇列 | `sqs-queue` | SQS queue 與 DLQ | [![sqs-queue](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsqs-queue%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sqs-queue-v) |
+| 事件與佇列 | `eventbridge-rule` | EventBridge rule 與 target | [![eventbridge-rule](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Feventbridge-rule%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=eventbridge-rule-v) |
+| 事件與佇列 | `scheduler-schedule` | EventBridge Scheduler 排程 | [![scheduler-schedule](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fscheduler-schedule%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=scheduler-schedule-v) |
 
 消費端寫法：
 
