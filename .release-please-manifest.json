@@ -58,5 +58,6 @@
   "modules/sqs-queue": "0.1.0",
   "modules/eventbridge-rule": "0.1.0",
   "modules/scheduler-schedule": "0.1.0",
-  "modules/iot-account-settings": "0.1.0"
+  "modules/iot-account-settings": "0.1.0",
+  "modules/iot-topic-rule": "0.1.0"
 }
