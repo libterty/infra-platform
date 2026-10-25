@@ -562,4 +562,32 @@ OpenSearch 佔每個環境約九成。IoT Core 隨裝置數與訊息頻率線性
 
 ## 14. 實作後的變更
 
-（實作時跟上面的設計不同、或設計沒寫到的決定記在這裡。）
+實作時跟上面的設計不同、或設計沒寫到的決定。
+
+**module**
+
+- **`ota-signing` 不收簽章有效期，三種 platform 都必須給 `certificate_arn`**（改 §5.7）：Signer 文件寫有效期設定只適用 Lambda 與 Notation platform，對 IoT platform 沒有作用；Signer 只替 Lambda 與 container image 管 key，IoT 要自己匯入 ACM 憑證，所以 `AWSIoTDeviceManagement-SHA256-ECDSA` 也要。
+- **`acm-pca`**：key algorithm 允許 EC P-256（預設）、P-384、P-521 與 RSA 2048／3072／4096（RSA 2048 保留給只支援 RSA 的 MCU）；signing algorithm 由 key algorithm 推出；`validity_years` 1–30、預設 10；`key_storage_security_standard` 用 AWS 預設。IoT Core 連線時是否查 CRL 仍未確認。
+- **`iot-account-settings`**：`aws_iot_logging_options` 確認呼叫 `SetV2LoggingOptions`；三個 resource 刪除時 provider 都不呼叫 AWS，拿掉輸入不會還原設定。
+- **`iot-topic-rule`**：允許的 action 由輸入型別限定，型別以外的 key（例如 `http`）會被 Terraform 丟掉而不是報錯，README 寫明。
+- **`iot-fleet`**：thing group 分層建立，最多 4 層；沒有 `kms_key_arn`（沒有存資料的 resource）；`policies` 型別是 `any`，讓不同形狀的 policy 文件放在同一個 map。
+- **`greengrass-component`**：recipe 的檢查用 precondition；awscc 1.107.0 的 `inline_recipe` 是 optional＋computed 的一般字串（不是 write-only），plan 是否持續顯示變更仍待雲端驗證。
+- **`greengrass-deployment`**：`components` 型別是 `any`（各元件的 `merge` 形狀不同時 typed object 會失敗）；多一個必填的 `name`；abort 的 action 固定 `CANCEL`（AWS 只接受這個值）。
+- **`iot-job-template`**：`description` 必填（awscc schema）。
+- **`iot-device-defender`**：audit check 用明確的對照表（排程稽核是大寫 API 名稱，帳號 resource 是 snake_case，`IOT_POLICY_POTENTIAL_MIS_CONFIGURATION_CHECK` 對到 `io_t_policy_...`）；`audit.checks` 沒列的 check 一律明確停用；`account_id` 由輸入給。
+- **`iotsitewise`**：property 只支援 `attribute`、`measurement`；`parent` 是 `{ asset, hierarchy }`；階層最多兩層。**awscc 的 asset resource 不能設定屬性值**，所以 KVS edge connector 每台攝影機的 `KinesisVideoStreamName`、`RTSPStreamSecretARN` 只能用 model 的 `default_value`（一台攝影機一個 model），或 apply 後用 `BatchPutAssetPropertyValue` 寫入。
+- **`sqs-queue`**：FIFO 時固定開 content-based deduplication（EventBridge 送 FIFO 是否需要未確認）。
+- **`eventbridge-rule`**：另加兩條 validation：FIFO queue target 一定要給 `sqs_message_group_id`；排程 rule 只能掛 `default` bus。
+- **`scheduler-schedule`**：`kms_key_arn` 必填（照 K28）。
+- **`sagemaker-endpoint`**：serverless 可以用 blue/green（AWS 只把 serverless 列為 rolling 的例外），所以 serverless 的 deployment 選填、只能 blue/green；有 deployment 就至少一個 rollback 告警；variant 名稱固定 `primary`；model 不給固定名稱（`create_before_destroy`）；`name` 上限 36。帶本機 NVMe 的 instance type 能否用 KMS 未確認。
+- **`sagemaker-model-registry`**：跨帳號 policy 含 `sagemaker:CreateModel`（對方部署需要，不會改 group 內容）。
+- **`validate.sh`**：S4 另擋 `awscc_iam_*`、`awscc_ec2_security_group*`；S8 的比對式是 `aws(cc)?_`（第一版寫成 `awscc?_` 會漏掉 `aws_`，用假 stack 驗出來）。
+
+**範本**
+
+- **Phase 分組改成依 module 是否已發版**：`foundation`、`network`、`vpn` 只用既有 module，先做（#214）；`pki`、`storage`、`iam-base`、`search`、`search-config` 一起做（#238）。
+- **`network` 不發布 `route_table_ids_private`**：§7.2 沒列，`vpn` 沒有 Site-to-Site 也不需要。SageMaker runtime interface endpoint 由 tfvars `interface_endpoint_services` 決定，預設空。
+- **`foundation` 的 CMK 允許同帳號的 `events.amazonaws.com`**：`model-approved` queue 用這把 key 加密，EventBridge 要能用它寫入。
+- **命名規則**（`iam-base/naming.tf`、`storage/queues.tf`，測試斷言字串）：thing group `<prefix>-fleet`、`-unverified`、`-core`、`-quarantine`（`quarantine` 是 §7.2 沒列的，給 mitigation action 用）；IoT rule `<prefix 的連字號換底線>_*`；KVS stream `<prefix>-cam-*`；model package group `<prefix>-models`；pipeline `<prefix>-training`；EventBridge rule `<prefix>-model-approved`。
+- **`iam-base` 的 `*`**：只有 EC2 Describe、`ecr:GetAuthorizationToken`、11 個 IoT audit 讀取動作；IoT 憑證是 `cert/*`、SageMaker job 是 `training-job/*`、`processing-job/*`（ID 由 AWS 產生）。SageMaker 只能拉本帳號 `<prefix>-*` 的 ECR repository，AWS 提供的跨帳號 image 不在範圍內。IoT credentials provider 搭配 `source_account` 條件、provisioning 與 audit 的動作清單都沒有對真實帳號驗證。
+
