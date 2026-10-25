@@ -70,5 +70,6 @@
   "modules/iot-device-defender": "0.1.0",
   "modules/iotsitewise": "0.1.0",
   "modules/sagemaker-model-registry": "0.1.0",
-  "modules/sagemaker-pipeline": "0.1.0"
+  "modules/sagemaker-pipeline": "0.1.0",
+  "modules/sagemaker-endpoint": "0.1.0"
 }
