@@ -19,6 +19,14 @@ locals {
     }
     "cloudwatch.amazonaws.com" = {}
     "sns.amazonaws.com"        = {}
+    # The EventBridge rule of the ml stack sends to the SSE-KMS model-approved queue of the storage stack.
+    "events.amazonaws.com" = {
+      conditions = [{
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [var.expected_account_id]
+      }]
+    }
   }
 }
 
