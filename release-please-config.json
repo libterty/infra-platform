@@ -5,6 +5,7 @@
   "separate-pull-requests": true,
   "last-release-sha": "86f438df01e5fc71f0f3bb7a734ba6309e3f232e",
   "packages": {
+    "modules/acm-pca": { "release-type": "terraform-module", "component": "acm-pca", "initial-version": "0.1.0" },
     "modules/agentcore-gateway": { "release-type": "terraform-module", "component": "agentcore-gateway" },
     "modules/agentcore-memory": { "release-type": "terraform-module", "component": "agentcore-memory" },
     "modules/agentcore-runtime": { "release-type": "terraform-module", "component": "agentcore-runtime" },
@@ -49,6 +50,7 @@
     "modules/nlb": { "release-type": "terraform-module", "component": "nlb", "initial-version": "0.1.0" },
     "modules/opensearch-config": { "release-type": "terraform-module", "component": "opensearch-config", "initial-version": "0.1.0" },
     "modules/opensearch-domain": { "release-type": "terraform-module", "component": "opensearch-domain", "initial-version": "0.1.0" },
+    "modules/ota-signing": { "release-type": "terraform-module", "component": "ota-signing", "initial-version": "0.1.0" },
     "modules/quicksight-data": { "release-type": "terraform-module", "component": "quicksight-data", "initial-version": "0.1.0" },
     "modules/rds": { "release-type": "terraform-module", "component": "rds" },
     "modules/redshift-cluster": { "release-type": "terraform-module", "component": "redshift-cluster", "initial-version": "0.1.0" },
