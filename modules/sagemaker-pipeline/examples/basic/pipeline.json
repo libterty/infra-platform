@@ -1,0 +1,22 @@
+{
+  "Version": "2020-12-01",
+  "Parameters": [
+    { "Name": "InputDataUrl", "Type": "String", "DefaultValue": "s3://alpha-dev-ml-artifacts/data/" }
+  ],
+  "Steps": [
+    {
+      "Name": "Train",
+      "Type": "Training",
+      "Arguments": {
+        "AlgorithmSpecification": {
+          "TrainingImage": "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha-dev-train:1.0.0",
+          "TrainingInputMode": "File"
+        },
+        "RoleArn": "arn:aws:iam::111111111111:role/alpha-dev-sagemaker-pipeline",
+        "OutputDataConfig": { "S3OutputPath": "s3://alpha-dev-ml-artifacts/models/" },
+        "ResourceConfig": { "InstanceType": "ml.m5.large", "InstanceCount": 1, "VolumeSizeInGB": 30 },
+        "StoppingCondition": { "MaxRuntimeInSeconds": 3600 }
+      }
+    }
+  ]
+}
