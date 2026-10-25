@@ -6,7 +6,7 @@
 
 ## module
 
-共 70 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 73 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -80,6 +80,9 @@
 | IoT 與邊緣 | `kinesis-video-stream` | Kinesis Video Streams | [![kinesis-video-stream](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fkinesis-video-stream%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=kinesis-video-stream-v) |
 | IoT 與邊緣 | `iot-device-defender` | Device Defender 稽核與 mitigation action（awscc） | [![iot-device-defender](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-device-defender%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-device-defender-v) |
 | IoT 與邊緣 | `iotsitewise` | SiteWise asset model、asset、gateway（awscc） | [![iotsitewise](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiotsitewise%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iotsitewise-v) |
+| 機器學習 | `sagemaker-model-registry` | SageMaker model package group | [![sagemaker-model-registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-model-registry%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-model-registry-v) |
+| 機器學習 | `sagemaker-pipeline` | SageMaker Pipeline | [![sagemaker-pipeline](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-pipeline%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-pipeline-v) |
+| 機器學習 | `sagemaker-endpoint` | SageMaker 推論 endpoint（real-time 或 serverless） | [![sagemaker-endpoint](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-endpoint%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-endpoint-v) |
 
 消費端寫法：
 
