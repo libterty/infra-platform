@@ -27,6 +27,14 @@ locals {
         values   = [var.expected_account_id]
       }]
     }
+    # EventBridge Scheduler encrypts the schedules of the ml stack with the shared key.
+    "scheduler.amazonaws.com" = {
+      conditions = [{
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [var.expected_account_id]
+      }]
+    }
   }
 }
 

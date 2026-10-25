@@ -78,8 +78,9 @@ run "kms_service_principals" {
       "cloudwatch.amazonaws.com",
       "sns.amazonaws.com",
       "events.amazonaws.com",
+      "scheduler.amazonaws.com",
     ])
-    error_message = "The key must serve CloudWatch Logs, log delivery (flow logs), CloudWatch, SNS and EventBridge, and nothing else"
+    error_message = "The key must serve CloudWatch Logs, log delivery (flow logs), CloudWatch, SNS, EventBridge and EventBridge Scheduler, and nothing else"
   }
 
   assert {
@@ -89,6 +90,15 @@ run "kms_service_principals" {
       local.kms_service_principals["events.amazonaws.com"].conditions[0].values == ["111111111111"]
     )
     error_message = "EventBridge must be limited to this account with aws:SourceAccount"
+  }
+
+  assert {
+    condition = (
+      local.kms_service_principals["scheduler.amazonaws.com"].conditions[0].test == "StringEquals" &&
+      local.kms_service_principals["scheduler.amazonaws.com"].conditions[0].variable == "aws:SourceAccount" &&
+      local.kms_service_principals["scheduler.amazonaws.com"].conditions[0].values == ["111111111111"]
+    )
+    error_message = "EventBridge Scheduler must be limited to this account with aws:SourceAccount"
   }
 
   assert {
