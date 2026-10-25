@@ -6,7 +6,7 @@
 
 ## module
 
-共 59 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 62 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -69,6 +69,9 @@
 | 事件與佇列 | `sqs-queue` | SQS queue 與 DLQ | [![sqs-queue](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsqs-queue%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sqs-queue-v) |
 | 事件與佇列 | `eventbridge-rule` | EventBridge rule 與 target | [![eventbridge-rule](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Feventbridge-rule%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=eventbridge-rule-v) |
 | 事件與佇列 | `scheduler-schedule` | EventBridge Scheduler 排程 | [![scheduler-schedule](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fscheduler-schedule%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=scheduler-schedule-v) |
+| IoT 與邊緣 | `iot-account-settings` | 帳號層的 IoT 設定（indexing、logging、事件） | [![iot-account-settings](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-account-settings%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-account-settings-v) |
+| IoT 與邊緣 | `iot-topic-rule` | IoT rule 與共用 error action | [![iot-topic-rule](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-topic-rule%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-topic-rule-v) |
+| IoT 與邊緣 | `iot-fleet` | thing type／group、IoT policy、role alias、fleet provisioning | [![iot-fleet](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-fleet%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-fleet-v) |
 
 消費端寫法：
 
