@@ -64,5 +64,6 @@
   "modules/ota-signing": "0.1.0",
   "modules/acm-pca": "0.1.0",
   "modules/greengrass-component": "0.1.0",
-  "modules/greengrass-deployment": "0.1.0"
+  "modules/greengrass-deployment": "0.1.0",
+  "modules/iot-job-template": "0.1.0"
 }
