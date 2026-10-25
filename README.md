@@ -6,7 +6,7 @@
 
 ## module
 
-共 64 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 67 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -74,6 +74,9 @@
 | IoT 與邊緣 | `iot-fleet` | thing type／group、IoT policy、role alias、fleet provisioning | [![iot-fleet](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-fleet%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-fleet-v) |
 | IoT 與邊緣 | `ota-signing` | AWS Signer 簽章 profile（OTA 韌體） | [![ota-signing](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fota-signing%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=ota-signing-v) |
 | IoT 與邊緣 | `acm-pca` | ACM Private CA（root 或 subordinate） | [![acm-pca](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Facm-pca%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=acm-pca-v) |
+| IoT 與邊緣 | `greengrass-component` | Greengrass v2 元件版本（awscc） | [![greengrass-component](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fgreengrass-component%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=greengrass-component-v) |
+| IoT 與邊緣 | `greengrass-deployment` | Greengrass v2 部署（awscc） | [![greengrass-deployment](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fgreengrass-deployment%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=greengrass-deployment-v) |
+| IoT 與邊緣 | `iot-job-template` | IoT Job template（awscc） | [![iot-job-template](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiot-job-template%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iot-job-template-v) |
 
 消費端寫法：
 
