@@ -55,5 +55,6 @@
   "modules/quicksight-data": "0.1.0",
   "modules/vpn-site-to-site": "0.1.0",
   "modules/client-vpn": "0.1.0",
-  "modules/sqs-queue": "0.1.0"
+  "modules/sqs-queue": "0.1.0",
+  "modules/eventbridge-rule": "0.1.0"
 }
