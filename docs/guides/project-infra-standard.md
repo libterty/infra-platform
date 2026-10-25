@@ -74,8 +74,8 @@ destroy 反過來（9 到 1，`stacks.sh <env> all destroy`），之前先做三
 | stack | resource | 理由 |
 |---|---|---|
 | `foundation` | `aws_secretsmanager_secret`（應用程式 secret 的容器，不含值） | 只有一個 resource、兩三個屬性，包成 module 省不到東西 |
-| `search-config`（example4） | `ephemeral "aws_secretsmanager_secret_version"`（讀 OpenSearch master 帳密） | opensearch provider 的帳密只能在 stack 設定；ephemeral 值不進 state 與 plan 檔（v7 design K19）。這是範本 stack 唯一的 ephemeral block |
-| 有 ephemeral 讀取的 stack 的測試（example4 `search-config`） | 用離線的 `provider "aws"` 取代 S1 要求的 `mock_provider "aws"` | Terraform 1.15 的 mock provider 不能開 ephemeral resource。`validate.sh` 的 `offline_aws_provider` 只在 stack 有 `ephemeral "aws_..."` 時放行，而且測試檔的 provider 要把 `skip_credentials_validation`、`skip_requesting_account_id`、`skip_metadata_api_check` 三個都設 `true`、所有網址都是 `http://127.0.0.1:`，連不出這台機器。ephemeral 本身與 provider 的帳密接線只有 `terraform validate` 與雲端驗證覆蓋 |
+| `search-config`（example4、example5） | `ephemeral "aws_secretsmanager_secret_version"`（讀 OpenSearch master 帳密） | opensearch provider 的帳密只能在 stack 設定；ephemeral 值不進 state 與 plan 檔（v7 design K19）。example4 與 example5 的 `search-config` 是範本 stack 僅有的 ephemeral block |
+| 有 ephemeral 讀取的 stack 的測試（example4、example5 的 `search-config`） | 用離線的 `provider "aws"` 取代 S1 要求的 `mock_provider "aws"` | Terraform 1.15 的 mock provider 不能開 ephemeral resource。`validate.sh` 的 `offline_aws_provider` 只在 stack 有 `ephemeral "aws_..."` 時放行，而且測試檔的 provider 要把 `skip_credentials_validation`、`skip_requesting_account_id`、`skip_metadata_api_check` 三個都設 `true`、所有網址都是 `http://127.0.0.1:`，連不出這台機器。ephemeral 本身與 provider 的帳密接線只有 `terraform validate` 與雲端驗證覆蓋 |
 
 可以留在 stack 的：`data "aws_caller_identity"`、`data "aws_region"`、模式 A 的 `data "aws_vpc"`／`data "aws_subnet"`、`terraform_data`（範本用它放 precondition；example4 的 `warehouse` 用它加 `prevent_destroy` 擋住誤切 `warehouse_mode`）。不可以的：`data "aws_ssm_parameter"`（只能經 `ssm-read`）、任何 `aws_iam_*`（只能經 `iam-role`、`iam-role-policy`）、任何 SG 資源（只能經 `security-group`）。
 
