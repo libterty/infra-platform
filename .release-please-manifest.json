@@ -65,5 +65,6 @@
   "modules/acm-pca": "0.1.0",
   "modules/greengrass-component": "0.1.0",
   "modules/greengrass-deployment": "0.1.0",
-  "modules/iot-job-template": "0.1.0"
+  "modules/iot-job-template": "0.1.0",
+  "modules/kinesis-video-stream": "0.1.0"
 }
