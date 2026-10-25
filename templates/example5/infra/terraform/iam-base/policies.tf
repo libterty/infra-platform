@@ -171,10 +171,9 @@ locals {
     { Sid = "DescribeNetwork", Effect = "Allow", Action = local.ec2_describe_actions, Resource = ["*"] },
   ], local.sagemaker_common_statements)
 
-  scheduler_statements = [{
-    Sid      = "StartTrainingPipeline"
-    Effect   = "Allow"
-    Action   = ["sagemaker:StartPipelineExecution"]
-    Resource = [local.pipeline_arn]
-  }]
+  scheduler_statements = [
+    { Sid = "StartTrainingPipeline", Effect = "Allow", Action = ["sagemaker:StartPipelineExecution"], Resource = [local.pipeline_arn] },
+    # The schedules are encrypted with the shared key (scheduler-schedule requires a customer managed key).
+    { Sid = "DecryptScheduleData", Effect = "Allow", Action = ["kms:Decrypt"], Resource = [local.kms_key_arn] },
+  ]
 }

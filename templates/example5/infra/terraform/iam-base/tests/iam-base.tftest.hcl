@@ -480,13 +480,11 @@ run "scheduler_starts_only_the_training_pipeline" {
   command = plan
 
   assert {
-    condition = jsondecode(one(values(local.roles["scheduler"].policies))).Statement == [{
-      Sid      = "StartTrainingPipeline"
-      Effect   = "Allow"
-      Action   = ["sagemaker:StartPipelineExecution"]
-      Resource = ["arn:aws:sagemaker:ap-northeast-1:111111111111:pipeline/example-dev-training"]
-    }]
-    error_message = "The scheduler may only start the single training pipeline"
+    condition = jsondecode(one(values(local.roles["scheduler"].policies))).Statement == [
+      { Sid = "StartTrainingPipeline", Effect = "Allow", Action = ["sagemaker:StartPipelineExecution"], Resource = ["arn:aws:sagemaker:ap-northeast-1:111111111111:pipeline/example-dev-training"] },
+      { Sid = "DecryptScheduleData", Effect = "Allow", Action = ["kms:Decrypt"], Resource = ["arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"] },
+    ]
+    error_message = "The scheduler may only start the single training pipeline and decrypt the schedule data encrypted with the shared key"
   }
 }
 
