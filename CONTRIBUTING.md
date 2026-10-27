@@ -21,6 +21,7 @@ issue 只能用表單開：
 scripts/validate.sh                      # 全部
 scripts/validate.sh modules/<module>     # 只跑指定目錄
 scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
+scripts/validate.sh --shard 2/4                  # 只跑第 2、6、10… 個目錄（CI 分 4 台平行跑）
 ```
 
 `scripts/validate.sh` 依序跑：
@@ -41,7 +42,7 @@ scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得�
 
 範本從 registry 抓 module，所以只改 module 不會重跑範本。`docs/`、`*.md` 不算改動；`scripts/`、`.tflint.hcl`、`.github/` 這類其他檔案一改就跑全部。
 
-CI（`.github/workflows/ci.yml`）跑同一支腳本：PR 用 `--changed-since`，只驗證這個 PR 影響得到的目錄；push 到 main、每週排程與手動觸發跑全部。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
+CI（`.github/workflows/ci.yml`）跑同一支腳本，分成 4 個 shard 在 4 台 runner 平行跑（`--shard 1/4` 到 `4/4`），每個 shard 都會跑 fmt 與靜態規則，`validate` 這個 job 彙總結果。PR 另外加 `--changed-since`，只驗證這個 PR 影響得到的目錄；push 到 main、每週排程與手動觸發跑全部。fork 來的 PR 拿不到 registry 的 token，範本的 stack 會在 CI 的 init 失敗。
 
 ## 不能做的事
 

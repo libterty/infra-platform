@@ -30,10 +30,16 @@ env:
   TERRAFORM_DOCS_SHA256: "9005daf969de0b50134493a2c00078b49f5f5b39d021cda7c89bf4d4f3d776d3"
 
 jobs:
-  validate:
+  # One full run took 32 minutes on one runner (73 modules, 5 templates, 2026-10-25); 4 shards run it in parallel.
+  # Each shard repeats fmt and the static rules (a minute or two) and validates every 4th directory.
+  validate-shard:
+    name: validate (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    # A full run (73 modules, 5 templates) passed 30 minutes on 2026-10-25.
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,9 +92,9 @@ jobs:
         # PR 只驗證改動影響得到的目錄（改到共用檔案時仍是全部）；push、排程、手動觸發一律全量。
         run: |
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            scripts/validate.sh --changed-since HEAD^1
+            scripts/validate.sh --shard "${{ matrix.shard }}/4" --changed-since HEAD^1
           else
-            scripts/validate.sh
+            scripts/validate.sh --shard "${{ matrix.shard }}/4"
           fi
 
       - name: Registry versions
@@ -109,3 +115,15 @@ jobs:
               { k = $1 "\t" $2 "\t" $3; if (!(k in s)) { o[++n] = k; s[k] = $4 } else { s[k] = s[k] " " $4 } }
               END { for (i = 1; i <= n; i++) { split(o[i], a, "\t"); print "| " a[1] " | `" a[2] "` | " a[3] " | " s[o[i]] " |" } }'
           } >>"$GITHUB_STEP_SUMMARY"
+
+  # Single result for the PR page and for any future required status check.
+  validate:
+    needs: validate-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All shards passed
+        run: |
+          echo "shards: ${{ needs.validate-shard.result }}"
+          [ "${{ needs.validate-shard.result }}" = success ]
