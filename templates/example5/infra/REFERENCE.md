@@ -127,7 +127,13 @@ README〈前置作業〉每一項的完整做法，編號相同。
    ```
 
    裝置用 claim 憑證連 IoT Core，呼叫 template `<project>-<env>-fleet`，參數 `SerialNumber`。開通後 thing 名稱是 `<project>-<env>-<序號>`、進 `<project>-<env>-unverified` 群組、拿到附加 `<project>-<env>-device` policy 的正式憑證。確認是自己的裝置後，人或 CI 把它搬進 `-fleet`（一般裝置）或 `-core`（core device）群組；Greengrass 部署只對 `-fleet`、`-core`。core device 另外要：序號以 `core-` 開頭（thing 名稱要符合 `<project>-<env>-core-*`，core policy 靠這個命名規則限縮），並在它的憑證附加 `<project>-<env>-core` policy，template 不會自動附加。每批生產結束就把 claim 憑證設成 `INACTIVE`（〈runbook：輪替 claim 憑證〉）。
-7. **攝影機的 RTSP secret**（`sitewise`、`edge` 帶 `cameras` apply 之前；design K14）。每台攝影機一個 Secrets Manager secret，值是 RTSP 網址（含帳密），在 repo 外建立，ARN 填進 `cameras` 的 `rtsp_secret_arn`。RTSP 網址不進 tfvars、SSM 與 state。core device 的 TES role 目前沒有讀這些 secret 的權限，見〈runbook：新增攝影機〉。
+7. **攝影機的 RTSP secret**（`sitewise`、`edge` 帶 `cameras` apply 之前；design K14）。每台攝影機一個 Secrets Manager secret，在 repo 外建立，**名稱必須是 `<project>-<env>/cameras/<攝影機 id>`**，值是 key 為 `RTSPStreamUrl` 的 JSON（網址含帳密）；ARN 填進 `cameras` 的 `rtsp_secret_arn`。core device 的 TES role（`iam-base` 的 `greengrass-tes`）只能讀這個命名規則底下的 secret，`sitewise`、`edge` 的 `cameras` validation 也會擋其他名稱。用共用 CMK 加密時 TES role 已經有 `kms:Decrypt`。RTSP 網址不進 tfvars、SSM 與 state。
+
+   ```bash
+   aws secretsmanager create-secret --name <project>-<env>/cameras/<攝影機 id> \
+     --kms-key-id <foundation 的 kms_key_arn> \
+     --secret-string '{"RTSPStreamUrl":"rtsp://<帳號>:<密碼>@<攝影機位址>/<路徑>"}'
+   ```
 8. **執行 apply 的身分要有的特權操作**（design §4）：
 
    | 操作 | 哪些 stack 用到 |
@@ -235,10 +241,9 @@ Scheduler（每週一 03:00，dev 停用）→ SageMaker Pipeline <prefix>-train
 影像不上雲、只在邊緣推論時不用做這些；只有用 Kinesis Video Streams 上傳影像才需要（design D6、K14）。
 
 1. 確認 core device：Linux、名稱是 `<project>-<env>-core-*`、在 `-core` 群組、附加 `-core` policy。
-2. 建 RTSP secret（〈前置作業的細節〉第 7 項）。
-3. **補 TES role 的權限**：`iam-base` 的 `greengrass-tes` 目前只有 artifact、log、KVS（`stream/<prefix>-cam-*`）與共用 CMK 的權限，沒有 `secretsmanager:GetSecretValue`（RTSP secret）；KVS edge connector 是否還要 SiteWise 的讀寫權限也沒有核對。開攝影機前在 `iam-base/policies.tf` 補上並 apply `iam-base`。
-4. 在 `sitewise/envs/<env>.tfvars` 與 `edge/envs/<env>.tfvars` 的 `cameras` 加**一模一樣**的一筆：`<攝影機 id> = { core_thing_name, rtsp_secret_arn, retention_hours }`。id 是 1–32 字元的小寫英數字與 `-`。
-5. 依序 apply `sitewise`、`edge`。`edge` 的 precondition 確認攝影機已經在 `sitewise` 的 asset 裡。`edge` 建 KVS stream `<prefix>-cam-<id>`，並對 core device 建一個 thing 層級的部署 `<prefix>-kvs-<thing>`（Nucleus、StreamManager、`aws.iot.EdgeConnectorForKVS`，設定 `SiteWiseAssetIdForHub`）；edge connector 不能部署到 thing group。`camera_deployment.nucleus_version` 要跟群組部署的 Nucleus 一樣。
+2. 建 RTSP secret `<project>-<env>/cameras/<攝影機 id>`（〈前置作業的細節〉第 7 項）。TES role 已經能讀這個命名規則底下的 secret，也有 edge connector 要的 SiteWise 權限（asset 與 asset model 限縮到這個帳號與 region），不用改 `iam-base`。
+3. 在 `sitewise/envs/<env>.tfvars` 與 `edge/envs/<env>.tfvars` 的 `cameras` 加**一模一樣**的一筆：`<攝影機 id> = { core_thing_name, rtsp_secret_arn, retention_hours }`。id 是 1–32 字元的小寫英數字與 `-`；`rtsp_secret_arn` 不是第 2 步那個名稱的 secret 時，plan 就失敗。
+4. 依序 apply `sitewise`、`edge`。`edge` 的 precondition 確認攝影機已經在 `sitewise` 的 asset 裡。`edge` 建 KVS stream `<prefix>-cam-<id>`，並對 core device 建一個 thing 層級的部署 `<prefix>-kvs-<thing>`（Nucleus、StreamManager、`aws.iot.EdgeConnectorForKVS`，設定 `SiteWiseAssetIdForHub`）；edge connector 不能部署到 thing group。`camera_deployment.nucleus_version` 要跟群組部署的 Nucleus 一樣。
 
 SiteWise 的限制：awscc 的 asset resource 不能設定屬性值，所以每台攝影機的設定（`KinesisVideoStreamName`、`RTSPStreamSecretARN`、本機保留 60 分鐘、直播與上傳的起訖）都寫成 asset model 的預設值，**一台攝影機一個 camera model、一台 core device 一個 hub model**（hub 對每台攝影機有一個 `ConnectedCameras-<id>` hierarchy）。後果：
 
@@ -293,7 +298,7 @@ destroy 不會刪範本以外建的東西：state bucket、開通出來的 thing
 | IoT rule | 只送 Kinesis，再由 Firehose 進 S3 與 OpenSearch（IoT rule 的 OpenSearch action 送不進 VPC 內的 domain）。`iot-topic-rule` 的 action 由輸入型別限定，型別以外的 key（例如 `http`）會被 Terraform 丟掉而不是報錯 |
 | Greengrass | 部署每次變更都 replace；拿掉的元件會在裝置上解除安裝；awscc 的 `inline_recipe` 在 plan 是否持續顯示變更未確認，有的話要加 `ignore_changes` |
 | 範例元件與 pipeline | `com.example.Inference` 沒有在裝置上跑過（`main.py`、`requirements.txt` 也不在範本裡，由 CI 打包）；訓練 pipeline 沒有在 SageMaker 上跑過，image 是佔位 |
-| 攝影機 | 見〈runbook：新增攝影機〉：TES role 缺 RTSP secret 的權限、一台攝影機一個 SiteWise model、多個 hierarchy 未確認；edge connector 只支援 Linux、不能部署到 thing group |
+| 攝影機 | 見〈runbook：新增攝影機〉：RTSP secret 要照命名規則 `<prefix>/cameras/<id>` 建立、一台攝影機一個 SiteWise model、多個 hierarchy 未確認；TES role 的 `iotsitewise:ListAssets` 限縮到 asset model 是否可行未確認；edge connector 只支援 Linux、不能部署到 thing group |
 | Device Defender | Detect 從 2026-08-31 起不開放新客戶，範本只做 audit（8 個 check、每週一）與隔離動作；沒有裝置行為的異常偵測，要靠 IoT logging 與自己加的 CloudWatch 告警 |
 | PKI | 不開 CRL 與 OCSP，撤銷靠 IoT registry；IoT Core 連線時是否查 CRL 未確認 |
 | SageMaker | endpoint 在沒有 NAT 的 VPC，模型從 S3 經 gateway endpoint 讀，能否正常啟動未確認；帶本機 NVMe 的 instance type 能否用 KMS 未確認（預設 `ml.m5.large` 沒有）；CI 與呼叫端的 role 不在範本 |
@@ -337,7 +342,7 @@ scripts/validate.sh templates/example5
 | 帳號層 IoT 設定 | logging 寫進 `AWSIotLogsV2`、fleet indexing、registry 事件；同帳號第二個專案設 `null` 時不互蓋 |
 | Device Defender | 帳號 audit 設定的 check 名稱對照（排程稽核的大寫名稱與 awscc 的 snake_case）；每週稽核結果送到 SSE-KMS 的告警 topic；mitigation 把 thing 加進 `quarantine` |
 | OTA | Signer 用匯入 ACM 的憑證與 `AWSIoTDeviceManagement-SHA256-ECDSA` 簽章；job template 的 presigned URL 用 `ota-presign` role 讀得到 `signed/current/firmware.bin`；rollout 與 abort |
-| KVS edge connector | SiteWise asset model 的欄位與預設值；多個 `ConnectedCameras-<id>` hierarchy；TES role 要的完整權限（RTSP secret、KVS、SiteWise）；影像寫進 SSE-KMS 的 stream |
+| KVS edge connector | SiteWise asset model 的欄位與預設值；多個 `ConnectedCameras-<id>` hierarchy；TES role 讀得到 `<prefix>/cameras/*` 的 RTSP secret、SiteWise 權限限縮到 `asset/*` 與 `asset-model/*` 後仍夠用（AWS 範例是 `*`）；影像寫進 SSE-KMS 的 stream |
 | SiteWise gateway | 在 Greengrass core device 上建立與連線 |
 | 訓練與核准 | pipeline 用佔位以外的 image 跑完、以 `PendingManualApproval` 註冊；Scheduler 用 CMK 加密並觸發 pipeline；EventBridge 寫進 SSE-KMS 的 SQS（queue policy 的 `aws:SourceArn`）；SQS 訊息的欄位 |
 | 雲端推論 | 從 model package 建 endpoint、VPC 內沒有 NAT 能啟動、network isolation、data capture；blue/green 由告警自動 rollback；serverless 範例 |

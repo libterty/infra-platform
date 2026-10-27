@@ -224,8 +224,8 @@ run "cameras_create_streams_and_one_deployment_per_core_device" {
 
   variables {
     cameras = {
-      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 }
-      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-store-AbCdEf", retention_hours = 48 }
+      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 }
+      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/store-AbCdEf", retention_hours = 48 }
     }
   }
 
@@ -262,8 +262,8 @@ run "camera_missing_in_sitewise_fails" {
 
   variables {
     cameras = {
-      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 }
-      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-store-AbCdEf", retention_hours = 48 }
+      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 }
+      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/store-AbCdEf", retention_hours = 48 }
     }
   }
 
@@ -287,6 +287,36 @@ run "publishes_exactly_the_edge_keys" {
     condition     = module.ssm_publish.names == { deployment_ids = "/example/dev/edge/deployment_ids", kvs_stream_arns = "/example/dev/edge/kvs_stream_arns" }
     error_message = "ssm-publish must write the contract keys under the edge stack path"
   }
+}
+
+run "camera_secret_outside_the_naming_rule_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cam-gate-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
+}
+
+run "camera_secret_of_another_env_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:222222222222:secret:example-sit/cameras/gate-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
+}
+
+run "camera_secret_of_another_camera_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/dock-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
 }
 
 # ---- common.tf and providers.tf guards: the same runs in every stack ----

@@ -43,7 +43,7 @@ variable "camera_deployment" {
 }
 
 variable "cameras" {
-  description = "接 KVS edge connector 的攝影機，key 是攝影機 id（1–32 字元，小寫英數字與 `-`），預設空 map，什麼都不建（design K14）。欄位：`core_thing_name`（接這台攝影機的 core device，名稱是 `<project>-<env>-core-*`）、`rtsp_secret_arn`（RTSP 網址的 Secrets Manager secret ARN，secret 在 repo 外建立）、`retention_hours`（KVS stream 保留時數，1–87600）。`sitewise` stack 的 `cameras` 要給一模一樣的值。"
+  description = "接 KVS edge connector 的攝影機，key 是攝影機 id（1–32 字元，小寫英數字與 `-`），預設空 map，什麼都不建（design K14）。欄位：`core_thing_name`（接這台攝影機的 core device，名稱是 `<project>-<env>-core-*`）、`rtsp_secret_arn`（RTSP 網址的 Secrets Manager secret ARN，secret 在 repo 外建立，名稱必須是 `<project>-<env>/cameras/<攝影機 id>`，值是 key 為 `RTSPStreamUrl` 的 JSON）、`retention_hours`（KVS stream 保留時數，1–87600）。`sitewise` stack 的 `cameras` 要給一模一樣的值。"
   type = map(object({
     core_thing_name = string
     rtsp_secret_arn = string
@@ -65,6 +65,15 @@ variable "cameras" {
   validation {
     condition     = alltrue([for c in values(var.cameras) : can(regex("^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$", c.rtsp_secret_arn))])
     error_message = "cameras[*].rtsp_secret_arn must be a Secrets Manager secret ARN; the RTSP URL itself never goes into tfvars."
+  }
+
+  # Naming rule of iam-base (naming.tf): the greengrass-tes role may read only secrets named <project>-<env>/cameras/*.
+  # A secret ARN ends in -<6 random characters>.
+  validation {
+    condition = alltrue([for id, c in var.cameras : can(regex(
+      "^arn:aws:secretsmanager:${var.aws_region}:${var.expected_account_id}:secret:${var.project}-${var.env}/cameras/${id}-[A-Za-z0-9]{6}$", c.rtsp_secret_arn
+    ))])
+    error_message = "cameras[*].rtsp_secret_arn must be the secret <project>-<env>/cameras/<camera id> in this account and region: the greengrass-tes role of iam-base reads only those."
   }
 
   validation {

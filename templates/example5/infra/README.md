@@ -74,7 +74,7 @@ Greengrass 元件怎麼發新版本、模型核准後怎麼部署到裝置或雲
 - fleet provisioning 沒有掛 pre-provisioning hook，claim 憑證外洩的人可以開通裝置；這是登記過的安全取捨（REFERENCE〈安全取捨〉）。OpenSearch master 密碼進 `search` 的 state，沿用 example4 的安全例外。
 - Greengrass 部署每次變更都是 replace；從部署拿掉的元件會在裝置上解除安裝。
 - 範例元件 `com.example.Inference` 與訓練 pipeline 都是骨架，沒有在裝置或 SageMaker 上跑過；CI 的部分在範本外。
-- 攝影機的 SiteWise 設定只能用 asset model 的預設值，一台攝影機一個 model；core device 的 TES role 還沒有讀 RTSP secret 的權限。
+- 攝影機的 SiteWise 設定只能用 asset model 的預設值，一台攝影機一個 model；RTSP secret 要照命名規則 `<prefix>/cameras/<攝影機 id>` 建立，TES role 只讀得到這些。
 - IAM 動作清單、告警門檻、KVS edge connector 的 asset 結構都沒有在真實帳號驗證過。
 
 ## 驗證

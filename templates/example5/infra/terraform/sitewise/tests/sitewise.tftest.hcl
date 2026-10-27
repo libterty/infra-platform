@@ -69,9 +69,9 @@ run "cameras_build_a_hub_per_core_device_and_a_model_per_camera" {
 
   variables {
     cameras = {
-      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 }
-      dock  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-dock-AbCdEf", retention_hours = 48 }
-      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-store-AbCdEf", retention_hours = 24 }
+      gate  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 }
+      dock  = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/dock-AbCdEf", retention_hours = 48 }
+      store = { core_thing_name = "example-dev-core-002", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/store-AbCdEf", retention_hours = 24 }
     }
   }
 
@@ -110,7 +110,7 @@ run "camera_model_carries_the_edge_connector_attributes" {
 
   variables {
     cameras = {
-      gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 }
+      gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 }
     }
   }
 
@@ -119,7 +119,7 @@ run "camera_model_carries_the_edge_connector_attributes" {
       for k, p in local.asset_models["example-dev-cam-gate"].properties : k => p if p.type == "attribute"
       } == {
       KinesisVideoStreamName            = { data_type = "STRING", type = "attribute", default_value = "example-dev-cam-gate" }
-      RTSPStreamSecretARN               = { data_type = "STRING", type = "attribute", default_value = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf" }
+      RTSPStreamSecretARN               = { data_type = "STRING", type = "attribute", default_value = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf" }
       LocalDataRetentionPeriodInMinutes = { data_type = "INTEGER", type = "attribute", default_value = "60" }
       LiveStreamingStartTime            = { data_type = "STRING", type = "attribute", default_value = "-" }
       LiveStreamingDurationInMinutes    = { data_type = "INTEGER", type = "attribute", default_value = "0" }
@@ -147,7 +147,7 @@ run "publishes_camera_and_hub_asset_ids" {
 
   variables {
     cameras = {
-      gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 }
+      gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 }
     }
   }
 
@@ -186,7 +186,7 @@ run "camera_on_a_foreign_core_device_rejected" {
   command = plan
 
   variables {
-    cameras = { gate = { core_thing_name = "other-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 } }
+    cameras = { gate = { core_thing_name = "other-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 } }
   }
 
   expect_failures = [var.cameras]
@@ -206,7 +206,37 @@ run "camera_id_format_rejected" {
   command = plan
 
   variables {
-    cameras = { "Gate_1" = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:cam-gate-AbCdEf", retention_hours = 24 } }
+    cameras = { "Gate_1" = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/gate-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
+}
+
+run "camera_secret_outside_the_naming_rule_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cam-gate-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
+}
+
+run "camera_secret_of_another_env_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:222222222222:secret:example-sit/cameras/gate-AbCdEf", retention_hours = 24 } }
+  }
+
+  expect_failures = [var.cameras]
+}
+
+run "camera_secret_of_another_camera_rejected" {
+  command = plan
+
+  variables {
+    cameras = { gate = { core_thing_name = "example-dev-core-001", rtsp_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/dock-AbCdEf", retention_hours = 24 } }
   }
 
   expect_failures = [var.cameras]

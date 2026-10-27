@@ -181,7 +181,7 @@ run "naming_rules_for_later_stacks" {
   }
 
   assert {
-    condition     = local.kvs_stream_arn_pattern == "arn:aws:kinesisvideo:ap-northeast-1:111111111111:stream/example-dev-cam-*/*"
+    condition     = local.kvs_stream_arn_pattern == "arn:aws:kinesisvideo:ap-northeast-1:111111111111:stream/example-dev-cam-*/*" && local.camera_secret_arn_pattern == "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/*"
     error_message = "KVS streams of the edge stack are named <name_prefix>-cam-<camera id>"
   }
 }
@@ -397,9 +397,19 @@ run "greengrass_tes_reads_artifacts_writes_logs_and_kvs" {
       { Sid = "ReadComponentArtifacts", Effect = "Allow", Action = ["s3:GetObject"], Resource = ["arn:aws:s3:::example-dev-greengrass-artifacts-111111111111/artifacts/*"] },
       { Sid = "WriteGreengrassLogs", Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"], Resource = ["arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/greengrass/*", "arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws/greengrass/*:log-stream:*"] },
       { Sid = "PutCameraVideo", Effect = "Allow", Action = ["kinesisvideo:DescribeStream", "kinesisvideo:GetDataEndpoint", "kinesisvideo:PutMedia"], Resource = ["arn:aws:kinesisvideo:ap-northeast-1:111111111111:stream/example-dev-cam-*/*"] },
+      { Sid = "ReadCameraSecrets", Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = ["arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/cameras/*"] },
+      {
+        Sid    = "UseEdgeConnectorAssets"
+        Effect = "Allow"
+        Action = [
+          "iotsitewise:BatchPutAssetPropertyValue", "iotsitewise:DescribeAsset", "iotsitewise:DescribeAssetModel", "iotsitewise:DescribeAssetProperty",
+          "iotsitewise:GetAssetPropertyValue", "iotsitewise:ListAssetRelationships", "iotsitewise:ListAssets", "iotsitewise:ListAssociatedAssets",
+        ]
+        Resource = ["arn:aws:iotsitewise:ap-northeast-1:111111111111:asset/*", "arn:aws:iotsitewise:ap-northeast-1:111111111111:asset-model/*"]
+      },
       { Sid = "UseSharedKey", Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey"], Resource = ["arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"] },
     ]
-    error_message = "greengrass_tes may only read artifacts/, write Greengrass logs, put video to project cameras and use the shared key (design section 4)"
+    error_message = "greengrass_tes may only read artifacts/, write Greengrass logs, put video to project cameras, read the <name_prefix>/cameras/* secrets, use the edge connector's SiteWise assets and use the shared key"
   }
 }
 

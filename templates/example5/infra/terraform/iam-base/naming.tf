@@ -5,12 +5,16 @@
 #           named <name_prefix>-*
 #   ingest: IoT rules named <name_prefix with "-" replaced by "_">_* (rule names cannot contain hyphens)
 #   edge:   KVS streams named <name_prefix>-cam-<camera id>
+#   cameras: RTSP secrets named <name_prefix>/cameras/<camera id>, created outside Terraform; sitewise and edge reject
+#            any other rtsp_secret_arn
 #   ml:     model package group <name_prefix>-models, pipeline <name_prefix>-training
 locals {
   arn_prefix = {
     iot          = "arn:aws:iot:${var.aws_region}:${var.expected_account_id}"
     sagemaker    = "arn:aws:sagemaker:${var.aws_region}:${var.expected_account_id}"
     kinesisvideo = "arn:aws:kinesisvideo:${var.aws_region}:${var.expected_account_id}"
+    iotsitewise  = "arn:aws:iotsitewise:${var.aws_region}:${var.expected_account_id}"
+    secrets      = "arn:aws:secretsmanager:${var.aws_region}:${var.expected_account_id}"
     logs         = "arn:aws:logs:${var.aws_region}:${var.expected_account_id}"
     ec2          = "arn:aws:ec2:${var.aws_region}:${var.expected_account_id}"
     ecr          = "arn:aws:ecr:${var.aws_region}:${var.expected_account_id}"
@@ -34,4 +38,7 @@ locals {
 
   # A KVS stream ARN ends in /<creation time>.
   kvs_stream_arn_pattern = "${local.arn_prefix.kinesisvideo}:stream/${local.name_prefix}-cam-*/*"
+
+  # A secret ARN ends in -<6 random characters>, which the trailing * covers.
+  camera_secret_arn_pattern = "${local.arn_prefix.secrets}:secret:${local.name_prefix}/cameras/*"
 }
