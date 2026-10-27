@@ -6,15 +6,31 @@
 # Usage: scripts/validate.sh [dir...]   Without arguments, scans modules and templates.
 #        scripts/validate.sh --changed-since <rev>   fmt and static rules scan everything; init/validate/test/tflint
 #        only run in the directories a change since <rev> can affect (all of them when a shared file changed).
+#        scripts/validate.sh --shard <k>/<n> [...]   fmt and static rules scan everything; init/validate/test/tflint
+#        only run in every n-th directory starting at the k-th, so CI can split one run across n runners.
 set -euo pipefail
 
 changed_since=""
-if [ "${1:-}" = "--changed-since" ]; then
-  [ -n "${2:-}" ] || { echo "--changed-since 需要一個 git revision" >&2; exit 1; }
-  changed_since="$2"
-  shift 2
-  [ "$#" -eq 0 ] || { echo "--changed-since 不能跟目錄一起用" >&2; exit 1; }
-fi
+shard_k=1
+shard_n=1
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --changed-since)
+      [ -n "${2:-}" ] || { echo "--changed-since 需要一個 git revision" >&2; exit 1; }
+      changed_since="$2"
+      shift 2
+      ;;
+    --shard)
+      [[ "${2:-}" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -le "${BASH_REMATCH[2]}" ] ||
+        { echo "--shard 要寫成 <k>/<n>，1 <= k <= n" >&2; exit 1; }
+      shard_k="${BASH_REMATCH[1]}"
+      shard_n="${BASH_REMATCH[2]}"
+      shift 2
+      ;;
+    *) break ;;
+  esac
+done
+[ -z "$changed_since" ] || [ "$#" -eq 0 ] || { echo "--changed-since 不能跟目錄一起用" >&2; exit 1; }
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cache_root="${repo_root}/.cache"
@@ -533,6 +549,17 @@ fi
 if [ "$fail_static" -ne 0 ]; then
   echo "FAIL fmt 或靜態規則未過，不進入後面的驗證步驟" >&2
   exit 1
+fi
+
+# Step 3b (--shard): keep every n-th directory. Round-robin over the sorted list spreads modules, examples and stacks
+# evenly; each shard runs on its own runner, so the plugin cache is never written by two terraform init at once.
+if [ "$shard_n" -gt 1 ]; then
+  kept=()
+  for i in "${!dirs[@]}"; do
+    [ $((i % shard_n + 1)) -eq "$shard_k" ] && kept+=("${dirs[$i]}")
+  done
+  dirs=(${kept[@]+"${kept[@]}"})
+  echo "shard ${shard_k}/${shard_n}：${#dirs[@]} 個目錄"
 fi
 
 if [ "${#dirs[@]}" -eq 0 ]; then
