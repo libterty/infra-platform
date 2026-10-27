@@ -1,6 +1,6 @@
 # infra-platform v8 實作流程：IoT Edge AI module 與 templates/example5
 
-> 狀態：H0–H9 完成，H10 起進行中（2026-10-25）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：H0–H13 全部完成（2026-10-27）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。example5 的路徑都在 `templates/example5/infra/terraform/` 底下。
 
 ## 結論
@@ -37,14 +37,14 @@ Phase 代號用 H，接在 v7 的 G 之後。
 | H3 | `ota-signing`、`acm-pca` | 完成：發版、HCP ok | #223 |
 | H4 | `greengrass-component`、`greengrass-deployment`、`iot-job-template` | 完成：發版、HCP ok | #224 |
 | H5 | `iot-device-defender`、`iotsitewise`、`kinesis-video-stream` | 完成：發版、HCP ok | #227 |
-| H6 | `sagemaker-model-registry`、`sagemaker-pipeline`、`sagemaker-endpoint` | 合併；發版中 | #231 |
+| H6 | `sagemaker-model-registry`、`sagemaker-pipeline`、`sagemaker-endpoint` | 完成：發版、HCP ok（Release run 撞到 Actions 額度，重置後重跑補建） | #231 |
 | H7 | example5 骨架、`foundation`、`network`、`vpn`、`pki` | 完成（`pki` 跟 H8、H9 一起） | #214、#238 |
 | H8 | `storage`、`iam-base` | 完成 | #238 |
 | H9 | `search`、`search-config` | 完成 | #238 |
-| H10 | `fleet`、`iam-app`、`ingest` | | |
-| H11 | `sitewise`、`edge` | | |
-| H12 | `ml`、`inference` | | |
-| H13 | README、架構圖、REFERENCE、全量驗證、驗證表 | | |
+| H10 | `fleet`、`iam-app`、`ingest` | 完成 | #238 |
+| H11 | `sitewise`、`edge` | 完成 | #238 |
+| H12 | `ml`、`inference` | 完成 | #238 |
+| H13 | README、架構圖、REFERENCE、全量驗證、驗證表 | 完成；另修 TES role 讀 RTSP secret 的缺口 | #238 |
 
 ## 每個 Phase 的做法與驗收
 

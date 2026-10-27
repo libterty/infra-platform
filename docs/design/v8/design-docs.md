@@ -1,6 +1,6 @@
 # infra-platform v8 設計文件：IoT Edge AI module 與 templates/example5
 
-> 狀態：使用者同意開始實作（2026-10-25），實作流程見 [`implement-process.md`](./implement-process.md)。§3.1 的 D1–D9 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
+> 狀態：已實作（2026-10-27，H0–H13，見 [`implement-process.md`](./implement-process.md)）。實作時跟設計不同的決定記在 §14，兩邊不同時以 §14 與程式碼為準。§3.1 的 D1–D9 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
 > 範圍：新增 IoT Edge AI 用的 module（IoT Core fleet 與規則、Greengrass v2 元件與部署、IoT Jobs、OTA 簽章、Device Defender 稽核、ACM Private CA、SiteWise、Kinesis Video Streams、SageMaker 模型註冊／訓練 pipeline／雲端推論、SQS、EventBridge rule、EventBridge Scheduler），照 `templates/project-infra` 的標準新建獨立範本 `templates/example5`。不改 example2、example3、example4、project-infra 與既有 module。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。example5 的路徑都在 `templates/example5/infra/terraform/` 底下，下文省略這段前綴。
 > provider schema、AWS 行為與價格是 2026-10-25 查證的結果，怎麼查與來源列在 §13。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
@@ -590,4 +590,13 @@ OpenSearch 佔每個環境約九成。IoT Core 隨裝置數與訊息頻率線性
 - **`foundation` 的 CMK 允許同帳號的 `events.amazonaws.com`**：`model-approved` queue 用這把 key 加密，EventBridge 要能用它寫入。
 - **命名規則**（`iam-base/naming.tf`、`storage/queues.tf`，測試斷言字串）：thing group `<prefix>-fleet`、`-unverified`、`-core`、`-quarantine`（`quarantine` 是 §7.2 沒列的，給 mitigation action 用）；IoT rule `<prefix 的連字號換底線>_*`；KVS stream `<prefix>-cam-*`；model package group `<prefix>-models`；pipeline `<prefix>-training`；EventBridge rule `<prefix>-model-approved`。
 - **`iam-base` 的 `*`**：只有 EC2 Describe、`ecr:GetAuthorizationToken`、11 個 IoT audit 讀取動作；IoT 憑證是 `cert/*`、SageMaker job 是 `training-job/*`、`processing-job/*`（ID 由 AWS 產生）。SageMaker 只能拉本帳號 `<prefix>-*` 的 ECR repository，AWS 提供的跨帳號 image 不在範圍內。IoT credentials provider 搭配 `source_account` 條件、provisioning 與 audit 的動作清單都沒有對真實帳號驗證。
+- **`fleet`**：provisioning template 的參數只有 `Type` 與 `Default`，沒辦法檢查序號格式（§4.1 補償控制 3 只做到 thing 名稱 `<prefix>-<序號>`）；同序號第二次開通會失敗是推論，未驗證。template 只附加 `-device` policy，core device 的 `-core` policy 要另外附加，序號以 `core-` 開頭。core device policy 的四個 Greengrass data plane 動作用 `*`（跟 AWS 的最小 policy 一樣）。CA 在 `pki` 開啟時以 `SNI_ONLY` 註冊。awscc provider 的 `assume_role` 是屬性不是 block。
+- **`ingest`**：rule 用 `SELECT *` 加 `thing_name`、`kind`，裝置要自己送 `@timestamp`（cold 搬移要用）；DLQ 告警已在 `storage`，`ingest` 只告警 Firehose `DataFreshness`。OTA job template 下載固定的 `signed/current/firmware.bin`，CI 每次建 job 前先上傳（bucket 有 versioning）。
+- **`sitewise`**：每台攝影機一個 camera model（屬性值只能放 default value），hub 對每台攝影機各一個 `ConnectedCameras-<id>` hierarchy；edge connector 能否跟多個 hierarchy 未確認。`edge_connector_asset_ids` 是 `{"cameras":{…},"hubs":{…}}`。`cameras` 在 `sitewise` 與 `edge` 的 tfvars 要一致，`edge` 的 precondition 會檢查。
+- **`edge`**：precondition 把所有 `aws.` 開頭的元件視為 AWS 元件（含 `aws.iot.EdgeConnectorForKVS`）；recipe 用 `templatefile` 帶入各環境的 artifact bucket，自訂元件自動加上 `TopicPrefix`。Nucleus 2.14.3、StreamManager 2.2.1 是沒核對過的佔位版本。
+- **RTSP secret 的命名規則**（H13 發現 TES role 讀不到 secret）：secret 名稱必須是 `<prefix>/cameras/<攝影機 id>`、JSON 鍵 `RTSPStreamUrl`；`iam-base` 只授權這個前綴，並加上 edge connector 文件列的 SiteWise 動作（限 `asset/*`、`asset-model/*`；`iotsitewise:ListAssets` 能否限縮未確認）；`sitewise`、`edge` 用 validation 擋掉不符的 ARN。
+- **`ml`**：pipeline definition 用 `templatefile`（role、bucket、group、image 每個環境不同），image 是本帳號 `<prefix>-preprocess`、`-train`、`-inference` repository 的佔位；模型輸出放 `models/training/`（endpoint role 只能讀 `models/*`）；排程每週一 03:00（Asia/Taipei），dev `DISABLED`、sit `ENABLED`。`scheduler-schedule` 要 CMK，所以 `foundation` 的 key policy 加 `scheduler.amazonaws.com`、scheduler role 加 `kms:Decrypt`。
+- **`inference`**：endpoint 名稱用命名規則 `<prefix>-inference`，告警（5XX、延遲超過 1 秒）先建、endpoint 再引用，沒有循環；precondition 只接受 `ml` 那個 group 的 model package；另附 serverless 的範例 tfvars。
+- **CI**：全量驗證超過 30 分鐘（實測 31 分 40 秒），`ci.yml` 的逾時上限改成 60 分鐘（#239）。
+- **架構圖** 215 KB，比目標大，主要是 AWS icon 的外框；要再縮就得拿掉 icon。
 
