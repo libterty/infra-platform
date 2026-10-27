@@ -101,7 +101,7 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 
 ## 範本
 
-四份範本都是完整的 Terraform stack 目錄，複製到專案 repo 就能用。
+五份範本都是完整的 Terraform stack 目錄，複製到專案 repo 就能用。
 
 | 範本 | 適用情境 |
 | --- | --- |
@@ -109,6 +109,7 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 | [`templates/example2/`](./templates/example2/infra/README.md) | 跑在 ECS Fargate 的應用，含資料庫、ALB、AgentCore 與 bastion |
 | [`templates/example3/`](./templates/example3/infra/README.md) | 跑在 EKS 的應用，用 Helm 部署 |
 | [`templates/example4/`](./templates/example4/infra/README.md) | 資料平台：串流收資料、ETL、資料倉儲、BI 與搜尋 |
+| [`templates/example5/`](./templates/example5/infra/README.md) | IoT Edge AI：裝置開通與 OTA、遙測進 S3 與搜尋、Greengrass 邊緣推論、模型訓練與核准 |
 
 ## 不同團隊怎麼用
 
@@ -143,10 +144,11 @@ scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得�
 | EC2、EKS、ALB／NLB 權重分流與斷路器的設計與實作步驟 | [`docs/design/v3/`](./docs/design/v3/design-docs.md)：[實作步驟](./docs/design/v3/implement-process.md) |
 | 第三份範本 example3（example2 的 EKS 版）的設計與實作步驟 | [`docs/design/v4/`](./docs/design/v4/design-docs.md)：[實作步驟](./docs/design/v4/implement-process.md) |
 | 第四份範本 example4（資料平台）與 v7 新增的 14 個 module、`s3-bucket` 0.4.0 的設計與實作步驟 | [`docs/design/v7/`](./docs/design/v7/design-docs.md)：[實作步驟](./docs/design/v7/implement-process.md) |
+| 第五份範本 example5（IoT Edge AI）與 v8 新增的 17 個 IoT、Greengrass、SageMaker module 的設計與實作步驟 | [`docs/design/v8/`](./docs/design/v8/design-docs.md)：[實作步驟](./docs/design/v8/implement-process.md) |
 | 架構決策                                                                                             | [`docs/adr/`](./docs/adr/)：[0001 registry 機制](./docs/adr/0001-git-tag-monorepo-as-private-registry.md)、[0002 state 拆分](./docs/adr/0002-split-state-by-owner-and-change-rate.md)、[0003 跨 stack 傳值](./docs/adr/0003-cross-stack-values-via-ssm-only.md)、[0004 HCP registry](./docs/adr/0004-hcp-terraform-private-registry.md) |
 | 怎麼引用 module、HCP 認證、升版、git 備案                                                                | [`docs/guides/consuming-modules.md`](./docs/guides/consuming-modules.md)                                                                                                                                                                                     |
 | 怎麼把 module 登記到 HCP Terraform private registry | [`docs/guides/hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md) |
-| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md)、[`templates/example2/infra/`](./templates/example2/infra/README.md) 、[`templates/example3/infra/`](./templates/example3/infra/README.md) 與 [`templates/example4/infra/`](./templates/example4/infra/README.md)                                                                                |
+| 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式              | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md)；範本本身在 [`templates/project-infra/infra/`](./templates/project-infra/infra/README.md)、[`templates/example2/infra/`](./templates/example2/infra/README.md) 、[`templates/example3/infra/`](./templates/example3/infra/README.md)、[`templates/example4/infra/`](./templates/example4/infra/README.md) 與 [`templates/example5/infra/`](./templates/example5/infra/README.md)                                                                                |
 | 怎麼改 module、semver、release-please、第一次手動打 tag                                              | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md)                                                                                                                                                                                     |
 | ADOT sidecar、X-Ray 權限與抽樣、log 告警                                                             | [`docs/guides/observability.md`](./docs/guides/observability.md)                                                                                                                                                                                             |
 | example3 第一次在真實帳號驗證：每一項的前提、指令、預期結果 | [`docs/guides/cloud-verification-example3.md`](./docs/guides/cloud-verification-example3.md) |
