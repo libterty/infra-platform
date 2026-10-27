@@ -1,0 +1,76 @@
+{
+  "Version": "2020-12-01",
+  "Metadata": {},
+  "Parameters": [
+    { "Name": "InputDataUrl", "Type": "String", "DefaultValue": "s3://${ml_bucket}/training-data/" },
+    { "Name": "ModelApprovalStatus", "Type": "String", "DefaultValue": "PendingManualApproval" },
+    { "Name": "PreprocessImageUri", "Type": "String", "DefaultValue": "${account_id}.dkr.ecr.${region}.amazonaws.com/${name_prefix}-preprocess:1.0.0" },
+    { "Name": "TrainImageUri", "Type": "String", "DefaultValue": "${account_id}.dkr.ecr.${region}.amazonaws.com/${name_prefix}-train:1.0.0" },
+    { "Name": "InferenceImageUri", "Type": "String", "DefaultValue": "${account_id}.dkr.ecr.${region}.amazonaws.com/${name_prefix}-inference:1.0.0" }
+  ],
+  "Steps": [
+    {
+      "Name": "Preprocess",
+      "Type": "Processing",
+      "Arguments": {
+        "ProcessingResources": { "ClusterConfig": { "InstanceType": "ml.m5.large", "InstanceCount": 1, "VolumeSizeInGB": 30 } },
+        "AppSpecification": { "ImageUri": { "Get": "Parameters.PreprocessImageUri" }, "ContainerEntrypoint": ["python3", "/opt/program/preprocess.py"] },
+        "RoleArn": "${role_arn}",
+        "ProcessingInputs": [
+          {
+            "InputName": "raw",
+            "S3Input": { "S3Uri": { "Get": "Parameters.InputDataUrl" }, "LocalPath": "/opt/ml/processing/input", "S3DataType": "S3Prefix", "S3InputMode": "File" }
+          }
+        ],
+        "ProcessingOutputConfig": {
+          "Outputs": [
+            {
+              "OutputName": "train",
+              "S3Output": { "S3Uri": "s3://${ml_bucket}/pipelines/training/preprocess/train/", "LocalPath": "/opt/ml/processing/train", "S3UploadMode": "EndOfJob" }
+            }
+          ]
+        },
+        "StoppingCondition": { "MaxRuntimeInSeconds": 3600 }
+      }
+    },
+    {
+      "Name": "Train",
+      "Type": "Training",
+      "Arguments": {
+        "AlgorithmSpecification": { "TrainingImage": { "Get": "Parameters.TrainImageUri" }, "TrainingInputMode": "File" },
+        "RoleArn": "${role_arn}",
+        "InputDataConfig": [
+          {
+            "ChannelName": "train",
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": { "Get": "Steps.Preprocess.ProcessingOutputConfig.Outputs['train'].S3Output.S3Uri" },
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            }
+          }
+        ],
+        "OutputDataConfig": { "S3OutputPath": "s3://${ml_bucket}/models/training/" },
+        "ResourceConfig": { "InstanceType": "ml.m5.xlarge", "InstanceCount": 1, "VolumeSizeInGB": 30 },
+        "StoppingCondition": { "MaxRuntimeInSeconds": 7200 }
+      }
+    },
+    {
+      "Name": "RegisterModel",
+      "Type": "RegisterModel",
+      "Arguments": {
+        "ModelPackageGroupName": "${model_package_group_name}",
+        "ModelApprovalStatus": { "Get": "Parameters.ModelApprovalStatus" },
+        "InferenceSpecification": {
+          "Containers": [
+            { "Image": { "Get": "Parameters.InferenceImageUri" }, "ModelDataUrl": { "Get": "Steps.Train.ModelArtifacts.S3ModelArtifacts" } }
+          ],
+          "SupportedContentTypes": ["application/json"],
+          "SupportedResponseMIMETypes": ["application/json"],
+          "SupportedRealtimeInferenceInstanceTypes": ["ml.m5.large"]
+        }
+      }
+    }
+  ]
+}

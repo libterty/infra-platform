@@ -1,13 +1,15 @@
 # infra-platform v8 實作流程：IoT Edge AI module 與 templates/example5
 
-> 狀態：H0 進行中（2026-10-25）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：H0–H13 全部完成（2026-10-27）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。example5 的路徑都在 `templates/example5/infra/terraform/` 底下。
 
 ## 結論
 
 一個里程碑分 14 個 Phase（H0–H13）。先做 module（H1–H6）：17 個新 module，每個 Phase 合併後發版、HCP 登記並從消費端抓一次；全部在 HCP 上之後才做範本（H7–H13），因為範本 stack 從 HCP 抓 module（[ADR-0004](../../adr/0004-hcp-terraform-private-registry.md)）。
 
-H1 的 `validate.sh` 變更（S4、S8 擴充到 awscc）要在任何 awscc module 之前合併。H2–H6 的 module 目錄互不重疊，可以在各自的 worktree 平行做；共用檔（`release-please-config.json`、根 `README.md`）由主 agent 整合。
+H1 的 `validate.sh` 變更（S4、S8 擴充到 awscc）要在任何 awscc module 之前合併。H2–H6 的 module 目錄互不重疊，在各自的 worktree 平行做；共用檔（`release-please-config.json`、根 `README.md`）由主 agent 在每個 Phase rebase 到 main 之後整合。
+
+多個 release PR 同時存在時，合併一個之後其他的狀態會先變成 `UNKNOWN` 再變成衝突；做法是每個都照 [`releasing-modules.md`](../../guides/releasing-modules.md)〈同時有多個 release PR〉從 main 重建再 squash。連續發 17 版會用完 Actions 的 API 額度，Release run 失敗在 `API rate limit exceeded for installation`，等額度重置後重跑最後一次 Release run。
 
 使用者授權（2026-10-25）：每個 Phase 驗證通過就 commit、開 PR，CI 綠燈就合併、發版、HCP 登記，不必逐一確認。只有需要使用者決定的事或擋住的問題才停下來問。
 
@@ -29,20 +31,20 @@ Phase 代號用 H，接在 v7 的 G 之後。
 
 | Phase | 內容 | 狀態 | PR |
 |---|---|---|---|
-| H0 | v8 設計文件與實作流程 | 進行中 | |
-| H1 | `validate.sh` S4、S8 擴充到 awscc；`sqs-queue`、`eventbridge-rule`、`scheduler-schedule` | | |
-| H2 | `iot-fleet`、`iot-account-settings`、`iot-topic-rule` | | |
-| H3 | `ota-signing`、`acm-pca` | | |
-| H4 | `greengrass-component`、`greengrass-deployment`、`iot-job-template` | | |
-| H5 | `iot-device-defender`、`iotsitewise`、`kinesis-video-stream` | | |
-| H6 | `sagemaker-model-registry`、`sagemaker-pipeline`、`sagemaker-endpoint` | | |
-| H7 | example5 骨架、`foundation`、`network`、`vpn`、`pki` | | |
-| H8 | `storage`、`iam-base` | | |
-| H9 | `search`、`search-config` | | |
-| H10 | `fleet`、`iam-app`、`ingest` | | |
-| H11 | `sitewise`、`edge` | | |
-| H12 | `ml`、`inference` | | |
-| H13 | README、架構圖、REFERENCE、全量驗證、驗證表 | | |
+| H0 | v8 設計文件與實作流程 | 完成 | #213 |
+| H1 | `validate.sh` S4、S8 擴充到 awscc；`sqs-queue`、`eventbridge-rule`、`scheduler-schedule` | 完成：發版、HCP ok | #215 |
+| H2 | `iot-fleet`、`iot-account-settings`、`iot-topic-rule` | 完成：發版、HCP ok | #219 |
+| H3 | `ota-signing`、`acm-pca` | 完成：發版、HCP ok | #223 |
+| H4 | `greengrass-component`、`greengrass-deployment`、`iot-job-template` | 完成：發版、HCP ok | #224 |
+| H5 | `iot-device-defender`、`iotsitewise`、`kinesis-video-stream` | 完成：發版、HCP ok | #227 |
+| H6 | `sagemaker-model-registry`、`sagemaker-pipeline`、`sagemaker-endpoint` | 完成：發版、HCP ok（Release run 撞到 Actions 額度，重置後重跑補建） | #231 |
+| H7 | example5 骨架、`foundation`、`network`、`vpn`、`pki` | 完成（`pki` 跟 H8、H9 一起） | #214、#238 |
+| H8 | `storage`、`iam-base` | 完成 | #238 |
+| H9 | `search`、`search-config` | 完成 | #238 |
+| H10 | `fleet`、`iam-app`、`ingest` | 完成 | #238 |
+| H11 | `sitewise`、`edge` | 完成 | #238 |
+| H12 | `ml`、`inference` | 完成 | #238 |
+| H13 | README、架構圖、REFERENCE、全量驗證、驗證表 | 完成；另修 TES role 讀 RTSP secret 的缺口 | #238 |
 
 ## 每個 Phase 的做法與驗收
 
