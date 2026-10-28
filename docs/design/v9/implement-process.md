@@ -1,6 +1,6 @@
 # infra-platform v9 實作流程：邊緣層與 serverless module、example2 接 CDN、templates/example6
 
-> 狀態：還沒開始。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：I0 完成，I1 起實作中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -10,6 +10,8 @@
 - **module（I1–I5）**：7 個新 module 加 3 個 minor 版，每個 Phase 合併後發版、HCP 登記，並從消費端抓一次。I1–I5 的目錄互不重疊，可以在各自的 worktree 平行做。
 - **範本（I6–I10）**：module 全部在 HCP 上之後才做，因為範本 stack 從 HCP 抓 module（[ADR-0004](../../adr/0004-hcp-terraform-private-registry.md)）。
 - **I1 例外**：I1 同時改 module 與範本，因為 secret 搬遷要用新 module。它的範本 commit 要等 `secrets-manager-secret` 0.1.0 在 HCP 上之後才推。
+
+使用者授權（2026-10-28）：每個 Phase 驗證通過就 commit、開 PR，CI 綠燈就合併、發版、HCP 登記，不必逐一確認。只有需要使用者決定的事或擋住的問題才停下來問。
 
 發版沿用 v8 的教訓：
 
@@ -43,7 +45,7 @@
 
 | Phase | 內容 | 狀態 | PR |
 |---|---|---|---|
-| I0 | v9 設計文件與實作流程 | 待審 | |
+| I0 | v9 設計文件與實作流程 | 完成（2026-10-28 確認） | #242 |
 | I1 | `secrets-manager-secret`；6 處 secret 搬遷；S8 例外清單；標準指南 | | |
 | I2 | `route53-zone`、`route53-record`、`acm-certificate` | | |
 | I3 | `waf-web-acl` 0.2.0、`s3-bucket` 0.5.0、`log-delivery` 0.2.0 | | |
@@ -148,6 +150,7 @@
   - 全部 9 個 stack 通過，SSM 合約通過。
   - `api` 的測試確認每條 route 都有 authorizer，或明寫 `public`。
   - `web` 的測試確認 bucket policy 只允許這個 distribution。
+  - `web` 的測試確認 WAF 掛在 distribution、`/api/*` 帶 origin verify header 且值是 sensitive；`api` 的測試確認 Lambda 拿得到 header 名稱與 secret ARN。
 
 ### I10：收尾
 

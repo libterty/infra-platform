@@ -1,6 +1,6 @@
 # infra-platform v9 設計文件：邊緣層與 serverless module、example2 接 CDN、templates/example6
 
-> 狀態：設計中，還沒實作。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
+> 狀態：設計已確認（2026-10-28），實作中，見 [`implement-process.md`](./implement-process.md)。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
 > 範圍：新增 7 個 module（Secrets Manager secret、ACM 憑證、Route 53 zone 與 record、CloudFront distribution、API Gateway HTTP API、Cognito user pool），3 個既有 module 升 minor（`waf-web-acl`、`s3-bucket`、`log-delivery`）。example2 加上 DNS、憑證與 CloudFront；新建 serverless 範本 `templates/example6`；範本裡 6 處自己宣告的 secret 改用新 module。帳號層的治理（CloudTrail、Config、GuardDuty、Security Hub、Backup、Budgets）不在這一版。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。provider schema 是 aws 6.70.0（`terraform providers schema -json`，2026-10-28）的結果。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
 
@@ -17,7 +17,7 @@
   - 加兩個 stack：`dns`（每個環境一個子網域 zone）與 `certificate`（ALB 用的 regional 憑證、CloudFront 用的 us-east-1 憑證）。
   - 再加一個 `edge` stack：CloudFront distribution、CloudFront WAF、DNS record。
   - ALB 仍是 public，維持 origin verify header（D3），但改成 HTTPS listener。CloudFront 到 ALB 只走 HTTPS，header 不再明文經過網際網路（K7）。
-- **example6**：serverless 範本。Cognito 登入、API Gateway HTTP API 加 JWT authorizer、Lambda（container image）、DynamoDB，前端是 S3 加 CloudFront 的 SPA。9 個 stack（§8）。
+- **example6**：serverless 範本。Cognito 登入、API Gateway HTTP API 加 JWT authorizer、Lambda（container image）、DynamoDB。前端 SPA 與 API 共用一個 CloudFront distribution 和一個 CloudFront WAF：`/` 走 S3，`/api/*` 走 API Gateway（D6、K16）。9 個 stack（§8）。
 - **Phase**：I0–I10（§12）。module 先做（I1–I5），全部在 HCP 上之後才改範本（I6–I10）。
 
 ## 2. 查證發現
@@ -27,7 +27,7 @@
 3. **`aws_cloudfront_vpc_origin` 已存在**，CloudFront 可以直接連 internal ALB。使用者選擇維持 public ALB 加 origin verify header（D3），這個 resource 這一版不用。之後想把 ALB 收進私有網段時，再升 `cloudfront-distribution` 的 minor 版本，不影響這一版的設計。
 4. **`aws_cognito_user_pool_client.client_secret` 是 sensitive 加 computed**：`generate_secret = true` 時，secret 會進 state。D5 決定只做 public client，module 固定 `generate_secret = false`。
 5. **`aws_acm_certificate_validation`** 會等憑證簽發才結束。DNS 驗證要等上層網域的 NS 委派生效，委派還沒做時 apply 會一直等到 timeout。§7.2 的流程把委派排在 `dns` 和 `certificate` 兩個 stack 之間。
-6. **API Gateway HTTP API 不能掛 WAF**：AWS WAF 能保護的是 REST API，不含 HTTP API（未確認，實作 I4 時查 AWS WAF 文件確認）。example6 的 API 改靠 throttling、JWT authorizer 與 Lambda 的 reserved concurrency 擋濫用（§4.3，審閱重點）。
+6. **API Gateway HTTP API 不能掛 WAF**：AWS WAF 能保護的是 REST API，不含 HTTP API（未確認，實作 I4 時查 AWS WAF 文件確認）。所以 example6 把 API 放在 CloudFront 後面，WAF 掛在 CloudFront（D6、§4.3）。
 7. **CloudFront 標準 log v2 走 vended log delivery**：delivery source 要建在 us-east-1。既有的 `log-delivery` module 沒有 `region` 輸入，要升 minor 版本。舊版的 `logging_config` 要求 bucket 開 ACL，跟 `s3-bucket` 強制 BucketOwnerEnforced 衝突，所以不用舊版。
 8. **範本裡自己宣告 secret 的 6 處**：
    - example2、example3：`for_each` 兩個簽章 key，沒有指定 KMS，用 AWS managed key。
@@ -46,6 +46,7 @@
 | D3 | CloudFront 到 ALB 維持 public ALB 加 origin verify header，不用 VPC origin |
 | D4 | 範本建每個環境的子網域 hosted zone（例如 `dev.example.com`），上層網域的 NS 委派由人手動做一次 |
 | D5 | Cognito 只做 public client 加 PKCE，不產生 client secret |
+| D6 | example6 的 API 前面加 CloudFront 與 CloudFront WAF（2026-10-28 確認；同時確認接受 §4.1 的 state 取捨） |
 
 ### 3.2 照慣例的判斷（審閱時可以推翻）
 
@@ -64,7 +65,9 @@
 | K11 | Cognito 寄信用 `COGNITO_DEFAULT` | SES 不在這一版（D1）；`COGNITO_DEFAULT` 每天的寄信量有限（數字未確認），正式環境要換 SES |
 | K12 | `apigateway-http` 的每條 route 都要明寫 authorizer 或 `public = true` | 沒寫就預設公開太危險，validation 擋掉 |
 | K13 | example6 不做 VPC：Lambda 不進 VPC，DynamoDB 走公網 endpoint | DynamoDB 與 Secrets Manager 都不需要 VPC；省掉 NAT 的成本與 network stack |
-| K14 | example6 的 CloudFront WAF 預設關（`web_waf_enabled = false`） | 前端是靜態檔，dev／sit 每個 web ACL 加規則每月約 10 美元以上（§10）；開關留給正式環境 |
+| K14 | example6 的 CloudFront WAF 一律開，不做開關 | D6 的目的就是讓 API 有 WAF；dev／sit 每月約多 10 美元以上（§10） |
+| K16 | example6 只有一個 distribution（`app.<env>`）：預設 behavior 到 S3，`/api/*` 到 API Gateway 的 execute-api 網址 | 一個 WAF、一張憑證；前後端同源，不用設 CORS；API 不需要 custom domain 與 regional 憑證 |
+| K17 | CloudFront 到 API Gateway 帶 origin verify header，Lambda 比對 Secrets Manager 裡的值，不符回 403 | execute-api 網址是公開的，直接打可以繞過 WAF；HTTP API 本身不能檢查 header（§4.3） |
 | K15 | Phase 代號用 I，接在 v8 的 H 之後 | 慣例 |
 
 ## 4. trust boundary 與特權操作
@@ -74,7 +77,7 @@
 | 網際網路 → CloudFront | 所有使用者 | CloudFront WAF（managed rules、rate limit）、只接 HTTPS（`redirect-to-https`）、TLS 最低 `TLSv1.2_2021` |
 | CloudFront → ALB（example2） | CloudFront edge | ALB SG 只開 CloudFront origin-facing prefix list 加 tfvars 的 CIDR、HTTPS、origin verify header 由 listener rule 檢查 |
 | CloudFront → S3（example6） | CloudFront 服務 | OAC（SigV4），bucket policy 只允許 `cloudfront.amazonaws.com` 加 `AWS:SourceArn` 等於這個 distribution |
-| 網際網路 → API Gateway（example6） | 已登入的使用者 | JWT authorizer 驗 Cognito issuer 與 audience、route 層級 scope、stage throttling |
+| CloudFront → API Gateway（example6） | CloudFront edge | origin verify header 由 Lambda 檢查（K17）、JWT authorizer 驗 Cognito issuer 與 audience、route 層級 scope、stage throttling |
 | API Gateway → Lambda | API Gateway 服務 | `lambda-function` 的 `permissions`：`apigateway.amazonaws.com`，`source_arn` 限這個 API 的 execution ARN |
 | Lambda → DynamoDB、Secrets Manager | Lambda execution role | `iam` stack 只給這張 table 與指定 secret 的 ARN |
 | 人 → Secrets Manager | 維運人員 | 值不經 Terraform；resource policy 可以加 deny（§5.1） |
@@ -93,15 +96,16 @@
 - validation 擋：`Principal` 是 `*` 又沒有 condition 的 `Allow`、`Action` 是 `secretsmanager:*` 的 `Allow`。
 - 預設不建 policy，這時存取完全由 IAM 決定，跟現在一樣。
 
-### 4.3 example6 的 API 沒有 WAF（審閱重點）
+### 4.3 example6 的 API 與 WAF（審閱重點）
 
-- HTTP API 掛不了 WAF（§2 第 6 點，未確認）。
-- 補償控制：
-  - JWT authorizer：除了 `public = true` 的 health check，其他 route 都要登入。
-  - stage 預設 throttling：rate 與 burst，tfvars 可調。
-  - Lambda 的 `reserved_concurrent_executions`：限制被打爆時的成本上限。
+- HTTP API 掛不了 WAF（§2 第 6 點，未確認），所以 API 放在 CloudFront 後面，WAF 掛在 CloudFront（D6）。
+- **繞過 WAF 的路**：execute-api 網址（`<api id>.execute-api.<region>.amazonaws.com`）是公開的，CloudFront 要用它當 origin，所以不能 `disable_execute_api_endpoint`。直接打這個網址就繞過了 WAF。
+- **補上的控制**：
+  - origin verify header（K17）：CloudFront 加 header，Lambda 用 Secrets Manager 裡的值比對，不符回 403。這是範本與應用程式的約定，REFERENCE 要寫清楚，mock 驗不到。
+  - JWT authorizer：繞過 WAF 也繞不過登入，除了 `public = true` 的 health check。
+  - stage throttling 與 Lambda 的 `reserved_concurrent_executions`：限制被直接打時的成本上限。
   - access log 進 CloudWatch Logs。
-- 需要 WAF 時有兩條路：在 API 前面加一個 CloudFront 再掛 CloudFront WAF；或改用 REST API。兩條都不在這一版。
+- **header 的值**：CloudFront 那邊跟 example2 一樣用 `TF_VAR_origin_verify_header_value` 給；Lambda 那邊讀 `foundation` 的 secret 容器，值由人寫入。兩邊要一致，換值流程跟 §4.1 一樣：先讓 Lambda 接受新舊兩個值，再換 CloudFront。
 
 ## 5. module 清單
 
@@ -109,7 +113,7 @@
 |---|---|---|---|
 | `secrets-manager-secret` | aws | `aws_secretsmanager_secret`、`aws_secretsmanager_secret_policy`、`aws_secretsmanager_secret_rotation` | 所有範本的 `foundation`、project-infra `agent` |
 | `route53-zone` | aws | `aws_route53_zone` | example2、example6 `dns` |
-| `route53-record` | aws | `aws_route53_record` | example2 `edge`、example6 `api`、`web` |
+| `route53-record` | aws | `aws_route53_record` | example2 `edge`、example6 `web` |
 | `acm-certificate` | aws | `aws_acm_certificate`、`aws_route53_record`（驗證用）、`aws_acm_certificate_validation` | example2、example6 `certificate` |
 | `cloudfront-distribution` | aws | `aws_cloudfront_distribution`、`aws_cloudfront_origin_access_control`；data `aws_cloudfront_cache_policy` 等 managed policy | example2 `edge`、example6 `web` |
 | `apigateway-http` | aws | `aws_apigatewayv2_api`、`_stage`、`_integration`、`_route`、`_authorizer`、`_domain_name`、`_api_mapping` | example6 `api` |
@@ -356,14 +360,14 @@ containerimage foundation dns certificate auth data iam api web
 | # | stack | 建什麼 | 主要 module |
 |---|---|---|---|
 | 1 | `containerimage` | API Lambda 的 ECR repository | `ecr-repository` |
-| 2 | `foundation` | CMK、告警 SNS topic、第三方 API key 的 secret 容器 | `kms-key`、`sns-alarm-topic`、`secrets-manager-secret` |
+| 2 | `foundation` | CMK、告警 SNS topic、第三方 API key 與 origin verify 值的 secret 容器 | `kms-key`、`sns-alarm-topic`、`secrets-manager-secret` |
 | 3 | `dns` | `<env>.example.com` zone | `route53-zone` |
-| 4 | `certificate` | API custom domain 的 regional 憑證（`api.<env>`）、前端的 us-east-1 憑證（`app.<env>`） | `acm-certificate` ×2 |
+| 4 | `certificate` | CloudFront 用的 us-east-1 憑證（`app.<env>`） | `acm-certificate` |
 | 5 | `auth` | user pool、SPA client（callback 是 `https://app.<env>.example.com/callback`，dev 另加 `http://localhost:5173/callback`）、resource server `api`（scope `read`、`write`） | `cognito-user-pool` |
 | 6 | `data` | 一張 DynamoDB table（PK、SK，PITR，CMK） | `dynamodb-table` |
 | 7 | `iam` | API Lambda 的 execution role：這張 table 的讀寫、這個 secret 的讀取、CMK decrypt | `iam-role`、`iam-role-policy` |
-| 8 | `api` | Lambda、HTTP API（JWT authorizer 指向 `auth` 的 issuer 與 client）、custom domain、`api` alias record、access log group、Lambda 錯誤與 API 5xx 告警 | `lambda-function`、`apigateway-http`、`log-group`、`route53-record`、`metric-alarm` |
-| 9 | `web` | 前端 bucket（SSE-S3）、CloudFront（OAC、`spa_fallback`）、`app` alias record、可選的 CloudFront WAF（K14）、CloudFront log | `s3-bucket` 0.5.0、`cloudfront-distribution`、`route53-record`、`waf-web-acl` 0.2.0、`log-delivery` 0.2.0 |
+| 8 | `api` | Lambda（環境變數給 header 名稱與 secret ARN，K17）、HTTP API（route 都在 `/api/` 底下，JWT authorizer 指向 `auth` 的 issuer 與 client，沒有 custom domain）、access log group、Lambda 錯誤與 API 5xx 告警 | `lambda-function`、`apigateway-http`、`log-group`、`metric-alarm` |
+| 9 | `web` | 前端 bucket（SSE-S3）、CloudFront（預設 behavior 到 S3 加 OAC、`spa_fallback`；`/api/*` 到 API Gateway，`CachingDisabled`、`AllViewerExceptHostHeader`，帶 origin verify header）、CloudFront WAF（K14）、`app` alias record、CloudFront log | `s3-bucket` 0.5.0、`cloudfront-distribution`、`route53-record`、`waf-web-acl` 0.2.0、`log-delivery` 0.2.0 |
 
 - example6 照 `templates/project-infra` 的標準：只有樹 A，沒有 bridge。example6 沒有交給客戶自管的需求，跟 example4、example5 一樣。
 - 所有 stack 只呼叫 module，S8 例外清單沒有 example6 的列。
@@ -374,9 +378,10 @@ containerimage foundation dns certificate auth data iam api web
 | key | 寫 | 讀 |
 |---|---|---|
 | `containerimage/api_repository_url` | `containerimage` | `api` |
-| `foundation/kms_key_arn`、`alarm_topic_arn`、`api_secret_arn` | `foundation` | `data`、`iam`、`api` |
+| `foundation/kms_key_arn`、`alarm_topic_arn`、`api_secret_arn`、`origin_verify_secret_arn` | `foundation` | `data`、`iam`、`api` |
 | `dns/zone_id`、`zone_name` | `dns` | `certificate`、`api`、`web` |
-| `certificate/api_certificate_arn`、`web_certificate_arn` | `certificate` | `api`、`web` |
+| `certificate/web_certificate_arn` | `certificate` | `web` |
+| `api/api_endpoint` | `api` | `web` |
 | `auth/issuer_url`、`spa_client_id`、`user_pool_arn` | `auth` | `api` |
 | `data/table_name`、`table_arn` | `data` | `iam`、`api` |
 | `iam/api_role_arn` | `iam` | `api` |
@@ -389,7 +394,7 @@ containerimage foundation dns certificate auth data iam api web
 | API throttling | rate 50、burst 100 | rate 200、burst 400 |
 | DynamoDB | on-demand、PITR 7 天、deletion protection 關 | on-demand、PITR 35 天、deletion protection 開 |
 | Cognito | `ESSENTIALS`、MFA `OPTIONAL`、deletion protection 關 | 同左，deletion protection 開 |
-| CloudFront | `PriceClass_200`、WAF 關 | 同左 |
+| CloudFront | `PriceClass_200`、WAF 開（managed rules、rate limit） | 同左 |
 | log 保存 | 30 天 | 90 天 |
 
 ### 8.4 文件
@@ -425,16 +430,17 @@ containerimage foundation dns certificate auth data iam api web
 | ACM 公開憑證 | 0 | |
 | Secrets Manager | 0.4／secret | 加 API 呼叫 |
 | CloudFront | 接近 0 | 低流量時落在免費額度內 |
-| CloudFront WAF（example2） | 約 10 起 | web ACL 加每條規則月費，加請求費 |
+| CloudFront WAF（example2、example6 各一個） | 約 10 起 | web ACL 加每條規則月費，加請求費 |
 | API Gateway HTTP API | 接近 0 | 依請求數 |
 | Cognito `ESSENTIALS` | 0 | 免費額度內的 MAU |
 | Lambda、DynamoDB on-demand | 接近 0 | 依用量 |
 
-example2 每個環境的增量主要是 CloudFront WAF；example6 在 WAF 關閉時，dev 閒置成本低於 5 美元。
+example2 與 example6 每個環境的固定成本主要都是 CloudFront WAF；example6 其他部分閒置時接近 0。
 
 ## 11. 風險與 mock 驗不到的事
 
 - **origin verify 換值會中斷**（§4.1）：要看 `alb` module 能不能同時收兩個值。
+- **example6 繞過 WAF**（§4.3）：直接打 execute-api 網址，靠 Lambda 的 origin verify 檢查擋；應用程式漏寫這段檢查時，WAF 形同虛設，REFERENCE 要列成必做事項。
 - **K8 的 Host 與 SNI 行為**：轉送 Host 時，CloudFront 用 Host 做 SNI，ALB 憑證要涵蓋 `api.<env>`；這點要在第一次 apply 時確認。
 - **ALB WAF 的 rate limit 在 CDN 後面失準**（K9）：要在 ALB 層限流，之後可以用 `forwarded_ip_config` 讀 `X-Forwarded-For`，但這個 header 可以被偽造，要搭配 origin verify。這一版不改。
 - **ALB SG 的 prefix list 配額**：CloudFront origin-facing prefix list 在 SG 裡佔很多條規則的額度（example2 network 的 description 已經提到），加上辦公室 CIDR 可能超過 60 條的預設上限。要先申請提高配額，或拿掉辦公室 CIDR。
