@@ -3,7 +3,7 @@ locals {
     kms_key_arn                  = module.kms.key_arn
     alarm_topic_arn              = module.alarm_topic.topic_arn
     flow_log_bucket_arn          = module.flow_log_bucket.arn
-    opensearch_master_secret_arn = aws_secretsmanager_secret.opensearch_master.arn
+    opensearch_master_secret_arn = module.opensearch_master_secret.arn
   }
 }
 

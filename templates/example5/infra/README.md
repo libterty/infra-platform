@@ -8,7 +8,7 @@
 
 圖是 dev 環境，sit 架構相同（VPC 是 `10.41.0.0/20`）。標「選用」「預設不建」的資源在預設 tfvars 下不存在。要修改就用 draw.io 打開 `architecture.drawio.svg`，存檔後原圖會一起更新。
 
-規則跟其他範本相同：15 個 Terraform stack，stack 之間只透過 SSM Parameter Store 傳值，stack 只呼叫 registry 的 module。例外有兩個（[`project-infra-standard.md`](../../../docs/guides/project-infra-standard.md)〈例外清單〉）：`foundation` 的 Secrets Manager secret 容器、`search-config` 用 ephemeral 讀 master 帳密。`fleet`、`sitewise`、`edge` 另外用 awscc provider。環境只有 `dev`、`sit`。目前只做過離線驗證，還沒在真實帳號 apply 過。
+規則跟其他範本相同：15 個 Terraform stack，stack 之間只透過 SSM Parameter Store 傳值，stack 只呼叫 registry 的 module。例外只有一個（[`project-infra-standard.md`](../../../docs/guides/project-infra-standard.md)〈例外清單〉）：`search-config` 用 ephemeral 讀 master 帳密。`fleet`、`sitewise`、`edge` 另外用 awscc provider。環境只有 `dev`、`sit`。目前只做過離線驗證，還沒在真實帳號 apply 過。
 
 ## stack 與 apply 順序
 

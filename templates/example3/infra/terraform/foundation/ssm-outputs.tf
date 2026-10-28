@@ -2,8 +2,8 @@ locals {
   published_strings = {
     alarm_topic_arn = module.alarm_topic.topic_arn
     # The application verifies tokens with the public key and signs them with the private one.
-    signing_public_key_secret_arn  = aws_secretsmanager_secret.this["signing_public_key"].arn
-    signing_private_key_secret_arn = aws_secretsmanager_secret.this["signing_private_key"].arn
+    signing_public_key_secret_arn  = module.secrets["signing_public_key"].arn
+    signing_private_key_secret_arn = module.secrets["signing_private_key"].arn
   }
 }
 

@@ -52,18 +52,18 @@ run "two_secret_containers_with_a_seven_day_recovery_window" {
   command = plan
 
   assert {
-    condition     = toset(keys(aws_secretsmanager_secret.this)) == toset(["signing_public_key", "signing_private_key"])
+    condition     = toset(keys(module.secrets)) == toset(["signing_public_key", "signing_private_key"])
     error_message = "foundation must declare exactly the public and the private signing key containers"
   }
 
   assert {
-    condition     = alltrue([for s in values(aws_secretsmanager_secret.this) : s.recovery_window_in_days == 7])
+    condition     = local.secret_recovery_window_in_days == 7
     error_message = "A deleted secret must stay recoverable for 7 days; 0 would delete it at once"
   }
 
   assert {
     condition = {
-      for k, s in aws_secretsmanager_secret.this : k => s.name
+      for k, s in module.secrets : k => s.name
       } == {
       signing_public_key  = "example-dev/app-signing-public-key"
       signing_private_key = "example-dev/app-signing-private-key"
@@ -72,7 +72,7 @@ run "two_secret_containers_with_a_seven_day_recovery_window" {
   }
 
   assert {
-    condition     = alltrue([for s in values(aws_secretsmanager_secret.this) : s.kms_key_id == null])
+    condition     = local.secret_kms_key_arn == null
     error_message = "Without a project key the secrets use the AWS managed Secrets Manager key"
   }
 }
@@ -81,7 +81,7 @@ run "publishes_the_topic_and_the_two_secrets" {
   command = plan
 
   override_resource {
-    target          = aws_secretsmanager_secret.this["signing_public_key"]
+    target          = module.secrets["signing_public_key"].aws_secretsmanager_secret.this
     override_during = plan
     values = {
       arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-public-key-AbCdEf"
@@ -89,7 +89,7 @@ run "publishes_the_topic_and_the_two_secrets" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.this["signing_private_key"]
+    target          = module.secrets["signing_private_key"].aws_secretsmanager_secret.this
     override_during = plan
     values = {
       arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/app-signing-private-key-GhIjKl"

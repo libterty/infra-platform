@@ -1,6 +1,6 @@
 # 範本 example2：11 個 stack 的專案 infra
 
-適合跑在 ECS Fargate、帶 Aurora PostgreSQL、Redis、ALB 與 AgentCore 的專案，而且希望資料庫、IAM、ALB、AgentCore、ECS、bastion、告警各自獨立 apply（拆法跟 `templates/project-infra` 不同）。11 個 stack 之間只透過 SSM Parameter Store 傳值，stack 只呼叫 registry 的 module；唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器。
+適合跑在 ECS Fargate、帶 Aurora PostgreSQL、Redis、ALB 與 AgentCore 的專案，而且希望資料庫、IAM、ALB、AgentCore、ECS、bastion、告警各自獨立 apply（拆法跟 `templates/project-infra` 不同）。11 個 stack 之間只透過 SSM Parameter Store 傳值，每個 stack 都只呼叫 registry 的 module，不自己宣告 AWS resource。
 
 > 狀態：11 個 stack 離線驗證通過（`scripts/validate.sh`），還沒在真實帳號 apply 過；「已知限制」裡的推論都要在第一次 apply 時確認。設計見 [`docs/design/v2/design-docs.md`](../../../docs/design/v2/design-docs.md) 第 5 章。
 

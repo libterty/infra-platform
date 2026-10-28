@@ -125,7 +125,7 @@ run "example_corpus_buckets_never_expire" {
   }
 
   assert {
-    condition     = length(aws_secretsmanager_secret.kb_db) == length(var.knowledge_bases) && length(module.knowledge_base) == length([for kb in values(var.knowledge_bases) : kb if kb.database_user_ready])
+    condition     = length(module.kb_db_secret) == length(var.knowledge_bases) && length(module.knowledge_base) == length([for kb in values(var.knowledge_bases) : kb if kb.database_user_ready])
     error_message = "Every knowledge base of the example must get a database user secret, and only those with database_user_ready a knowledge base"
   }
 }

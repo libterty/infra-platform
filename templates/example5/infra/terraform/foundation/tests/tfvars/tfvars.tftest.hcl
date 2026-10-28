@@ -19,7 +19,7 @@ run "tfvars_build_the_foundation" {
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.opensearch_master.name == "${var.project}-${var.env}/opensearch-master"
+    condition     = module.opensearch_master_secret.name == "${var.project}-${var.env}/opensearch-master"
     error_message = "The OpenSearch master secret container must be created"
   }
 }

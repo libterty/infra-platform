@@ -83,7 +83,7 @@ run "tfvars_create_what_they_list" {
   assert {
     condition = (
       length(module.runtime) == length(var.agent_runtimes) && length(module.memory) == length(var.memories) &&
-      length(module.guardrail) == length(var.guardrails) && length(module.corpus_bucket) == length(var.knowledge_bases) && length(aws_secretsmanager_secret.kb_db) == length(var.knowledge_bases) &&
+      length(module.guardrail) == length(var.guardrails) && length(module.corpus_bucket) == length(var.knowledge_bases) && length(module.kb_db_secret) == length(var.knowledge_bases) &&
       length(module.gateway) == (var.agentcore_gateway == null ? 0 : 1)
     )
     error_message = "Every Runtime, Memory, guardrail, knowledge base and gateway in tfvars must be created, and nothing else"

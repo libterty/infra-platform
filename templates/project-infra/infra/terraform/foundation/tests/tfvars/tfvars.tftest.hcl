@@ -23,7 +23,7 @@ run "tfvars_build_the_foundation" {
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.app.name == "${var.project}-${var.env}/app"
+    condition     = module.app_secret.name == "${var.project}-${var.env}/app"
     error_message = "The application secret container must be created"
   }
 }

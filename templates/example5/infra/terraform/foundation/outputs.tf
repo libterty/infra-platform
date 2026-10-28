@@ -16,5 +16,5 @@ output "flow_log_bucket_arn" {
 
 output "opensearch_master_secret_arn" {
   description = "OpenSearch master 帳密的 secret 容器；值要在 Terraform 外用主控台或 CLI 寫入。"
-  value       = aws_secretsmanager_secret.opensearch_master.arn
+  value       = module.opensearch_master_secret.arn
 }

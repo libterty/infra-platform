@@ -12,7 +12,7 @@ apply 照下表，destroy 反過來。順序寫在 `terraform/stacks.sh` 的 `OR
 
 | 順序 | stack | 建什麼 |
 |---|---|---|
-| 1 | `foundation` | KMS key、告警 SNS、兩個 log bucket、secret 容器（範本裡唯一自己宣告的 AWS resource） |
+| 1 | `foundation` | KMS key、告警 SNS、兩個 log bucket、secret 容器 |
 | 2 | `containerimage` | ECR；服務清單與 Runtime 清單的單一決定點 |
 | 3 | `network` | VPC（或登記既有 VPC）、interface endpoint、所有 security group |
 | 4 | `iam-base` | ECS execution role、RDS Proxy role（只有 trust）、Enhanced Monitoring role、Runtime execution role、KB 與 Gateway role（只有 trust） |
