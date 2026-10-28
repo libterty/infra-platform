@@ -1,5 +1,5 @@
 output "web_acl_arn" {
-  description = "Web ACL ARN，傳給 `alb` module 做關聯；這個 module 不建關聯。"
+  description = "Web ACL ARN，傳給 `alb` module 或 CloudFront distribution 做關聯；這個 module 不建關聯。"
   value       = aws_wafv2_web_acl.this.arn
 }
 

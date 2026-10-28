@@ -7,6 +7,16 @@ variable "name" {
   }
 }
 
+variable "scope" {
+  type        = string
+  default     = "REGIONAL"
+  description = "`REGIONAL`（預設，建在 provider 的 region，給 ALB 等 regional 資源關聯）或 `CLOUDFRONT`（IP set、web ACL、log group 與 logging configuration 都建在 `us-east-1`，給 CloudFront distribution 用）。"
+  validation {
+    condition     = contains(["REGIONAL", "CLOUDFRONT"], var.scope)
+    error_message = "scope must be REGIONAL or CLOUDFRONT."
+  }
+}
+
 variable "kill_switch" {
   type = object({
     action        = string
@@ -96,13 +106,19 @@ variable "logging" {
     redacted_headers = optional(list(string), ["authorization", "cookie"])
   })
   default     = null
-  description = "寫到 CloudWatch log group `aws-waf-logs-<name>` 的 log，`null` 時不開。欄位：`retention_days`（預設 14，限 CloudWatch Logs 接受的值，不可為 0）、`kms_key_arn`（預設 `null`）、`redacted_headers`（預設 `[\"authorization\", \"cookie\"]`，在這兩個一律遮蔽的 header 之外追加，名稱轉小寫，1–64 字元）。origin verify header 要加在這裡。"
+  description = "寫到 CloudWatch log group `aws-waf-logs-<name>` 的 log，`null` 時不開。欄位：`retention_days`（預設 14，限 CloudWatch Logs 接受的值，不可為 0）、`kms_key_arn`（預設 `null`；`scope` 為 `CLOUDFRONT` 時必須是 `us-east-1` 的 key）、`redacted_headers`（預設 `[\"authorization\", \"cookie\"]`，在這兩個一律遮蔽的 header 之外追加，名稱轉小寫，1–64 字元）。origin verify header 要加在這裡。"
   validation {
     condition = var.logging == null ? true : (
       contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.logging.retention_days) &&
       alltrue([for h in var.logging.redacted_headers : can(regex("^[A-Za-z0-9_-]{1,64}$", h))])
     )
     error_message = "logging.retention_days must be a value CloudWatch Logs accepts (1, 3, 5, 7, 14, 30, ... 3653, not 0); redacted_headers must be 1-64 chars of letters, digits, _ or -."
+  }
+  validation {
+    condition = var.logging == null || var.scope != "CLOUDFRONT" ? true : (
+      try(var.logging.kms_key_arn, null) == null ? true : can(regex("^arn:aws[a-z-]*:kms:us-east-1:", var.logging.kms_key_arn))
+    )
+    error_message = "With scope CLOUDFRONT the log group is in us-east-1, so logging.kms_key_arn must be a us-east-1 key."
   }
 }
 

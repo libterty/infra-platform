@@ -18,14 +18,18 @@ locals {
   redacted_headers = var.logging == null ? toset([]) : toset(concat(["authorization", "cookie"], [for h in var.logging.redacted_headers : lower(h)]))
 
   log_group_name = "aws-waf-logs-${var.name}"
+
+  # CloudFront web ACLs only exist in us-east-1; null keeps REGIONAL resources in the provider region.
+  region = var.scope == "CLOUDFRONT" ? "us-east-1" : null
 }
 
 resource "aws_wafv2_ip_set" "allowlist" {
   count = local.has_allowlist ? 1 : 0
 
+  region             = local.region
   name               = "${var.name}-allowlist"
   description        = "Source IPs exempt from the rate limit of ${var.name}"
-  scope              = "REGIONAL"
+  scope              = var.scope
   ip_address_version = "IPV4"
   addresses          = var.rate_limit.allowlist_cidrs
 
@@ -33,9 +37,10 @@ resource "aws_wafv2_ip_set" "allowlist" {
 }
 
 resource "aws_wafv2_web_acl" "this" {
+  region      = local.region
   name        = var.name
   description = "Web ACL ${var.name}"
-  scope       = "REGIONAL"
+  scope       = var.scope
 
   default_action {
     allow {}
@@ -253,6 +258,7 @@ resource "aws_wafv2_web_acl" "this" {
 resource "aws_cloudwatch_log_group" "waf" {
   count = var.logging == null ? 0 : 1
 
+  region            = local.region
   name              = local.log_group_name
   retention_in_days = var.logging.retention_days
   kms_key_id        = var.logging.kms_key_arn
@@ -263,6 +269,7 @@ resource "aws_cloudwatch_log_group" "waf" {
 resource "aws_wafv2_web_acl_logging_configuration" "this" {
   count = var.logging == null ? 0 : 1
 
+  region                  = local.region
   resource_arn            = aws_wafv2_web_acl.this.arn
   log_destination_configs = [aws_cloudwatch_log_group.waf[0].arn]
 
