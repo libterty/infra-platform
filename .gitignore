@@ -10,7 +10,8 @@ docs/slides/open-slide-redesign/slides/*/
 *.tfstate.*
 *.tfplan
 crash.log
-.cache/
+# .cache without a slash also matches the symlink a worktree uses to share the main checkout's cache.
+.cache
 modules/**/.terraform.lock.hcl
 
 # 整合來源專案時的真名對照表與去機密掃描 pattern：本身就含機密，只留在本機
