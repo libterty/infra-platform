@@ -1,6 +1,6 @@
 # s3-bucket
 
-建一個 log 或內容用的 S3 bucket：封鎖公開存取、加密、lifecycle、只允許 TLS，並依輸入加上 log delivery 的寫入權限。`foundation` 用它建 flow log bucket 與 access log bucket；像 Knowledge Base 語料這類不能過期的內容，就用 `never_expire = true`。
+建一個 log 或內容用的 S3 bucket：封鎖公開存取、加密、lifecycle、只允許 TLS，並依輸入加上 log delivery 的寫入權限，或讓 CloudFront 透過 OAC 讀取。`foundation` 用它建 flow log bucket 與 access log bucket；像 Knowledge Base 語料這類不能過期的內容，就用 `never_expire = true`。
 
 ## 用法
 
@@ -41,6 +41,14 @@ module "raw" {
     { days = 90, storage_class = "GLACIER_IR" },
   ]
 }
+
+module "web" {
+  source = "git::https://github.com/<org>/<repo>.git//modules/s3-bucket?ref=s3-bucket-v0.5.0"
+
+  name                         = "alpha-dev-web"
+  never_expire                 = true
+  cloudfront_distribution_arns = [module.cdn.arn]
+}
 ```
 
 完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
@@ -64,6 +72,21 @@ module "raw" {
 |---|---|---|---|
 | `vended_logs` | `delivery.logs.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl`、`s3:ListBucket` on bucket | `aws:SourceAccount`、`aws:SourceArn` 符合 `arn:<partition>:logs:*:<account>:delivery-source:*`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
 | `vpc_flow_logs` | `delivery.logs.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl` on bucket | `aws:SourceAccount`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
+
+## CloudFront 讀取
+
+`cloudfront_distribution_arns`（0.5.0 起）非空時，bucket policy 最後多一條 statement：
+
+| Sid | principal | 動作與資源 | 條件 |
+|---|---|---|---|
+| `AllowCloudFrontRead` | `cloudfront.amazonaws.com` | `s3:GetObject` on `<bucket>/*` | `StringEquals` `AWS:SourceArn` 是列出的 distribution ARN |
+
+- 這是 CloudFront OAC 的標準寫法。principal 是固定的服務、條件是固定的 ARN，S3 不會把它當成公開 policy，所以封鎖公開存取維持四項全開也能用。
+- 空的時候 policy 跟 0.4.0 完全一樣，原本的 statement 位置不變。
+- distribution 必須在目前帳號，ARN 格式是 `arn:aws:cloudfront::<帳號>:distribution/<id>`；其他帳號的 distribution 會被 precondition 擋下。
+- 只給 `s3:GetObject`，沒有 `s3:ListBucket`：不存在的物件 CloudFront 收到 403 而不是 404，SPA 的 fallback 要處理 403。
+- **用 SSE-KMS 時，CloudFront 還要能用這把 key 解密**：key policy 要允許 `cloudfront.amazonaws.com` 做 `kms:Decrypt`，條件同樣是 `AWS:SourceArn`（用 `kms-key` 的 `service_principals` 給）。這個 module 不管 key policy；放公開靜態檔的 bucket 可以直接用 SSE-S3（`kms_key_arn = null`）避開。
+- distribution 跟 bucket 在同一個 stack 時，distribution 讀 bucket 的 `bucket_regional_domain_name`，bucket policy 讀 distribution 的 ARN，兩個方向用的是不同的值，不會形成循環。
 
 ## 注意
 
@@ -89,7 +112,7 @@ module "raw" {
 
 ## 刻意不做
 
-replication、object lock、bucket 本身的 access logging（要開就用 `log-delivery`，source 給這個 bucket 的 ARN、`log_type = "S3_SERVER_ACCESS_LOGS"`）、Lambda 與 EventBridge 以外的 event notification（SQS、SNS）、多個 prefix 各自的 lifecycle rule、依物件大小或 tag 過濾的分層、CORS、跨帳號寫入，以及允許其他 principal 寫入的 bucket policy。上傳後自動觸發 ingestion 由應用程式處理；上傳的人或 CI 用自己的 IAM 權限寫入。
+replication、object lock、bucket 本身的 access logging（要開就用 `log-delivery`，source 給這個 bucket 的 ARN、`log_type = "S3_SERVER_ACCESS_LOGS"`）、Lambda 與 EventBridge 以外的 event notification（SQS、SNS）、多個 prefix 各自的 lifecycle rule、依物件大小或 tag 過濾的分層、CORS、跨帳號寫入與讀取（包括其他帳號的 CloudFront distribution）、給 CloudFront 的 `s3:ListBucket`，以及允許其他 principal 寫入的 bucket policy。上傳後自動觸發 ingestion 由應用程式處理；上傳的人或 CI 用自己的 IAM 權限寫入。
 
 <!-- BEGIN_TF_DOCS -->
 ## 輸入
@@ -101,6 +124,7 @@ replication、object lock、bucket 本身的 access logging（要開就用 `log-
 | `expiration_days` | `number` | `null` | 否 | 物件過期天數，1–3650；`null` 當成 90。`never_expire = true` 時必須是 `null`。 |
 | `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除，lifecycle rule 沒有 expiration。給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。 |
 | `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`。 |
+| `cloudfront_distribution_arns` | `set(string)` | `[]` | 否 | 可以透過 OAC 讀取物件（`s3:GetObject`）的 CloudFront distribution ARN（`arn:aws:cloudfront::<帳號>:distribution/<id>`），必須是目前帳號。非空時 bucket policy 多一條 principal 為 `cloudfront.amazonaws.com`、條件為 `AWS:SourceArn` 的 statement；空的就不加。 |
 | `versioning` | `object` | `null` | 否 | `null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與非空的 `log_delivery` 互斥。 |
 | `expiration_prefix` | `string` | `null` | 否 | 目前版本的過期規則只套用在這個 prefix 底下（1–1024 字元）；`null` 套用整個 bucket。 |
 | `transitions` | `list(object)` | `[]` | 否 | 目前版本的 lifecycle 分層，依序列出 `days`（物件建立後第幾天，至少 1，必須嚴格遞增）與 `storage_class`（`STANDARD_IA`、`ONEZONE_IA`、`INTELLIGENT_TIERING`、`GLACIER_IR`、`GLACIER`、`DEEP_ARCHIVE`）。每個 `days` 都要小於過期天數（沒給 `expiration_days` 時是 90）；`never_expire = true` 時不比較。跟過期規則共用 `expiration_prefix`。空的就不分層。 |

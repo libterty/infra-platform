@@ -53,6 +53,18 @@ variable "log_delivery" {
   }
 }
 
+variable "cloudfront_distribution_arns" {
+  type        = set(string)
+  default     = []
+  nullable    = false
+  description = "可以透過 OAC 讀取物件（`s3:GetObject`）的 CloudFront distribution ARN（`arn:aws:cloudfront::<帳號>:distribution/<id>`），必須是目前帳號。非空時 bucket policy 多一條 principal 為 `cloudfront.amazonaws.com`、條件為 `AWS:SourceArn` 的 statement；空的就不加。"
+
+  validation {
+    condition     = alltrue([for a in var.cloudfront_distribution_arns : can(regex("^arn:aws[a-z-]*:cloudfront::[0-9]{12}:distribution/[A-Z0-9]+$", a))])
+    error_message = "Each cloudfront_distribution_arns entry must be a CloudFront distribution ARN: arn:aws:cloudfront::<12-digit account>:distribution/<id>."
+  }
+}
+
 variable "versioning" {
   type = object({
     noncurrent_expiration_days = optional(number, 30)

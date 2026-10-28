@@ -72,6 +72,16 @@ locals {
       Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
     }],
   )
+
+  # A fixed service principal with a fixed aws:SourceArn is not a public policy, so block_public_policy stays on.
+  cloudfront_statements = length(var.cloudfront_distribution_arns) == 0 ? [] : [{
+    Sid       = "AllowCloudFrontRead"
+    Effect    = "Allow"
+    Principal = { Service = "cloudfront.amazonaws.com" }
+    Action    = "s3:GetObject"
+    Resource  = "${local.bucket_arn}/*"
+    Condition = { StringEquals = { "AWS:SourceArn" = sort(tolist(var.cloudfront_distribution_arns)) } }
+  }]
 }
 
 resource "aws_s3_bucket" "this" {
@@ -205,9 +215,18 @@ resource "aws_s3_bucket_policy" "this" {
       local.tls_only_statement,
       local.vended_statements,
       local.flow_log_statements,
+      local.cloudfront_statements,
     )
   })
 
   # Applying the policy before the public access block exists can be rejected as a public policy.
   depends_on = [aws_s3_bucket_public_access_block.this]
+
+  lifecycle {
+    # Variable validation cannot read data sources, so the account check lives here.
+    precondition {
+      condition     = alltrue([for a in var.cloudfront_distribution_arns : split(":", a)[4] == local.account_id])
+      error_message = "Every cloudfront_distribution_arns entry must be a distribution in the current account; cross-account reads are not supported."
+    }
+  }
 }
