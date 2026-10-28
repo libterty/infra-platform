@@ -36,7 +36,7 @@ run "publishes_exactly_the_four_foundation_keys" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.opensearch_master
+    target          = module.opensearch_master_secret.aws_secretsmanager_secret.this
     override_during = plan
     values = {
       arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:example-dev/opensearch-master-AbCdEf"
@@ -178,13 +178,18 @@ run "opensearch_master_secret_uses_cmk" {
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.opensearch_master.name == "example-dev/opensearch-master"
+    condition     = module.opensearch_master_secret.name == "example-dev/opensearch-master"
     error_message = "The secret container must be named <name_prefix>/opensearch-master"
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.opensearch_master.kms_key_id == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
+    condition     = local.opensearch_master_secret.kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
     error_message = "The secret must be encrypted with the customer managed key of this stack"
+  }
+
+  assert {
+    condition     = local.opensearch_master_secret.recovery_window_in_days == 30
+    error_message = "The recovery window must stay at 30 days, the AWS default the secret had before it moved into the module"
   }
 }
 
