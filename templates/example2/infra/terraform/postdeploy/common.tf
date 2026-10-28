@@ -41,7 +41,7 @@ locals {
     sit = ["222222222222"]
   }
 
-  # The three prefixes below are shared by all 13 stacks, but a stack only uses the ones it needs
+  # The three prefixes below are shared by every stack, but a stack only uses the ones it needs
   # (for example only the stacks that read tree B use shared_ssm_prefix), so tflint must not flag them.
   # tflint-ignore: terraform_unused_declarations
   name_prefix = "${var.project}-${var.env}"
