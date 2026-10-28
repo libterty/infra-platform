@@ -158,7 +158,7 @@ README〈前置作業〉每一項的完整做法，編號相同。
 | 例外 | master user 用 internal user database，密碼以明文出現在 `search` stack 的 state：`aws_opensearch_domain` 的 `master_user_password` 一份，`opensearch-domain` module 讀 secret 的 data source 一份，共兩份。plan 輸出標 sensitive |
 | 風險 | 讀得到 `search` state 的人等於拿到 `all_access` 與 `security_manager`。basic auth 不經 access policy，只要網路連得到（VPC 內或 Client VPN）就能用。FGAC 開了不能關 |
 | 影響範圍 | 每個環境一個 domain；只有 `search` 的 state 物件與它的舊版本；`search-config` 用 ephemeral 讀，state 裡零份；其他 stack 不碰這個 secret |
-| 密碼怎麼產生 | `foundation` 建 secret 容器（`aws_secretsmanager_secret`，CMK，S8 已允許），值由人用 `aws secretsmanager get-random-password` 產生後 `put-secret-value`，JSON `{"username","password"}`；`opensearch-domain` 收 `master_user_secret_arn`，在 module 裡讀。`random_password`、`TF_VAR_`、ephemeral 三種做法為什麼不用，見 design §4.1 |
+| 密碼怎麼產生 | `foundation` 用 `secrets-manager-secret` 建 secret 容器（CMK），值由人用 `aws secretsmanager get-random-password` 產生後 `put-secret-value`，JSON `{"username","password"}`；`opensearch-domain` 收 `master_user_secret_arn`，在 module 裡讀。`random_password`、`TF_VAR_`、ephemeral 三種做法為什麼不用，見 design §4.1 |
 | 補償控制 | 1. module 沒有 password 變數，S7 擴充到 `opensearch-domain`；2. state bucket 強化（〈前置作業的細節〉第 1 項）；3. SG 只放 Client VPN 與 VPC 內 runner 的 443，Dashboards 只能走 VPN；4. master 不給日常使用：只給 `search-config` 與緊急使用，人員帳號由 master 在 Dashboards 建，不經 Terraform（design K18）；5. `AUDIT_LOGS` 開，log 用 CMK；6. secret 用 CMK，只有 deploy role 與 break-glass role 能讀 |
 | 輪替 | 每 90 天或有人離職時：`put-secret-value` 新密碼 → apply `search`（domain 更新 master 密碼）→ apply `search-config`（ephemeral 重新讀）→ 確認 state bucket 裡含舊密碼的舊版本在 30 天後過期 |
 | owner | `search` stack 的擁有者（搜尋／觀測團隊）；範本寫佔位，複製出去填人名。platform team 追蹤例外 |
