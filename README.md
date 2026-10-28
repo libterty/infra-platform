@@ -6,7 +6,7 @@
 
 ## module
 
-共 77 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 78 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -22,6 +22,7 @@
 | 網路與入口 | `route53-zone` | Route 53 hosted zone（public 或 private） | [![route53-zone](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Froute53-zone%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=route53-zone-v) |
 | 網路與入口 | `route53-record` | 同一個 zone 的多筆 record（一般或 alias） | [![route53-record](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Froute53-record%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=route53-record-v) |
 | 網路與入口 | `acm-certificate` | DNS 驗證的 ACM 公開憑證，可指定 region | [![acm-certificate](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Facm-certificate%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=acm-certificate-v) |
+| 網路與入口 | `cloudfront-distribution` | CloudFront distribution：S3 OAC、custom origin、origin verify、SPA fallback | [![cloudfront-distribution](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcloudfront-distribution%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=cloudfront-distribution-v) |
 | 資料 | `rds` | RDS、Aurora、Aurora Serverless v2 | [![rds](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Frds%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=rds-v) |
 | 資料 | `elasticache-redis` | ElastiCache Redis（cluster mode） | [![elasticache-redis](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Felasticache-redis%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=elasticache-redis-v) |
 | 資料平台 | `dynamodb-table` | DynamoDB table | [![dynamodb-table](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fdynamodb-table%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=dynamodb-table-v) |
