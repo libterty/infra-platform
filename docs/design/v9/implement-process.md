@@ -55,7 +55,7 @@
 | I7 | example2 `edge`、tfvars、README、REFERENCE、架構圖 | 完成 | #262 |
 | I8 | example6 骨架、`containerimage`、`foundation`、`dns`、`certificate`、`data`、`iam` | 完成 | #259 |
 | I9 | example6 `auth`、`api`、`web` | 完成 | #261 |
-| I10 | example6 文件、根 README、全量驗證、價格查證、design §14 | 完成 | I10PR |
+| I10 | example6 文件、根 README、全量驗證、價格查證、design §14 | 完成 | #263 |
 
 ## 每個 Phase 的做法與驗收
 
