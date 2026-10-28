@@ -4,7 +4,7 @@
 
 ## 檔案
 
-stack 只呼叫 registry 的 module，唯一自己宣告的 AWS resource 是 `foundation` 的 Secrets Manager secret 容器。api 與 worker 不由 Terraform 部署：Terraform 準備叢集、namespace、Pod Identity、target group，把部署要用的值寫進 SSM，CI 再讀 SSM 用 Helm 部署。
+每個 stack 都只呼叫 registry 的 module，不自己宣告 AWS resource。api 與 worker 不由 Terraform 部署：Terraform 準備叢集、namespace、Pod Identity、target group，把部署要用的值寫進 SSM，CI 再讀 SSM 用 Helm 部署。
 
 `infra/terraform/` 底下是 13 個 stack（見 README〈apply 順序〉）與兩支腳本：`stacks.sh` 依序跑各 stack，`check-ssm-contract.sh` 靜態檢查 SSM 合約與 tfvars 一致性。`deploy/charts/app/` 是 api、worker 的範例 chart，一個 release 一個工作負載。
 
