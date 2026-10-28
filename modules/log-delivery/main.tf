@@ -14,6 +14,7 @@ locals {
 resource "aws_cloudwatch_log_delivery_source" "this" {
   for_each = var.sources
 
+  region       = var.region
   name         = "${var.name_prefix}-${each.key}"
   resource_arn = each.value.resource_arn
   log_type     = each.value.log_type
@@ -33,6 +34,7 @@ resource "aws_cloudwatch_log_delivery_source" "this" {
 resource "aws_cloudwatch_log_delivery_destination" "this" {
   for_each = var.destinations
 
+  region                    = var.region
   name                      = "${var.name_prefix}-${each.key}"
   delivery_destination_type = each.value.type == "XRAY" ? "XRAY" : null
 
@@ -64,6 +66,7 @@ resource "terraform_data" "source_arn" {
 resource "aws_cloudwatch_log_delivery" "this" {
   for_each = var.deliveries
 
+  region                   = var.region
   delivery_source_name     = aws_cloudwatch_log_delivery_source.this[each.value.source].name
   delivery_destination_arn = aws_cloudwatch_log_delivery_destination.this[each.value.destination].arn
 

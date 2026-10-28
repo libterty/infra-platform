@@ -45,6 +45,21 @@ module "runtime_logs" {
 }
 ```
 
+CloudFront 的標準 log（v2）要把三種資源都建在 `us-east-1`，用 `region`（0.3.0 起）指定，stack 不必另外宣告 us-east-1 的 provider：
+
+```hcl
+module "cdn_logs" {
+  source = "git::https://github.com/<org>/<repo>.git//modules/log-delivery?ref=log-delivery-v0.3.0"
+
+  name_prefix = "alpha-dev"
+  region      = "us-east-1"
+
+  sources      = { cdn = { resource_arn = module.cdn.arn, log_type = "ACCESS_LOGS" } }
+  destinations = { cdn-logs = { type = "S3", resource_arn = module.cdn_log_bucket.arn } }
+  deliveries   = { cdn = { source = "cdn", destination = "cdn-logs" } }
+}
+```
+
 完整範例：AgentCore 見 [`examples/runtime-logs-and-traces/`](./examples/runtime-logs-and-traces/main.tf)；ALB 與 S3 的 access log 見 [`examples/alb-and-s3-access-logs/`](./examples/alb-and-s3-access-logs/main.tf)。
 
 ## 容易出錯的地方
@@ -59,7 +74,10 @@ module "runtime_logs" {
 
 - 名稱是 `<name_prefix>-<key>`，最多 60 字（照 API 文件，**未實測**）。
 - 實際部署過的只有 AgentCore 的 `APPLICATION_LOGS`、`TRACES`；其他服務與 `FH` 目的地是照 AWS 文件放行，**未實測**。
-- 有些服務對 delivery source 所在的 region 有限制，以該服務的文件為準。
+- 有些服務對 delivery source 所在的 region 有限制，以該服務的文件為準。CloudFront 的 source 一定要在 `us-east-1`，所以給 `region = "us-east-1"`。
+- `region` 一次套用到 source、destination 與 delivery 三種資源；`null`（預設）時跟著 provider，跟 0.2.x 相同。不支援 source 與 destination 分在不同 region。
+- `CWL`、`FH` 目的地的 log group 或 stream 放在 `region` 以外的 region 能不能用，**未實測**。`S3` 目的地的 bucket 在其他 region（例如 us-east-1 的 CloudFront delivery 寫到 ap-northeast-1 的 bucket）同樣**未實測**，第一次 apply 時確認；`s3-bucket` 的 `vended_logs` policy 本身允許任何 region 的 source。
+- 已經建好的資源改 `region` 會整組重建。
 - `CWL` 目的地需要的 log group resource policy 由 CloudWatch 在建立 delivery 時自動加，前提是部署者有 `logs:PutResourcePolicy`，**未實測**。
 - trace 送進 X-Ray 需要帳號層開啟 Transaction Search（`aws/spans` log group）。被清掉的話，span 會全部遺失而且不會報錯，所以部署後要確認 `aws/spans` 存在。
 - delivery 的 `tags` 只有輸入的 `tags`；source 與 destination 另外加 `Name`。
@@ -77,6 +95,7 @@ module "runtime_logs" {
 | 名稱 | 型別 | 預設 | 必填 | 說明 |
 |---|---|---|---|---|
 | `name_prefix` | `string` | 無 | 是 | source 與 destination 的名稱前綴，名稱是 `<name_prefix>-<key>`，最多 60 字元。 |
+| `region` | `string` | `null` | 否 | source、destination 與 delivery 建在哪個 region，例如 `us-east-1`；`null` 時跟著 provider 的 region。CloudFront distribution 的 source 必須建在 `us-east-1`。 |
 | `sources` | `map(object)` | `{}` | 否 | delivery source，key 是短名。欄位：`resource_arn`（產生 log 的資源 ARN，任何支援 vended log delivery 的資源都可以，例如 ALB、EKS cluster、CloudFront distribution、AgentCore Runtime；必須帶 12 位數帳號，帳號是目前帳號或在 `allowed_account_ids` 裡，S3 bucket ARN 不帶帳號，是唯一例外）、`log_type`（服務定義的值，例如 `ALB_ACCESS_LOGS`、`S3_SERVER_ACCESS_LOGS`，1–255 個英數字或底線）。 |
 | `destinations` | `map(object)` | `{}` | 否 | delivery destination，key 是短名。欄位：`type`（`CWL`、`S3`、`FH` 或 `XRAY`）、`resource_arn`（`CWL` 是 log group ARN、`S3` 是 bucket ARN、`FH` 是 delivery stream ARN，`XRAY` 必須是 `null`）。`CWL`、`FH` 的帳號必須是目前帳號或在 `allowed_account_ids` 裡；S3 bucket ARN 不帶帳號，不檢查。 |
 | `allowed_account_ids` | `set(string)` | `[]` | 否 | 除了目前帳號，source 與 `CWL`、`FH` 目的地還可以放在哪些帳號（12 位數字）。空的時候都必須在目前帳號。 |

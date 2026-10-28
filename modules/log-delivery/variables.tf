@@ -3,6 +3,16 @@ variable "name_prefix" {
   description = "source 與 destination 的名稱前綴，名稱是 `<name_prefix>-<key>`，最多 60 字元。"
 }
 
+variable "region" {
+  type        = string
+  default     = null
+  description = "source、destination 與 delivery 建在哪個 region，例如 `us-east-1`；`null` 時跟著 provider 的 region。CloudFront distribution 的 source 必須建在 `us-east-1`。"
+  validation {
+    condition     = var.region == null ? true : can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", var.region))
+    error_message = "region must look like us-east-1."
+  }
+}
+
 variable "sources" {
   type = map(object({
     resource_arn = string
