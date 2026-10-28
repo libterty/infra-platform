@@ -52,7 +52,7 @@
 | I4 | `apigateway-http`、`cognito-user-pool` | 完成：發版、HCP ok | #250 |
 | I5 | `cloudfront-distribution` | 完成：發版、HCP ok；spa_fallback 改 CloudFront Function | #249 |
 | I6 | example2 `dns`、`certificate`、`bridge`、`loadbalancer` HTTPS | 完成 | #260 |
-| I7 | example2 `edge`、tfvars、README、REFERENCE、架構圖 | 完成 | I7PR |
+| I7 | example2 `edge`、tfvars、README、REFERENCE、架構圖 | 完成 | #262 |
 | I8 | example6 骨架、`containerimage`、`foundation`、`dns`、`certificate`、`data`、`iam` | 完成 | #259 |
 | I9 | example6 `auth`、`api`、`web` | 完成 | #261 |
 | I10 | example6 文件、根 README、全量驗證、價格查證、design §14 | 完成 | I10PR |

@@ -513,6 +513,9 @@ I1–I5 的目錄互不重疊，可以在各自的 worktree 平行做。I1 的�
 - example2：
   - `bridge` 檢查兩張憑證的 region（ALB 憑證在 `aws_region`、CloudFront 憑證在 us-east-1）。
   - `common.tf` 的註解不再寫 stack 數。
+  - `loadbalancer` 多發布 `alb_dns_name`、`alb_zone_id`，給 `edge` 建 `origin-api` alias。
+  - `edge` 的 WAF 沿用 ALB WAF 的 managed rules 與 `/api/admin` 的 body 大小例外；`origin_read_timeout` 設 60 秒（不申請配額的上限），串流超過 60 秒沒送資料會被 CloudFront 斷線。
+  - `network` 只在 443 放 prefix list：CloudFront origin-facing prefix list 在 80 也放一份會超過 security group 60 條的預設配額。dev tfvars 的 `pl-58a04531` 沒有查證，註解附查詢指令。
 - example6：
   - `auth` 讀 `dns/zone_name` 組 callback 網址；`api` 沒有 custom domain，不讀 `dns`。
   - 多發布 `dns/name_servers`、`web/site_bucket_name`、`web/distribution_id`（上傳前端與清 cache 用）。
