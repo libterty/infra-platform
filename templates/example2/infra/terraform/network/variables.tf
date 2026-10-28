@@ -48,7 +48,7 @@ variable "app_port" {
 }
 
 variable "alb_ingress" {
-  description = "Who can reach the ALB on 443 and 80: CIDRs and managed prefix lists (for example the CloudFront origin-facing list, which uses many rules of the security group quota). Writing 0.0.0.0/0 opens the ALB to everyone and must be explicit."
+  description = "Who can reach the ALB: CIDRs on 443 and 80, managed prefix lists (for example the CloudFront origin-facing list, which uses many rules of the security group quota) on 443 only. Writing 0.0.0.0/0 opens the ALB to everyone and must be explicit."
   type = object({
     cidrs           = optional(list(string), [])
     prefix_list_ids = optional(list(string), [])

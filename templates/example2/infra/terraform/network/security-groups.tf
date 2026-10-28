@@ -21,6 +21,8 @@ locals {
     { for p in var.alb_ingress.prefix_list_ids : "pl_${replace(p, "-", "_")}" => { cidr_ipv4 = null, prefix_list_id = p } },
   )
 
+  # Prefix lists only get 443: a CDN connects over HTTPS, and the CloudFront origin-facing list weighs so many rules
+  # that opening it on 80 as well would exceed the default limit of 60 rules per security group.
   alb_ingress_rules = {
     for pair in setproduct(local.alb_ports, keys(local.alb_sources)) : "alb_in_${pair[0]}_${pair[1]}" => {
       security_group = "alb"
@@ -32,7 +34,7 @@ locals {
       cidr_ipv4      = local.alb_sources[pair[1]].cidr_ipv4
       prefix_list_id = local.alb_sources[pair[1]].prefix_list_id
       allow_internet = local.alb_sources[pair[1]].cidr_ipv4 == "0.0.0.0/0"
-    }
+    } if pair[0] == 443 || local.alb_sources[pair[1]].prefix_list_id == null
   }
 
   # One entry per allowed connection. Terraform removes the default allow-all egress, so each connection needs an
