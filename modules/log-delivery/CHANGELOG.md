@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/libterty/infra-platform/compare/log-delivery-v0.2.1...log-delivery-v0.3.0) (2026-10-28)
+
+
+### Features
+
+* **log-delivery:** add region input for sources, destinations and deliveries ([77f3624](https://github.com/libterty/infra-platform/commit/77f3624c21b2d9b482c7a776ee6c7ac1980556ad))
+
 ## [0.2.1](https://github.com/libterty/infra-platform/compare/log-delivery-v0.2.0...log-delivery-v0.2.1) (2026-10-23)
 
 
