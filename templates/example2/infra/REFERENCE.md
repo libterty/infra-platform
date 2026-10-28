@@ -4,14 +4,14 @@
 
 ## 目錄與檔案
 
-`infra/` 底下有 `README.md`、這份 `REFERENCE.md`、`architecture.drawio.svg` 與 `terraform/`。`terraform/` 底下是 13 個 stack 目錄，加上 `stacks.sh`（依序跑各 stack）與 `check-ssm-contract.sh`（靜態檢查 SSM 合約與 tfvars 一致性）。
+`infra/` 底下有 `README.md`、這份 `REFERENCE.md`、`architecture.drawio.svg` 與 `terraform/`。`terraform/` 底下是 14 個 stack 目錄，加上 `stacks.sh`（依序跑各 stack）與 `check-ssm-contract.sh`（靜態檢查 SSM 合約與 tfvars 一致性）。
 
 環境只有 `dev` 與 `sit`，帳號對照表在 `common.tf` 的 `accounts_by_env`。每個 stack 都有同一組檔案：
 
 | 檔案 | 內容 |
 |---|---|
 | `versions.tf`、`providers.tf` | Terraform 與 provider 版本、空的 `backend "s3" {}`、`allowed_account_ids`、`default_tags`（含 `Stack`） |
-| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表、各種前綴。13 個 stack 必須一字不差，`scripts/validate.sh` 會比對 |
+| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表、各種前綴。所有 stack 必須一字不差，`scripts/validate.sh` 會比對 |
 | `variables.tf` | 這個 stack 自己的變數，不放其他 stack 的 ARN 或 id |
 | `ssm-inputs.tf`、`ssm-outputs.tf` | 讀上游的值、發布給下游的值；沒有東西要讀或發布就沒有這個檔 |
 | `envs/<env>.tfvars`、`envs/<env>.tfbackend` | 非機密設定與 state 位置，都進版控；佔位值，複製後要改 |
@@ -32,18 +32,19 @@
 | 6 | `database` | Aurora PostgreSQL（含 RDS Proxy、Enhanced Monitoring）、兩組 Redis（`rate-limit`、`stream`）、連線數告警、partition 維護的 log 告警 | foundation、network | 資料庫與 Proxy endpoint、secret ARN、Redis endpoint |
 | 7 | `iam` | ECS、Lambda、AgentCore 各 role 與 policy；`eval_batch` role 只在 `dev` 建 | foundation、containerimage、database | 各 role ARN |
 | 8 | `bridge` | 把樹 A 的 key 原樣寫到樹 B，不建其他東西 | 前面所有 stack（樹 A） | 樹 B |
-| 9 | `loadbalancer` | ALB（HTTPS:443 用樹 B 的 ALB 憑證，HTTP:80 只轉到 443）、listener 規則、WAF 與 WAF log、ALB access log（bucket 與 `log-delivery`） | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
-| 10 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory、Runtime 的 log delivery | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
-| 11 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
-| 12 | `operation` | bastion（可關）、兩個 import Lambda、import bucket、eval-batch bucket（只在 `dev`）、ETL 指標 | 樹 B | bucket、Lambda 名稱 |
-| 13 | `postdeploy` | 服務告警與 dashboard、stream 告警、log 告警、trace delivery | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
+| 9 | `loadbalancer` | ALB（HTTPS:443 用樹 B 的 ALB 憑證，HTTP:80 只轉到 443）、listener 規則、WAF 與 WAF log、ALB access log（bucket 與 `log-delivery`） | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、ALB 的 DNS 名稱與 hosted zone ID |
+| 10 | `edge` | CloudFront distribution（`api.<zone>`，用樹 B 的 us-east-1 憑證；唯一的 origin 是 `origin-api.<zone>`，只走 HTTPS，帶 origin verify header；不快取，用 `Managed-AllViewer` 轉送 viewer 的 Host；`PriceClass_200`）、CloudFront 的 WAF（`scope = "CLOUDFRONT"`，managed rules 加 rate limit，WAF log 在 us-east-1）、`api` 的 A 與 AAAA alias（指 CloudFront）、`origin-api` 的 A alias（指 ALB）、CloudFront 標準 log（SSE-S3 bucket 加 `log-delivery`，delivery 在 us-east-1） | 樹 B、loadbalancer | distribution ID 與網域 |
+| 11 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory、Runtime 的 log delivery | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
+| 12 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
+| 13 | `operation` | bastion（可關）、兩個 import Lambda、import bucket、eval-batch bucket（只在 `dev`）、ETL 指標 | 樹 B | bucket、Lambda 名稱 |
+| 14 | `postdeploy` | 服務告警與 dashboard、stream 告警、log 告警、trace delivery | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
 
 ## SSM 合約：樹 A 與樹 B
 
 | | 路徑 | 誰發布 | 誰讀 |
 |---|---|---|---|
-| 樹 A | `/<project>/<env>/<stack>/<key>` | 前段 stack，以及 loadbalancer、agent、application | 下游用 `ssm-read` 讀 |
-| 樹 B | `/<project>-shared/<env>/infra/<key>`（共用前綴底下的扁平 key） | `bridge`，或外部發布者 | loadbalancer、agent、application、operation、postdeploy |
+| 樹 A | `/<project>/<env>/<stack>/<key>` | 前段 stack，以及 loadbalancer、edge、agent、application | 下游用 `ssm-read` 讀 |
+| 樹 B | `/<project>-shared/<env>/infra/<key>`（共用前綴底下的扁平 key） | `bridge`，或外部發布者 | loadbalancer、edge、agent、application、operation、postdeploy |
 
 後段 stack 只讀樹 B（外加其他後段 stack 的樹 A key），不直接讀前段 stack。所以樹 B 改由外部發布時，後段 stack 照樣能跑。
 
@@ -79,16 +80,27 @@ String 26 個（值不可為空）、StringList 4 個（逗號分隔）：
 | `import_extract_role_arn` | String | import-extract Lambda role | operation |
 | `import_load_role_arn` | String | import-load Lambda role | operation |
 | `agent_runtime_role_arn` | String | AgentCore Runtime role | agent |
-| `zone_id` | String | 這個環境的 hosted zone ID | 保留給 CloudFront 的 `edge` stack（還沒加入） |
-| `zone_name` | String | zone 名稱，例如 `dev.example.com` | 保留給 `edge` |
+| `zone_id` | String | 這個環境的 hosted zone ID | edge |
+| `zone_name` | String | zone 名稱，例如 `dev.example.com` | edge |
 | `alb_certificate_arn` | String | ALB 用的 ACM 憑證，在 ALB 的 region | loadbalancer |
-| `cloudfront_certificate_arn` | String | CloudFront 用的 ACM 憑證，在 us-east-1 | 保留給 `edge` |
+| `cloudfront_certificate_arn` | String | CloudFront 用的 ACM 憑證，在 us-east-1 | edge |
 | `services` | StringList | 服務名稱 | application |
 | `public_subnet_ids` | StringList | public subnet，至少 2 個 | loadbalancer |
 | `app_subnet_ids` | StringList | app subnet，至少 2 個 | application、operation |
 | `agent_subnet_ids` | StringList | agent subnet，至少 2 個 | agent |
 
 `bridge` 在 apply 前用 `guards.tf` 檢查：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes` 與 `ecr_repository_urls` 是合法 JSON、`alb_certificate_arn` 是 `aws_region` 的 ACM ARN、`cloudfront_certificate_arn` 是 us-east-1 的 ACM ARN。外部發布者也應該照這幾條驗過再寫。
+
+### 後段 stack 之間的樹 A key
+
+後段 stack 可以讀排在前面的後段 stack 的樹 A key。跟 CloudFront 有關的是這幾個：
+
+| key（`/<project>/<env>/…`） | 型別 | 寫的 stack | 讀的 stack | 內容 |
+|---|---|---|---|---|
+| `loadbalancer/alb_dns_name` | String | loadbalancer | edge | ALB 的 DNS 名稱，`origin-api` alias record 指向它 |
+| `loadbalancer/alb_zone_id` | String | loadbalancer | edge | ALB 的 Route 53 hosted zone ID，alias record 要用 |
+| `edge/distribution_id` | String | edge | 目前沒有 | distribution ID，給之後的 CloudFront 告警或清快取用 |
+| `edge/domain_name` | String | edge | 目前沒有 | distribution 的 `*.cloudfront.net` 網域 |
 
 ### 合約的寫法慣例
 
@@ -172,8 +184,9 @@ cd infra/terraform
 
 1. `./stacks.sh dev dns apply`：建 `dev.example.com` 的 zone，輸出 4 個 name server。之後要再看，跑 `./stacks.sh dev dns output`。
 2. 在上層網域 `example.com` 的 zone 加一筆 NS record：名稱 `dev.example.com`，值是上一步的 4 個 name server。上層網域不在同一個帳號或不在 Route 53 也可以，到它的 DNS 服務商加。加完用 `dig NS dev.example.com +short` 確認回來的是這 4 個。
-3. `./stacks.sh dev all apply`：已經 apply 過的 stack 不會有變更；`certificate` 會等到兩張憑證都簽發才結束。委派沒做或做錯的話，ACM 驗不到 DNS record，等滿 45 分鐘（`acm-certificate` 的 `validation_timeout`）後 timeout 失敗，錯誤訊息看得出是在等驗證。這時修好委派再跑一次就好。
+3. `./stacks.sh dev all apply`：已經 apply 過的 stack 不會有變更；`certificate` 會等到兩張憑證都簽發才結束。委派沒做或做錯的話，ACM 驗不到 DNS record，等滿 45 分鐘（`acm-certificate` 的 `validation_timeout`）後 timeout 失敗，錯誤訊息看得出是在等驗證。這時修好委派再跑一次就好。`edge` 會等 CloudFront distribution 部署完才結束，通常幾分鐘到十幾分鐘。
 4. 之後的 apply 不用再等：憑證已經簽發，到期前 ACM 自動續約，只要 DNS 驗證 record 還在 zone 裡。
+5. 確認入口：`dig api.dev.example.com +short` 回的是 CloudFront 的位址，`curl -i https://api.dev.example.com/api/quota` 有到 `api`（不是 ALB 的 404，也不是 CloudFront 的 502）。502 多半是 origin 憑證與 Host 對不上，見〈已知限制的細節〉。
 
 `stacks.sh` 不檢查委派：離線沒有可靠的方式判斷，所以這一步靠人確認。兩張憑證的 `api.<zone>` 共用同一筆驗證 record，`acm-certificate` 用 `allow_overwrite` 處理，不會衝突。
 
@@ -182,7 +195,7 @@ cd infra/terraform
 README〈複製出去之後要改什麼〉每一步的完整說明，照這個順序改：
 
 1. **module 的 `source`**：從 HCP private registry 引用（`app.terraform.io/libterty/<module>/aws`，ADR-0004）。用自己的 organization 就換掉前綴；拿不到 HCP token 就改成 `git::...?ref=<module>-v<semver>`。一次改完的指令見 `docs/guides/consuming-modules.md`。
-2. **帳號表**：`common.tf` 的 `accounts_by_env` 目前是 `111111111111`（dev）與 `222222222222`（sit）。填真實帳號，13 個 stack 一起改，保持一字不差。
+2. **帳號表**：`common.tf` 的 `accounts_by_env` 目前是 `111111111111`（dev）與 `222222222222`（sit）。填真實帳號，所有 stack 一起改，保持一字不差。
 3. **state bucket**：每份 `envs/*.tfbackend` 的 `bucket` 是 `<state-bucket>`，換成真實 bucket；`key` 的 `example-` 前綴換成自己的 `project`（格式 `<project>-<env>/<stack>/terraform.tfstate`，`validate.sh` 會檢查）。
 4. **tfvars 的佔位值**：每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及：
 
@@ -190,19 +203,20 @@ README〈複製出去之後要改什麼〉每一步的完整說明，照這個�
    |---|---|
    | `foundation` | `alarm_emails`（現在是 `ops@example.com`） |
    | `dns` | `zone_name`（現在是 `<env>.example.com`，換成自己網域底下的子網域） |
-   | `network` | `vpc_cidr`、`azs`、`alb_ingress`（現在是文件用的 `203.0.113.0/24`） |
-   | `loadbalancer` | `origin_verify_host_headers`、`rate_limit_allowlist_cidrs`（現在是 `198.51.100.0/24`） |
+   | `network` | `vpc_cidr`、`azs`、`alb_ingress`：`prefix_list_ids` 是 ap-northeast-1 的 CloudFront origin-facing prefix list（`pl-58a04531`），換 region 要用 tfvars 註解裡的指令查；`dev` 的 `cidrs` 是辦公室的佔位 `203.0.113.0/24` |
+   | `loadbalancer` | `origin_verify_host_headers`（要等於 `api.<zone>`）、`rate_limit_allowlist_cidrs`（現在是 `198.51.100.0/24`） |
+   | `edge` | `rate_limit_allowlist_cidrs`（現在是 `198.51.100.0/24`）；`origin_verify_header_name` 要跟 `loadbalancer` 一致，tfvars 的 test 會比對 |
    | `application` | `cors_allow_origins`、各映像的 `*_image_tag`（`operation` 與 `agent` 也有映像 tag） |
    | `database` | `db_instance_class`、`connections_threshold`（約為該 instance class 的 `max_connections` 的 80%，換 class 就要重算）、Redis 的 node type |
    | `agent` | `model_id`、`backend_mode`（目前是 `fake`）、`guardrail_cross_region_profile_id` |
 
-5. **origin verify 的值**：`loadbalancer` 的 origin verify 值（CDN 加在 origin 請求上的 header 值）不放 tfvars，只能從環境變數給，跟 CDN 送的是同一個值：
+5. **origin verify 的值**：origin verify 值（CloudFront 加在回源請求上的 header 值）不放 tfvars，只能從環境變數給。`loadbalancer`（ALB 規則比對）與 `edge`（CloudFront 送出）都要這個值，兩邊必須相同：
 
    ```bash
    export TF_VAR_origin_verify_header_value=<至少 16 字元>
    ```
 
-   tfvars 只放 header 名稱。這個變數是 `sensitive`、沒有預設值，少了它 plan 直接失敗。值會寫進 state（ALB 規則的條件），state 的存取權限要照機密管；WAF log 會遮蔽這個 header。
+   tfvars 只放 header 名稱。這個變數是 `sensitive`、沒有預設值，少了它 plan 直接失敗。值會以明文寫進兩份 state（`loadbalancer` 的 ALB 規則條件、`edge` 的 CloudFront origin 設定），state 的存取權限要照機密管；兩個 WAF 的 log 都會遮蔽這個 header。
 6. **guardrail 的內容**：`agent/guardrails.tf` 的 denied topic、詞彙、拒絕文案都只是示意，換成自己產品的政策。module 不建 guardrail 版本，apply 的內容就是線上生效的政策。
 7. **命名規則**：`iam` 比後段 stack 先 apply，讀不到資源，所以用命名規則組 ARN。兩邊一致與否沒有東西檢查，只有各 stack 的 test 會斷言；改任何一邊的名稱，另一邊要一起改（設計依據見 `docs/design/v2/design-docs.md` §5.8、§5.10）：
    - import bucket：`<project>-<env>-import-<account>`，prefix `incoming/`、`extracted/`；eval-batch bucket：`<project>-<env>-eval-batch-<account>`（`operation`）。
@@ -211,6 +225,18 @@ README〈複製出去之後要改什麼〉每一步的完整說明，照這個�
    - AgentCore Runtime 與 Memory：`<project>_<env>_<runtime>`、`<project>_<env>_memory`，連字號換成底線（`agent`）。
    - 自訂 metric namespace：`<Project>/<env>`（`application`、`operation`、`postdeploy`）。
 8. **跨 stack 要一致的值**：`network` 與 `operation` 的 `bastion_enabled`、`iam` 與 `agent` 的 `guardrail_cross_region_profile_id` 要一致，`check-ssm-contract.sh` 會比對。`app_port` 在 `network`、`loadbalancer`、`application` 各有一份變數，靠預設值一致，改的時候三處一起改，沒有東西檢查。
+
+## 換 origin verify 的值
+
+`alb` module 的 `origin_verify_header_value` 只收一個值，ALB 規則沒辦法同時接受新舊兩個值。所以換值時，從 `loadbalancer` apply 完到 CloudFront 把新值部署到所有 edge 為止，`/api/*` 的請求會被 ALB 回 404（規則不符，落到 listener 的預設回應）。步驟：
+
+1. 挑低流量的時段，先通知使用者會短暫中斷。
+2. 產生新值，`export TF_VAR_origin_verify_header_value=<新值，至少 16 字元>`。
+3. `./stacks.sh <env> loadbalancer apply`：ALB 規則改成只接受新值，中斷從這裡開始。
+4. 緊接著 `./stacks.sh <env> edge apply`：CloudFront 改送新值，apply 會等 distribution 部署完才結束，結束時中斷也結束。
+5. 用 `curl -i https://api.<zone>/api/quota`（或其他受保護的 path）確認不再回 404。
+
+中斷的長度大約是步驟 4 的 CloudFront 部署時間，通常幾分鐘到十幾分鐘。步驟 3、4 之間不要停。要做到不中斷，得先讓 `alb` module 支援同時接受兩個值，這一版沒做。
 
 ## destroy 之前
 
@@ -225,8 +251,11 @@ README〈複製出去之後要改什麼〉每一步的完整說明，照這個�
 | Secrets Manager secret（`foundation`） | `recovery_window_in_days = 7` | 刪除後保留 7 天，期間不能用同名重建；secret 的值是在 Terraform 外面寫的，刪了就沒有，要先備份 |
 | Redis（`database`） | module 沒有設定 final snapshot | 要保留資料就先手動做 snapshot |
 | hosted zone（`dns`） | `force_destroy = false` | zone 裡有 Terraform 以外建的 record 就刪不掉，先刪掉那些 record。上層網域的 NS 委派要自己拿掉 |
+| CloudFront distribution（`edge`） | 啟用中 | 要先停用再刪除，provider 會自己做，但要等停用部署完，通常十幾分鐘。distribution 還在時，它用的 us-east-1 憑證（`certificate`）與 CloudFront WAF 都刪不掉；反向順序會先 destroy `edge`，單獨 destroy `certificate` 前要確認 `edge` 已經刪掉 |
+| CloudFront log bucket（`edge`） | `force_destroy = false` | 跟其他 bucket 一樣，先清空再 destroy |
+| ACM 憑證（`certificate`） | — | 還被 ALB 或 CloudFront 用時刪不掉，要先 destroy `edge` 與 `loadbalancer` |
 
-`bridge` 之後的 stack（9–13）只依賴樹 B，要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經這樣排；單獨 destroy 某個 stack 時要自己注意順序。外部發布的樹 B、state bucket 本身不是這份範本建的，destroy 不會刪。
+`bridge` 之後的 stack（9–14）只依賴樹 B，要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經這樣排；單獨 destroy 某個 stack 時要自己注意順序。外部發布的樹 B、state bucket 本身不是這份範本建的，destroy 不會刪。
 
 ## 已知限制的細節
 
@@ -234,6 +263,13 @@ README〈複製出去之後要改什麼〉每一步的完整說明，照這個�
 
 - **IAM 與 policy 的形狀**：RDS Proxy role 的 `kms:Decrypt` 限定 `alias/aws/secretsmanager` 的 key 加 `kms:ViaService` 是否足夠（這個 alias 要先有人用預設 key 建過 secret 才存在；`foundation` 先 apply，所以成立）；Enhanced Monitoring role 收窄到 `RDSOSMetrics` log group 是否足夠；AgentCore Runtime role 的 `aws:SourceArn` 與 `runtime/<name>-*`、`memory/<name>-*` 的 ARN 形狀；bastion 的 Session Manager 最小權限是否足夠註冊與開 session。
 - **ALB 與 WAF**：`alb` 的 count 依 Web ACL 物件是否為 null 決定，沒有對真實 provider 跑過；ALB access log 用 `log-delivery` 的 vended delivery，`depends_on` 是否足以讓 bucket policy 在建 delivery 之前到位，以及 apply 身分建 delivery 需要的權限（`logs:PutDeliverySource` 等）；WAF logging 需要 apply 身分有 `logs:PutResourcePolicy`。
+- **CloudFront 與 ALB**：
+  - **Host 與憑證**：`edge` 用 `Managed-AllViewer` 轉送 viewer 的 Host（`api.<zone>`），ALB 規則的 `host_headers` 才比對得到。轉送 Host 時，CloudFront 用 Host 比對 origin 憑證（AWS CloudFront 文件），所以 ALB 憑證同時涵蓋 `api.<zone>` 與 `origin-api.<zone>`。第一次 apply 時確認 `api.<zone>` 不會回 502。
+  - **ALB 仍是 public**（設計 D3）：直接打 `origin-api.<zone>` 或 ALB 的網址，security group 只放 CloudFront 的 prefix list（`dev` 另外放辦公室 CIDR），沒有 origin verify header 的請求只會拿到 404（`dev` 的測試頁除外）。
+  - **security group 配額**：prefix list 依它的最大項目數計入 security group 的規則數。`network` 只在 443 放 prefix list（CloudFront 只用 443 回源），CIDR 才同時開 443 與 80。CloudFront origin-facing prefix list 的最大項目數（用 `aws ec2 describe-managed-prefix-lists` 查 `MaxEntries`）加上 `dev` 辦公室 CIDR 的 2 條，接近每個 security group 60 條的預設配額；apply `network` 前先查 `MaxEntries`，超過就在 Service Quotas 提高「Inbound or outbound rules per security group」（這個配額乘上每個網卡的 security group 數不能超過 1000）。
+  - **ALB WAF 的 rate limit 失準**（設計 K9）：請求經過 CloudFront 後，ALB WAF 看到的來源 IP 是 CloudFront edge，很多 client 會被算成同一批 IP，`loadbalancer` 的 `rate_limit_per_5min` 可能誤擋正常流量。真正按 client 限流的是 `edge` 的 CloudFront WAF；ALB WAF 的上限要調高，或之後改用 `X-Forwarded-For`（可偽造，要搭配 origin verify），這一版不改。
+  - **CloudFront log 跨 region**：delivery source 在 us-east-1，bucket 在 stack 的 region，還沒在真實帳號確認可行。
+  - **回源 timeout**：`origin_read_timeout` 預設 60 秒（不申請配額的上限）。串流回應如果超過 60 秒沒有送出任何資料，CloudFront 會斷線，比 ALB 的 `idle_timeout`（300 秒）先到。
 - **AgentCore 與 Bedrock**：`/aws/vendedlogs/...` 當 log delivery 的目的地、Runtime 的 `APPLICATION_LOGS` delivery 能否建立；Runtime 的預設 log group 授權與實際行為可能不一致；guardrail 的 `STANDARD` tier 加 cross-region profile 的實際行為。
 - **網路**：沒有 NAT 時，app 與 agent 還缺 ECR、CloudWatch Logs、Secrets Manager 的 interface endpoint（`network` 只建 Bedrock 的三個）；Lambda 放進 VPC 後，只靠 app security group 與 NAT 或 endpoint 的出口能否呼叫 Bedrock、S3、Secrets Manager。
 - **S3 通知**：`incoming/`（無後綴）與 `extracted/` 加 `ready.json` 不重疊，S3 在 apply 時才會驗。

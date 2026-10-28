@@ -307,6 +307,11 @@ run "alb_accepts_prefix_lists" {
     condition     = toset([for r in values(local.sg_rules) : r.prefix_list_id if r.type == "ingress" && r.security_group == "alb"]) == toset(["pl-0aaaaaaa00000001"])
     error_message = "A prefix list must be usable as the ALB source"
   }
+
+  assert {
+    condition     = toset([for r in values(local.sg_rules) : r.from_port if r.type == "ingress" && r.security_group == "alb"]) == toset([443])
+    error_message = "A prefix list only opens 443; on 80 as well it would exceed the security group rule quota"
+  }
 }
 
 run "alb_ingress_needs_a_source" {

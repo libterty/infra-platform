@@ -310,6 +310,7 @@ run "access_logs_go_to_the_bucket_through_log_delivery" {
       target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" }
       target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789ab" }
       alb_dns_name              = "example-dev-alb-123.ap-northeast-1.elb.amazonaws.com"
+      alb_zone_id               = "Z14GRHDCWA56QT"
     }
   }
 
@@ -333,7 +334,7 @@ run "access_logs_go_to_the_bucket_through_log_delivery" {
 
 # ---- publishing ----
 
-run "publishes_the_three_keys_under_the_stack_path" {
+run "publishes_the_five_keys_under_the_stack_path" {
   command = plan
 
   override_module {
@@ -344,6 +345,7 @@ run "publishes_the_three_keys_under_the_stack_path" {
       target_group_arns         = { api = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/example-dev-alb-api/0123456789ab" }
       target_group_arn_suffixes = { api = "targetgroup/example-dev-alb-api/0123456789ab" }
       alb_dns_name              = "example-dev-alb-123.ap-northeast-1.elb.amazonaws.com"
+      alb_zone_id               = "Z14GRHDCWA56QT"
     }
   }
 
@@ -360,8 +362,15 @@ run "publishes_the_three_keys_under_the_stack_path" {
       alb_arn_suffix            = "/example/dev/loadbalancer/alb_arn_suffix"
       target_group_arn_suffixes = "/example/dev/loadbalancer/target_group_arn_suffixes"
       api_target_group_arn      = "/example/dev/loadbalancer/api_target_group_arn"
+      alb_dns_name              = "/example/dev/loadbalancer/alb_dns_name"
+      alb_zone_id               = "/example/dev/loadbalancer/alb_zone_id"
     }
-    error_message = "loadbalancer publishes three keys under its own path"
+    error_message = "loadbalancer publishes five keys under its own path"
+  }
+
+  assert {
+    condition     = local.published_strings.alb_dns_name == "example-dev-alb-123.ap-northeast-1.elb.amazonaws.com" && local.published_strings.alb_zone_id == "Z14GRHDCWA56QT"
+    error_message = "edge needs the ALB DNS name and its hosted zone ID for the origin-api alias record"
   }
 
   assert {

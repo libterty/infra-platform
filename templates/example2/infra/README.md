@@ -1,12 +1,12 @@
-# 範本 example2：13 個 stack 的專案 infra
+# 範本 example2：14 個 stack 的專案 infra
 
-適合跑在 ECS Fargate、帶 Aurora PostgreSQL、Redis、ALB 與 AgentCore 的專案，而且希望資料庫、IAM、ALB、AgentCore、ECS、bastion、告警各自獨立 apply（拆法跟 `templates/project-infra` 不同）。13 個 stack 之間只透過 SSM Parameter Store 傳值，每個 stack 都只呼叫 registry 的 module，不自己宣告 AWS resource。
+適合跑在 ECS Fargate、帶 Aurora PostgreSQL、Redis、CloudFront 加 ALB 與 AgentCore 的專案，而且希望資料庫、IAM、ALB、AgentCore、ECS、bastion、告警各自獨立 apply（拆法跟 `templates/project-infra` 不同）。14 個 stack 之間只透過 SSM Parameter Store 傳值，每個 stack 都只呼叫 registry 的 module，不自己宣告 AWS resource。
 
-> 狀態：13 個 stack 離線驗證通過（`scripts/validate.sh`），還沒在真實帳號 apply 過；「已知限制」裡的推論都要在第一次 apply 時確認。設計見 [`docs/design/v2/design-docs.md`](../../../docs/design/v2/design-docs.md) 第 5 章。
+> 狀態：14 個 stack 離線驗證通過（`scripts/validate.sh`），還沒在真實帳號 apply 過；「已知限制」裡的推論都要在第一次 apply 時確認。設計見 [`docs/design/v2/design-docs.md`](../../../docs/design/v2/design-docs.md) 第 5 章。
 
 ![example2 架構](./architecture.drawio.svg)
 
-圖是 `dev` 的樣子。`sit` 的元件相同，差別是 bastion 關閉、沒有 eval-batch bucket，tfvars 另外示範了一條 VPC peering。用 draw.io 打開 `architecture.drawio.svg` 就能編輯。
+圖是 `dev` 的樣子。`sit` 的元件相同，差別是 bastion 關閉、沒有 eval-batch bucket、ALB 只開給 CloudFront（不開辦公室 CIDR），tfvars 另外示範了一條 VPC peering。用 draw.io 打開 `architecture.drawio.svg` 就能編輯。
 
 ## apply 順序
 
@@ -23,12 +23,15 @@ apply 照下表由上往下，destroy 反過來；順序只定義在 `stacks.sh`
 | 7 | `iam` | ECS、Lambda、AgentCore 的 role |
 | 8 | `bridge` | 不建資源，只把樹 A 的 SSM key 轉寫到樹 B |
 | 9 | `loadbalancer` | ALB（HTTPS:443，HTTP:80 只轉到 443）、WAF、access log |
-| 10 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory |
-| 11 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling |
-| 12 | `operation` | bastion（可關）、兩個 import Lambda、bucket |
-| 13 | `postdeploy` | 服務告警、dashboard、trace；四個功能各有開關，預設全關 |
+| 10 | `edge` | CloudFront（`api.<env>.example.com`）、CloudFront 的 WAF、DNS record、CloudFront log |
+| 11 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory |
+| 12 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling |
+| 13 | `operation` | bastion（可關）、兩個 import Lambda、bucket |
+| 14 | `postdeploy` | 服務告警、dashboard、trace；四個功能各有開關，預設全關 |
 
-9–13 只讀樹 B（`/<project>-shared/<env>/infra/<key>`），外加其他後段 stack 的樹 A key，不直接讀前段 stack。樹 B 預設由 `bridge` 寫；要改由外部發布，見 [REFERENCE](./REFERENCE.md)〈樹 B 的 key 合約〉。
+使用者走 `api.<env>.example.com` 進 CloudFront，CloudFront 再用 HTTPS 連到 `origin-api.<env>.example.com`（ALB），回源請求帶 origin verify header，ALB 的規則沒看到正確的值就不轉給 `api`。
+
+9–14 只讀樹 B（`/<project>-shared/<env>/infra/<key>`），外加其他後段 stack 的樹 A key，不直接讀前段 stack。樹 B 預設由 `bridge` 寫；要改由外部發布，見 [REFERENCE](./REFERENCE.md)〈樹 B 的 key 合約〉。
 
 ## 部署
 
@@ -46,7 +49,7 @@ cd infra/terraform
 ```
 
 - 第一次部署要先單獨 apply `dns`，在上層網域做完 NS 委派才跑 `all`，步驟見下面〈第一次 apply〉。
-- `plan`、`apply` 前要先 `export TF_VAR_origin_verify_header_value=<至少 16 字元>`，少了它 plan 直接失敗。
+- `plan`、`apply` 前要先 `export TF_VAR_origin_verify_header_value=<至少 16 字元>`，少了它 plan 直接失敗。`loadbalancer`（ALB 檢查這個值）與 `edge`（CloudFront 送這個值）都要用它，兩邊必須是同一個值；換值的步驟見 [REFERENCE](./REFERENCE.md)〈換 origin verify 的值〉。
 - `stacks.sh` 綁好 backend、tfvars 與 `TF_DATA_DIR`，AWS 身分要自己換（例如 `aws-vault exec <profile> --`）。
 - destroy 之前，Aurora、ALB 的 deletion protection 要先關，ECR 與 S3 要先清空，secret 的值要先備份，細節見 [REFERENCE](./REFERENCE.md)〈destroy 之前〉。
 
@@ -56,7 +59,7 @@ cd infra/terraform
 
 1. `./stacks.sh dev dns apply`，記下輸出的 4 個 name server（之後可以用 `./stacks.sh dev dns output` 再看）。
 2. 在上層網域 `example.com` 的 zone 加一筆 `dev.example.com` 的 NS record，值是上一步的 4 個 name server。用 `dig NS dev.example.com +short` 確認查得到這 4 個。
-3. `./stacks.sh dev all apply`。`certificate` 會等到兩張憑證都簽發才結束；委派沒做好的話，等滿 45 分鐘會 timeout 失敗。
+3. `./stacks.sh dev all apply`。`certificate` 會等到兩張憑證都簽發才結束；委派沒做好的話，等滿 45 分鐘會 timeout 失敗。`edge` 建 CloudFront distribution 也要等它部署完，通常要幾分鐘到十幾分鐘。
 
 之後的 apply 不用再等：憑證已經簽發，到期前 ACM 會自動續約。完整說明見 [REFERENCE](./REFERENCE.md)〈第一次 apply〉。
 
@@ -71,10 +74,10 @@ scripts/validate.sh templates/example2/infra/terraform
 範本裡的值都是佔位，照下面順序改，每一步的細節見 [REFERENCE](./REFERENCE.md)〈改值的細節〉：
 
 1. module 的 `source`：用自己的 HCP organization 就換掉 `app.terraform.io/libterty/<module>/aws` 的前綴，拿不到 HCP token 就改成 `git::...?ref=<module>-v<semver>`（見 `docs/guides/consuming-modules.md`）。
-2. `common.tf` 的 `accounts_by_env`：填真實帳號，13 個 stack 一起改，保持一字不差。
+2. `common.tf` 的 `accounts_by_env`：填真實帳號，所有 stack 一起改，保持一字不差。
 3. `envs/*.tfbackend`：`bucket` 換成真實的 state bucket，`key` 的 `example-` 前綴換成自己的 `project`。
-4. `envs/*.tfvars` 的佔位值：`project`、`expected_account_id`、告警信箱、CIDR、網域（`dns` 的 `zone_name`）、映像 tag、資料庫規格、模型。
-5. origin verify 的值：不放 tfvars，用上面的 `export` 給。
+4. `envs/*.tfvars` 的佔位值：`project`、`expected_account_id`、告警信箱、CIDR、CloudFront prefix list 的 ID（`network`，依 region 不同）、網域（`dns` 的 `zone_name`）、映像 tag、資料庫規格、模型。
+5. origin verify 的值：不放 tfvars，用上面的 `export` 給，`loadbalancer` 與 `edge` 用同一個值。
 6. `agent/guardrails.tf`：denied topic、詞彙、拒絕文案都只是示意，換成自己產品的政策。
 7. 命名規則：`iam` 用命名規則組 ARN，改 bucket、log group、AgentCore、metric namespace 的名稱時，`iam` 要一起改。
 8. 跨 stack 要一致的值：`bastion_enabled`、`guardrail_cross_region_profile_id`、`app_port`。
@@ -86,6 +89,7 @@ scripts/validate.sh templates/example2/infra/terraform
 - IAM 與 policy 的形狀：RDS Proxy、Enhanced Monitoring、AgentCore Runtime、bastion 的權限是否足夠。
 - DNS 與憑證：上層網域的 NS 委派是人工步驟，委派錯了 `certificate` 會等到 timeout。
 - ALB 與 WAF：access log 的 vended delivery、WAF logging 需要的 apply 身分權限。
+- CloudFront：ALB security group 放 CloudFront prefix list 要先提高規則數配額；CloudFront log 從 us-east-1 跨 region 送到 bucket；換 origin verify 的值會短暫中斷；ALB WAF 的 rate limit 在 CloudFront 後面只看得到 edge 的 IP。
 - AgentCore 與 Bedrock：Runtime 的 log delivery、guardrail 加 cross-region profile 的實際行為。
 - 網路：沒有 NAT 時缺 ECR、CloudWatch Logs、Secrets Manager 的 interface endpoint。
 - S3 通知的 prefix 與 suffix 要到 apply 時才驗。
