@@ -21,7 +21,7 @@ run "publishes_foundation_keys" {
   override_module {
     target = module.kms
     outputs = {
-      key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+      key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
     }
   }
 
@@ -48,7 +48,7 @@ run "publishes_foundation_keys" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.app
+    target          = module.app_secret.aws_secretsmanager_secret.this
     override_during = plan
     values = {
       arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/app-AbCdEf"
@@ -58,7 +58,7 @@ run "publishes_foundation_keys" {
   assert {
     condition = local.published_strings == {
       alarm_topic_arn     = "arn:aws:sns:ap-northeast-1:111111111111:alpha-dev-alarms"
-      kms_key_arn         = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+      kms_key_arn         = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
       app_secret_arn      = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev/app-AbCdEf"
       flow_log_bucket_arn = "arn:aws:s3:::alpha-dev-flow-logs-111111111111"
       alb_log_bucket_arn  = "arn:aws:s3:::alpha-dev-alb-logs-111111111111"
@@ -110,12 +110,12 @@ run "topic_uses_project_key" {
   override_module {
     target = module.kms
     outputs = {
-      key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+      key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
     }
   }
 
   assert {
-    condition     = local.alarm_topic.kms_master_key_id == module.kms.key_arn && module.kms.key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/0000"
+    condition     = local.alarm_topic.kms_master_key_id == module.kms.key_arn && module.kms.key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
     error_message = "The alarm topic must be encrypted with the key of this stack"
   }
 
@@ -170,9 +170,26 @@ run "log_buckets_always_created" {
 run "secret_container_only" {
   command = plan
 
+  override_module {
+    target = module.kms
+    outputs = {
+      key_arn = "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
+
   assert {
-    condition     = aws_secretsmanager_secret.app.name == "alpha-dev/app"
+    condition     = module.app_secret.name == "alpha-dev/app"
     error_message = "The secret container must be named <name_prefix>/app"
+  }
+
+  assert {
+    condition     = local.app_secret.kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000"
+    error_message = "The secret must be encrypted with the customer managed key of this stack"
+  }
+
+  assert {
+    condition     = local.app_secret.recovery_window_in_days == 30
+    error_message = "The recovery window must stay at 30 days, the AWS default the secret had before it moved into the module"
   }
 }
 

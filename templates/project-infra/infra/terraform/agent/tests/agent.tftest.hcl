@@ -1250,7 +1250,7 @@ run "kb_corpus_bucket" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.kb_db["products"]
+    target          = module.kb_db_secret["products"].aws_secretsmanager_secret.this
     override_during = plan
     values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
@@ -1492,7 +1492,7 @@ run "publishes_kb_bucket_and_secret" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.kb_db["products"]
+    target          = module.kb_db_secret["products"].aws_secretsmanager_secret.this
     override_during = plan
     values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
@@ -1550,18 +1550,18 @@ run "kb_secret_created_per_knowledge_base" {
 
   assert {
     condition = (
-      toset(keys(aws_secretsmanager_secret.kb_db)) == toset(["products", "policies"]) &&
-      aws_secretsmanager_secret.kb_db["products"].name == "alpha-dev-kb-products-db" &&
-      aws_secretsmanager_secret.kb_db["policies"].name == "alpha-dev-kb-policies-db"
+      toset(keys(module.kb_db_secret)) == toset(["products", "policies"]) &&
+      module.kb_db_secret["products"].name == "alpha-dev-kb-products-db" &&
+      module.kb_db_secret["policies"].name == "alpha-dev-kb-policies-db"
     )
     error_message = "Each knowledge base must get its own database user secret named <project>-<env>-kb-<key>-db"
   }
 
   assert {
-    condition = alltrue([for s in values(aws_secretsmanager_secret.kb_db) :
-      s.kms_key_id == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" && s.recovery_window_in_days == null
+    condition = alltrue([for s in values(local.kb_db_secrets) :
+      s.kms_key_arn == "arn:aws:kms:ap-northeast-1:111111111111:key/00000000-0000-0000-0000-000000000000" && s.recovery_window_in_days == 30
     ])
-    error_message = "The database user secret must be encrypted with the project key of foundation and leave the recovery window at the provider default, as the foundation secret does"
+    error_message = "The database user secret must be encrypted with the project key of foundation and keep the 30-day recovery window, as the foundation secret does"
   }
 }
 
@@ -1580,7 +1580,7 @@ run "kb_database_user_not_ready_creates_only_the_secret" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.kb_db["products"]
+    target          = module.kb_db_secret["products"].aws_secretsmanager_secret.this
     override_during = plan
     values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
@@ -1591,7 +1591,7 @@ run "kb_database_user_not_ready_creates_only_the_secret" {
   }
 
   assert {
-    condition     = length(aws_secretsmanager_secret.kb_db) == 1 && length(module.corpus_bucket) == 1 && length(module.knowledge_base) == 0
+    condition     = length(module.kb_db_secret) == 1 && length(module.corpus_bucket) == 1 && length(module.knowledge_base) == 0
     error_message = "database_user_ready defaults to false, which must create the secret and the corpus bucket but no knowledge base"
   }
 
@@ -1629,14 +1629,14 @@ run "kb_uses_the_secret_it_created" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.kb_db["products"]
+    target          = module.kb_db_secret["products"].aws_secretsmanager_secret.this
     override_during = plan
     values          = { arn = "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-kb-products-db-AbCdEf" }
   }
 
   assert {
     condition = (
-      local.knowledge_base_inputs["products"].aurora.credentials_secret_arn == aws_secretsmanager_secret.kb_db["products"].arn &&
+      local.knowledge_base_inputs["products"].aurora.credentials_secret_arn == module.kb_db_secret["products"].arn &&
       local.knowledge_base_inputs["products"].aurora.credentials_secret_arn != local.database.secret_arn
     )
     error_message = "The knowledge base must connect with the secret this stack created for it, never the master secret of the data stack"

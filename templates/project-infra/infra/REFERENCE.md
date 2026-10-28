@@ -256,11 +256,24 @@ Proxy 建立時，它的 role 還沒有讀 secret 的權限（`iam-app` 在資�
 | 6 | 專案 | 上傳文件到語料 bucket，呼叫 `StartIngestionJob` |
 
 - 換密碼時 `put-secret-value` 與 `ALTER ROLE` 要一起做，secret 沒有自動輪替。
-- `agent` destroy 後 secret 會留在 7–30 天的復原期，期間重建同名 secret 會撞名。
+- `agent` destroy 後 secret 會留在 30 天的復原期，期間重建同名 secret 會撞名。
+
+## 升級：secret 改由 `secrets-manager-secret` 建立
+
+這一版起，`foundation` 的 `app` secret 與 `agent` 每個 KB 的資料庫帳號 secret 都改由 `secrets-manager-secret` module 建立。名稱、說明、KMS key 都沒變，復原期明確寫成原本的 AWS 預設 30 天。module 會在 secret 加上 `Name` tag，所以 plan 會看到一筆 tag 的 in-place 更新。
+
+- `foundation`：`moved` block 會把 `aws_secretsmanager_secret.app` 搬到 `module.app_secret`，直接 apply 即可。plan 若出現 destroy 或 create secret，先停下來確認。
+- `agent`：KB 的 key 由 tfvars 決定，範本寫不出逐一對應的 `moved`，Terraform 也不接受把整組 `for_each` resource 搬進 `for_each` module。已經建過 KB secret 的環境，在 apply 新版 `agent` 之前，對 `knowledge_bases` 的每個 key 跑一次：
+
+  ```sh
+  terraform state mv 'aws_secretsmanager_secret.kb_db["<kb>"]' 'module.kb_db_secret["<kb>"].aws_secretsmanager_secret.this'
+  ```
+
+  跑完再 plan，secret 只能有 tag 的 in-place 更新，不能有 destroy 或 create。沒搬就 apply 的話，Terraform 會刪掉舊 secret（進入 30 天復原期）再建同名 secret，因為撞名而失敗。
 
 ## 驗證
 
-本 repo 的 `scripts/validate.sh` 對每個 stack 跑 `terraform fmt`、靜態規則（IAM 只在兩個 IAM module、SSM 讀寫只在 `ssm-read` 與 `ssm-publish`、`common.tf` 一致、state key 格式、範本 stack 只有 secret 容器這個原生 resource）、`init -backend=false`、`validate`、`test`、`tflint`，並對 `envs/dev.tfvars`、`envs/prod.tfvars`、每個範例檔各跑一次測試。全程不需要 AWS 憑證，也不執行 `plan` 或 `apply`。
+本 repo 的 `scripts/validate.sh` 對每個 stack 跑 `terraform fmt`、靜態規則（IAM 只在兩個 IAM module、SSM 讀寫只在 `ssm-read` 與 `ssm-publish`、`common.tf` 一致、state key 格式、範本 stack 不宣告原生 resource）、`init -backend=false`、`validate`、`test`、`tflint`，並對 `envs/dev.tfvars`、`envs/prod.tfvars`、每個範例檔各跑一次測試。全程不需要 AWS 憑證，也不執行 `plan` 或 `apply`。
 
 mock 驗不到的事（IAM 實際權限、AWS API 的參數檢查、資源配額、apply 的時序、private DNS 與 NAT 的實際流量）要在真實帳號補驗，清單見設計文件第 7.2、7.3 節。已知還沒實際驗證過的設定：
 

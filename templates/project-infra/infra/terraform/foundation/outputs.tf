@@ -11,7 +11,7 @@ output "alarm_topic_arn" {
 
 output "app_secret_arn" {
   description = "Secret container; write the value with the console or the CLI."
-  value       = aws_secretsmanager_secret.app.arn
+  value       = module.app_secret.arn
 }
 
 output "flow_log_bucket_arn" {

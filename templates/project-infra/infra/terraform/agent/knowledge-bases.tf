@@ -27,13 +27,30 @@ module "corpus_bucket" {
 }
 
 # One database user secret per knowledge base, created without a value like the foundation secret: the project writes
-# the user name and password outside Terraform, so they never reach tfvars, SSM or state.
-resource "aws_secretsmanager_secret" "kb_db" {
-  for_each = var.knowledge_bases
+# the user name and password outside Terraform, so they never reach tfvars, SSM or state. The recovery window was the
+# AWS default (30 days) before the containers moved into the module; keep it. There is no moved block: the keys come
+# from tfvars, so existing secrets are moved with terraform state mv (REFERENCE.md).
+locals {
+  kb_db_secrets = {
+    for k in keys(var.knowledge_bases) : k => {
+      name                    = "${local.name_prefix}-kb-${k}-db"
+      description             = "Database user of knowledge base ${local.name_prefix}-${k}. The value is written outside Terraform."
+      kms_key_arn             = module.in.strings["kms_key_arn"]
+      recovery_window_in_days = 30
+    }
+  }
+}
 
-  name        = "${local.name_prefix}-kb-${each.key}-db"
-  description = "Database user of knowledge base ${local.name_prefix}-${each.key}. The value is written outside Terraform."
-  kms_key_id  = module.in.strings["kms_key_arn"]
+module "kb_db_secret" {
+  # HCP private registry (ADR-0004); another org or no HCP token: see docs/guides/consuming-modules.md
+  source   = "app.terraform.io/libterty/secrets-manager-secret/aws"
+  version  = "~> 0.1.0"
+  for_each = local.kb_db_secrets
+
+  name                    = each.value.name
+  description             = each.value.description
+  kms_key_arn             = each.value.kms_key_arn
+  recovery_window_in_days = each.value.recovery_window_in_days
 }
 
 locals {
@@ -54,7 +71,7 @@ locals {
       embedding_dimensions = kb.embedding_dimensions
       aurora = {
         cluster_arn            = local.database.cluster_arn
-        credentials_secret_arn = aws_secretsmanager_secret.kb_db[k].arn
+        credentials_secret_arn = module.kb_db_secret[k].arn
         database_name          = local.database.name
         table_name             = kb.table_name
         field_mapping          = kb.field_mapping

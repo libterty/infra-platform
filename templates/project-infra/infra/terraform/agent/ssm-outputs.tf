@@ -40,7 +40,7 @@ locals {
           bucket_arn             = module.corpus_bucket[k].arn
           inclusion_prefixes     = { for ds, d in cfg.data_sources : ds => sort(tolist(d.inclusion_prefixes)) }
           data_source_ids        = contains(keys(module.knowledge_base), k) ? module.knowledge_base[k].data_source_ids : {}
-          credentials_secret_arn = aws_secretsmanager_secret.kb_db[k].arn
+          credentials_secret_arn = module.kb_db_secret[k].arn
         }
       })
       agentcore_gateway = var.agentcore_gateway == null ? jsonencode({ enabled = false }) : jsonencode({
