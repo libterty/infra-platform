@@ -83,7 +83,7 @@
 
 - 值仍然用 `TF_VAR_origin_verify_header_value` 給，不放 tfvars。v9 起 `loadbalancer` 和 `edge` 兩個 stack 都要這個值，兩邊必須一致。
 - **plan 輸出**：module 的變數標 `sensitive`，plan 顯示 `(sensitive value)`。
-- **state**：`edge` 的 state 有明文（§2 第 2 點）。`loadbalancer` 的 state 原本就有明文，所以暴露面從一份 state 變成兩份，兩份都在同一個加密 state bucket，同一組權限控管。
+- **state**：`edge` 的 state 有明文（§2 第 2 點）。state 只存在使用範本的專案自己的 S3 state bucket，`.gitignore` 擋 `*.tfstate`，不會進任何 repo；這個 repo 只做離線驗證，不產生 state。`loadbalancer` 的 state 原本就有明文，所以暴露面從一份 state 變成兩份，兩份都在同一個加密 state bucket，同一組權限控管。
 - **傳輸**：K7 之後只在 TLS 裡傳。
 - **換值**：先 apply `loadbalancer`，讓 listener rule 同時接受新舊兩個值；再 apply `edge`；最後拿掉舊值。實作時確認 `alb` module 的 `origin_verify_header_value` 能不能收兩個值；不能收的話，換值期間會中斷，要寫進 REFERENCE。
 
@@ -325,6 +325,8 @@ containerimage foundation dns certificate network database iam bridge loadbalanc
 - `check-ssm-contract.sh` 會從 ORDER 檢查每個讀取都有寫入。
 
 ### 7.2 第一次 apply 的流程
+
+這是複製範本的專案在自己帳號部署時的步驟，寫進範本的 README 與 REFERENCE。這個 repo 不 apply，實作時只需要把文件寫對，離線驗證不受影響。
 
 1. `./stacks.sh dev dns apply`：輸出 4 個 NS。
 2. 人在上層網域 `example.com` 加一筆 NS record，委派 `dev.example.com`。用 `dig NS dev.example.com +short` 確認委派生效。
