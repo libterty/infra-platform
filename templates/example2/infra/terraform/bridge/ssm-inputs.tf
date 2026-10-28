@@ -22,6 +22,10 @@ locals {
     import_extract_role_arn        = "iam/import_extract_role_arn"
     import_load_role_arn           = "iam/import_load_role_arn"
     agent_runtime_role_arn         = "iam/agent_runtime_role_arn"
+    zone_id                        = "dns/zone_id"
+    zone_name                      = "dns/zone_name"
+    alb_certificate_arn            = "certificate/alb_certificate_arn"
+    cloudfront_certificate_arn     = "certificate/cloudfront_certificate_arn"
   }
 
   ssm_input_lists = {

@@ -28,6 +28,10 @@ override_module {
       import_extract_role_arn        = "arn:aws:iam::111111111111:role/example-dev-import-extract"
       import_load_role_arn           = "arn:aws:iam::111111111111:role/example-dev-import-load"
       agent_runtime_role_arn         = "arn:aws:iam::111111111111:role/example-dev-agent"
+      zone_id                        = "Z0123456789ABCDEFGHIJ"
+      zone_name                      = "dev.example.com"
+      alb_certificate_arn            = "arn:aws:acm:ap-northeast-1:111111111111:certificate/00000000-0000-0000-0000-000000000001"
+      cloudfront_certificate_arn     = "arn:aws:acm:us-east-1:111111111111:certificate/00000000-0000-0000-0000-000000000002"
     }
     lists = {
       services          = ["api", "worker"]

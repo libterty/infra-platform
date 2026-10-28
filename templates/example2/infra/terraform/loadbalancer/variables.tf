@@ -1,9 +1,3 @@
-variable "certificate_arn" {
-  description = "ACM certificate for the HTTPS listener. null serves HTTP only, which suits an ALB behind a CDN that connects over HTTP."
-  type        = string
-  default     = null
-}
-
 variable "idle_timeout" {
   description = "ALB idle timeout in seconds. It must exceed the longest streaming response."
   type        = number

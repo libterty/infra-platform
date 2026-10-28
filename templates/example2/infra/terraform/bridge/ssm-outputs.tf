@@ -24,6 +24,10 @@ locals {
     import_extract_role_arn        = module.in.strings["import_extract_role_arn"]
     import_load_role_arn           = module.in.strings["import_load_role_arn"]
     agent_runtime_role_arn         = module.in.strings["agent_runtime_role_arn"]
+    zone_id                        = module.in.strings["zone_id"]
+    zone_name                      = module.in.strings["zone_name"]
+    alb_certificate_arn            = module.in.strings["alb_certificate_arn"]
+    cloudfront_certificate_arn     = module.in.strings["cloudfront_certificate_arn"]
   }
 
   published_lists = {
@@ -45,5 +49,8 @@ module "ssm_publish" {
   lists      = local.published_lists
 
   # The guards report the key name; without this the module's own validation would fail first with a generic message.
-  depends_on = [terraform_data.values_not_empty, terraform_data.subnets_span_two_azs, terraform_data.json_values_decode]
+  depends_on = [
+    terraform_data.values_not_empty, terraform_data.subnets_span_two_azs, terraform_data.json_values_decode,
+    terraform_data.certificates_in_their_regions,
+  ]
 }
