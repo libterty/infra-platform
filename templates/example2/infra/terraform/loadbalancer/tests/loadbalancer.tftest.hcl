@@ -20,9 +20,10 @@ override_module {
   target = module.shared
   outputs = {
     strings = {
-      vpc_id          = "vpc-0123456789abcdef0"
-      alb_sg_id       = "sg-0123456789abcdef0"
-      alarm_topic_arn = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      vpc_id              = "vpc-0123456789abcdef0"
+      alb_sg_id           = "sg-0123456789abcdef0"
+      alarm_topic_arn     = "arn:aws:sns:ap-northeast-1:111111111111:example-dev-alarms"
+      alb_certificate_arn = "arn:aws:acm:ap-northeast-1:111111111111:certificate/00000000-0000-0000-0000-000000000001"
     }
     lists = {
       public_subnet_ids = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0bbbbbbbbbbbbbbb2"]
@@ -37,11 +38,12 @@ run "reads_only_tree_b" {
 
   assert {
     condition = local.shared_input_strings == {
-      vpc_id          = "infra/vpc_id"
-      alb_sg_id       = "infra/alb_sg_id"
-      alarm_topic_arn = "infra/alarm_topic_arn"
+      vpc_id              = "infra/vpc_id"
+      alb_sg_id           = "infra/alb_sg_id"
+      alarm_topic_arn     = "infra/alarm_topic_arn"
+      alb_certificate_arn = "infra/alb_certificate_arn"
     } && local.shared_input_lists == { public_subnet_ids = "infra/public_subnet_ids" }
-    error_message = "loadbalancer reads the VPC, the ALB security group, the alarm topic and the public subnets from tree B"
+    error_message = "loadbalancer reads the VPC, the ALB security group, the alarm topic, the ALB certificate and the public subnets from tree B"
   }
 }
 
@@ -133,6 +135,46 @@ run "host_headers_may_be_empty" {
 }
 
 # ---- target group and ALB (the real alb module plans) ----
+
+run "alb_serves_https_with_the_certificate_from_tree_b" {
+  command = plan
+
+  assert {
+    condition     = module.alb.listener_protocol == "HTTPS"
+    error_message = "With the certificate from tree B the alb module opens an HTTPS:443 listener"
+  }
+}
+
+# The alb module tests that HTTP:80 then only redirects to 443 with a 301; here the rules must not be on 80.
+run "listener_rules_are_on_443_and_80_only_redirects" {
+  command = plan
+
+  override_resource {
+    target          = module.alb.aws_lb_listener.https[0]
+    override_during = plan
+    values = {
+      arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:listener/app/example-dev-alb/0123456789abcdef/0000000000000443"
+    }
+  }
+
+  override_resource {
+    target          = module.alb.aws_lb_listener.http
+    override_during = plan
+    values = {
+      arn = "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:listener/app/example-dev-alb/0123456789abcdef/0000000000000080"
+    }
+  }
+
+  assert {
+    condition     = module.alb.listener_arns.https == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:listener/app/example-dev-alb/0123456789abcdef/0000000000000443"
+    error_message = "The HTTPS:443 listener must exist"
+  }
+
+  assert {
+    condition     = module.alb.listener_arn == module.alb.listener_arns.https
+    error_message = "The listener rules (origin verify, dev page) attach to 443, so 80 keeps only its redirect"
+  }
+}
 
 run "alb_creates_the_api_target_group_only" {
   command = plan

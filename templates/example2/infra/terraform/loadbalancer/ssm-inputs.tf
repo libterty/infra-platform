@@ -3,6 +3,8 @@ locals {
     vpc_id          = "infra/vpc_id"
     alb_sg_id       = "infra/alb_sg_id"
     alarm_topic_arn = "infra/alarm_topic_arn"
+    # Regional certificate for api.<zone> and origin-api.<zone>, issued by the certificate stack.
+    alb_certificate_arn = "infra/alb_certificate_arn"
   }
 
   shared_input_lists = {

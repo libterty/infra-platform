@@ -47,10 +47,11 @@ module "alb" {
   source  = "app.terraform.io/libterty/alb/aws"
   version = "~> 0.5.0"
 
-  name                = local.alb_name
-  subnet_ids          = module.shared.lists["public_subnet_ids"]
-  security_group_ids  = [module.shared.strings["alb_sg_id"]]
-  certificate_arn     = var.certificate_arn
+  name               = local.alb_name
+  subnet_ids         = module.shared.lists["public_subnet_ids"]
+  security_group_ids = [module.shared.strings["alb_sg_id"]]
+  # With a certificate the alb module serves the rules on HTTPS:443 and turns HTTP:80 into a redirect to 443.
+  certificate_arn     = module.shared.strings["alb_certificate_arn"]
   idle_timeout        = var.idle_timeout
   deletion_protection = var.deletion_protection
   # The object form keeps the association count known at plan time while the Web ACL ARN is not (alb 0.3.0).
