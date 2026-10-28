@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.4.0...s3-bucket-v0.5.0) (2026-10-28)
+
+
+### Features
+
+* **s3-bucket:** allow CloudFront distributions to read objects through OAC ([314a3cb](https://github.com/libterty/infra-platform/commit/314a3cb86cf5e62c345c13de4ce996c63e2061b7))
+
 ## [0.4.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.3.1...s3-bucket-v0.4.0) (2026-10-24)
 
 

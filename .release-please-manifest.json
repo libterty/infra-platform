@@ -21,7 +21,7 @@
   "modules/log-metric-alarm": "0.2.1",
   "modules/metric-alarm": "0.1.1",
   "modules/rds": "0.2.1",
-  "modules/s3-bucket": "0.4.0",
+  "modules/s3-bucket": "0.5.0",
   "modules/security-group": "0.1.1",
   "modules/sns-alarm-topic": "0.1.1",
   "modules/ssm-publish": "0.1.1",
