@@ -66,6 +66,7 @@
     "modules/sagemaker-model-registry": { "release-type": "terraform-module", "component": "sagemaker-model-registry", "initial-version": "0.1.0" },
     "modules/sagemaker-pipeline": { "release-type": "terraform-module", "component": "sagemaker-pipeline", "initial-version": "0.1.0" },
     "modules/scheduler-schedule": { "release-type": "terraform-module", "component": "scheduler-schedule", "initial-version": "0.1.0" },
+    "modules/secrets-manager-secret": { "release-type": "terraform-module", "component": "secrets-manager-secret", "initial-version": "0.1.0" },
     "modules/security-group": { "release-type": "terraform-module", "component": "security-group" },
     "modules/sns-alarm-topic": { "release-type": "terraform-module", "component": "sns-alarm-topic" },
     "modules/sqs-queue": { "release-type": "terraform-module", "component": "sqs-queue", "initial-version": "0.1.0" },
