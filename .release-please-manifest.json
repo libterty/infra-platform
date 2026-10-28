@@ -75,5 +75,6 @@
   "modules/secrets-manager-secret": "0.1.0",
   "modules/route53-zone": "0.1.0",
   "modules/route53-record": "0.1.0",
-  "modules/acm-certificate": "0.1.0"
+  "modules/acm-certificate": "0.1.0",
+  "modules/cloudfront-distribution": "0.1.0"
 }
