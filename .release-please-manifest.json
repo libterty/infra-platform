@@ -71,5 +71,6 @@
   "modules/iotsitewise": "0.1.0",
   "modules/sagemaker-model-registry": "0.1.0",
   "modules/sagemaker-pipeline": "0.1.0",
-  "modules/sagemaker-endpoint": "0.1.0"
+  "modules/sagemaker-endpoint": "0.1.0",
+  "modules/secrets-manager-secret": "0.1.0"
 }
