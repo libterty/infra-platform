@@ -77,5 +77,6 @@
   "modules/route53-record": "0.1.0",
   "modules/acm-certificate": "0.1.0",
   "modules/cloudfront-distribution": "0.1.0",
-  "modules/apigateway-http": "0.1.0"
+  "modules/apigateway-http": "0.1.0",
+  "modules/cognito-user-pool": "0.1.0"
 }
