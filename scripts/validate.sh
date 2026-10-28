@@ -57,12 +57,10 @@ done
 # A stack of a customer repo is judged by the rules of this template (S8 matches on the stack name only).
 customer_stack_root="templates/project-infra/infra/terraform"
 
-# S8 allow-list, one entry per row of the table in docs/design/v1/design-docs.md section 5.3
-# (native resources allowed in template stacks, for every template). Format: <stack>:<resource type>.
-s8_allowed=(
-  "foundation:aws_secretsmanager_secret"
-  "agent:aws_secretsmanager_secret"
-)
+# S8 allow-list of native aws_* resources a template stack may declare, one entry per resource row of the exception
+# list in docs/guides/project-infra-standard.md. Format: <stack>:<resource type>. Empty since v9: every stack only
+# calls modules.
+s8_allowed=()
 
 command -v terraform >/dev/null || { echo "找不到 terraform" >&2; exit 1; }
 
@@ -271,7 +269,8 @@ scan_pattern() {
 # S8: true when "<stack>:<type>" is in s8_allowed.
 s8_is_allowed() {
   local entry
-  for entry in "${s8_allowed[@]}"; do
+  # The ${a[@]+...} form keeps an empty array from tripping set -u on bash 3.2.
+  for entry in ${s8_allowed[@]+"${s8_allowed[@]}"}; do
     [ "$entry" = "$1:$2" ] && return 0
   done
   return 1
@@ -283,7 +282,7 @@ scan_stack_resources() {
   while IFS=: read -r ln type; do
     [ -n "$type" ] || continue
     if ! s8_is_allowed "$2" "$type"; then
-      echo "S8 $(rel "$1"):${ln}: stack ${2} 不得宣告 ${type}（不在 design §5.3 例外清單）" >&2
+      echo "S8 $(rel "$1"):${ln}: stack ${2} 不得宣告 ${type}（不在 project-infra-standard.md 的例外清單）" >&2
       fail_static=1
     fi
   done < <(awk '/^[[:space:]]*(#|\/\/)/ { next }
