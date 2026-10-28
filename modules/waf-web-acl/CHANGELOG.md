@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/libterty/infra-platform/compare/waf-web-acl-v0.1.1...waf-web-acl-v0.2.0) (2026-10-28)
+
+
+### Features
+
+* **waf-web-acl:** add scope input for CloudFront web ACLs in us-east-1 ([8398cca](https://github.com/libterty/infra-platform/commit/8398ccac5837ade30f8a1ad7a4dd9d54f9f16190))
+
 ## [0.1.1](https://github.com/libterty/infra-platform/compare/waf-web-acl-v0.1.0...waf-web-acl-v0.1.1) (2026-10-23)
 
 
