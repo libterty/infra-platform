@@ -1,0 +1,7 @@
+bucket       = "<state-bucket>"
+key          = "example-sit/containerimage/terraform.tfstate"
+region       = "ap-northeast-1"
+encrypt      = true
+use_lockfile = true
+# Placeholder: the dedicated state CMK (v7 design D15); replace it when copying the template.
+kms_key_id   = "<state-kms-key-arn>"
