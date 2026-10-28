@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Apply order, on one line: check-ssm-contract.sh parses it from here. Destroy runs it backwards.
-ORDER=(containerimage foundation dns certificate auth data iam api)
+ORDER=(containerimage foundation dns certificate auth data iam api web)
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
