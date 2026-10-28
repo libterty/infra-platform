@@ -4,14 +4,14 @@
 
 ## 目錄與檔案
 
-`infra/` 底下有 `README.md`、這份 `REFERENCE.md`、`architecture.drawio.svg` 與 `terraform/`。`terraform/` 底下是 11 個 stack 目錄，加上 `stacks.sh`（依序跑各 stack）與 `check-ssm-contract.sh`（靜態檢查 SSM 合約與 tfvars 一致性）。
+`infra/` 底下有 `README.md`、這份 `REFERENCE.md`、`architecture.drawio.svg` 與 `terraform/`。`terraform/` 底下是 13 個 stack 目錄，加上 `stacks.sh`（依序跑各 stack）與 `check-ssm-contract.sh`（靜態檢查 SSM 合約與 tfvars 一致性）。
 
 環境只有 `dev` 與 `sit`，帳號對照表在 `common.tf` 的 `accounts_by_env`。每個 stack 都有同一組檔案：
 
 | 檔案 | 內容 |
 |---|---|
 | `versions.tf`、`providers.tf` | Terraform 與 provider 版本、空的 `backend "s3" {}`、`allowed_account_ids`、`default_tags`（含 `Stack`） |
-| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表、各種前綴。11 個 stack 必須一字不差，`scripts/validate.sh` 會比對 |
+| `common.tf` | `project`、`env`、`aws_region`、`expected_account_id`、帳號對照表、各種前綴。13 個 stack 必須一字不差，`scripts/validate.sh` 會比對 |
 | `variables.tf` | 這個 stack 自己的變數，不放其他 stack 的 ARN 或 id |
 | `ssm-inputs.tf`、`ssm-outputs.tf` | 讀上游的值、發布給下游的值；沒有東西要讀或發布就沒有這個檔 |
 | `envs/<env>.tfvars`、`envs/<env>.tfbackend` | 非機密設定與 state 位置，都進版控；佔位值，複製後要改 |
@@ -26,15 +26,17 @@
 |---|---|---|---|---|
 | 1 | `containerimage` | ECR repository：`api`、`worker`、`import-extract`、`import-load`、`agent`。名稱是 `<project>-<image>`，不帶 env；兩個 env 共用同一個帳號時，一邊建，另一邊設 `adopt_existing = true` 沿用 | 無 | 服務清單、Runtime 清單、ECR URL 與 ARN |
 | 2 | `foundation` | 告警 SNS topic（只有 email 訂閱）、簽章 key 的兩個 secret 容器（值在 Terraform 外面寫） | 無 | 告警 topic、secret ARN |
-| 3 | `network` | VPC 四層 subnet（public、app、agent、db）、NAT（每個 AZ 一個，或關閉）、S3 gateway endpoint、Bedrock interface endpoint、所有 security group、可選的 VPC peering、NAT 告警 | foundation | VPC、各層 subnet、各 security group、peering |
-| 4 | `database` | Aurora PostgreSQL（含 RDS Proxy、Enhanced Monitoring）、兩組 Redis（`rate-limit`、`stream`）、連線數告警、partition 維護的 log 告警 | foundation、network | 資料庫與 Proxy endpoint、secret ARN、Redis endpoint |
-| 5 | `iam` | ECS、Lambda、AgentCore 各 role 與 policy；`eval_batch` role 只在 `dev` 建 | foundation、containerimage、database | 各 role ARN |
-| 6 | `bridge` | 把樹 A 的 key 原樣寫到樹 B，不建其他東西 | 前面所有 stack（樹 A） | 樹 B |
-| 7 | `loadbalancer` | ALB、listener 規則、WAF 與 WAF log、ALB access log（bucket 與 `log-delivery`） | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
-| 8 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory、Runtime 的 log delivery | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
-| 9 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
-| 10 | `operation` | bastion（可關）、兩個 import Lambda、import bucket、eval-batch bucket（只在 `dev`）、ETL 指標 | 樹 B | bucket、Lambda 名稱 |
-| 11 | `postdeploy` | 服務告警與 dashboard、stream 告警、log 告警、trace delivery | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
+| 3 | `dns` | 這個環境的 public hosted zone，名稱來自 tfvars 的 `zone_name`（例如 `dev.example.com`） | 無 | zone ID、zone 名稱、name server |
+| 4 | `certificate` | 兩張 DNS 驗證的 ACM 憑證，驗證 record 寫進 `dns` 的 zone：ALB 用的 regional 憑證（`api.<zone>`，SAN `origin-api.<zone>`）、CloudFront 用的 us-east-1 憑證（`api.<zone>`）。apply 會等到簽發 | dns | 兩張憑證的 ARN |
+| 5 | `network` | VPC 四層 subnet（public、app、agent、db）、NAT（每個 AZ 一個，或關閉）、S3 gateway endpoint、Bedrock interface endpoint、所有 security group、可選的 VPC peering、NAT 告警 | foundation | VPC、各層 subnet、各 security group、peering |
+| 6 | `database` | Aurora PostgreSQL（含 RDS Proxy、Enhanced Monitoring）、兩組 Redis（`rate-limit`、`stream`）、連線數告警、partition 維護的 log 告警 | foundation、network | 資料庫與 Proxy endpoint、secret ARN、Redis endpoint |
+| 7 | `iam` | ECS、Lambda、AgentCore 各 role 與 policy；`eval_batch` role 只在 `dev` 建 | foundation、containerimage、database | 各 role ARN |
+| 8 | `bridge` | 把樹 A 的 key 原樣寫到樹 B，不建其他東西 | 前面所有 stack（樹 A） | 樹 B |
+| 9 | `loadbalancer` | ALB（HTTPS:443 用樹 B 的 ALB 憑證，HTTP:80 只轉到 443）、listener 規則、WAF 與 WAF log、ALB access log（bucket 與 `log-delivery`） | 樹 B | ALB 與 target group 的識別、完整的 target group ARN、WAF 名稱 |
+| 10 | `agent` | Bedrock guardrail、AgentCore Runtime 與 Memory、Runtime 的 log delivery | 樹 B | Runtime 的 ARN、Memory 的 id 與 ARN、guardrail 的 id |
+| 11 | `application` | ECS cluster、`api` 與 `worker` 服務、autoscaling | 樹 B、loadbalancer、agent | cluster、服務、log group 名稱，autoscaling 上限與 stream 長度上限 |
+| 12 | `operation` | bastion（可關）、兩個 import Lambda、import bucket、eval-batch bucket（只在 `dev`）、ETL 指標 | 樹 B | bucket、Lambda 名稱 |
+| 13 | `postdeploy` | 服務告警與 dashboard、stream 告警、log 告警、trace delivery | 樹 B、loadbalancer、application、agent | 不發布；四個功能各有開關，預設全關 |
 
 ## SSM 合約：樹 A 與樹 B
 
@@ -49,9 +51,9 @@
 
 ### 樹 B 的 key 合約（給外部發布者）
 
-`/<project>-shared/<env>/infra/<key>` 底下要有下面 26 個 key，少一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值來自樹 A 的同名 key（`bridge` 原樣轉寫）。
+`/<project>-shared/<env>/infra/<key>` 底下要有下面 30 個 key，少一個，讀它的後段 stack 在 plan 就會失敗。不在表裡的 key 不需要發布。值來自樹 A 的同名 key（`bridge` 原樣轉寫）。
 
-String 22 個（值不可為空）、StringList 4 個（逗號分隔）：
+String 26 個（值不可為空）、StringList 4 個（逗號分隔）：
 
 | key | 型別 | 內容 | 讀的 stack |
 |---|---|---|---|
@@ -77,12 +79,16 @@ String 22 個（值不可為空）、StringList 4 個（逗號分隔）：
 | `import_extract_role_arn` | String | import-extract Lambda role | operation |
 | `import_load_role_arn` | String | import-load Lambda role | operation |
 | `agent_runtime_role_arn` | String | AgentCore Runtime role | agent |
+| `zone_id` | String | 這個環境的 hosted zone ID | 保留給 CloudFront 的 `edge` stack（還沒加入） |
+| `zone_name` | String | zone 名稱，例如 `dev.example.com` | 保留給 `edge` |
+| `alb_certificate_arn` | String | ALB 用的 ACM 憑證，在 ALB 的 region | loadbalancer |
+| `cloudfront_certificate_arn` | String | CloudFront 用的 ACM 憑證，在 us-east-1 | 保留給 `edge` |
 | `services` | StringList | 服務名稱 | application |
 | `public_subnet_ids` | StringList | public subnet，至少 2 個 | loadbalancer |
 | `app_subnet_ids` | StringList | app subnet，至少 2 個 | application、operation |
 | `agent_subnet_ids` | StringList | agent subnet，至少 2 個 | agent |
 
-`bridge` 在 apply 前用 `guards.tf` 檢查：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes` 與 `ecr_repository_urls` 是合法 JSON。外部發布者也應該照這幾條驗過再寫。
+`bridge` 在 apply 前用 `guards.tf` 檢查：String 不可為空、`*_subnet_ids` 至少 2 個、`agent_runtimes` 與 `ecr_repository_urls` 是合法 JSON、`alb_certificate_arn` 是 `aws_region` 的 ACM ARN、`cloudfront_certificate_arn` 是 us-east-1 的 ACM ARN。外部發布者也應該照這幾條驗過再寫。
 
 ### 合約的寫法慣例
 
@@ -160,18 +166,30 @@ cd infra/terraform
 
 手打 `terraform` 時，環境由四件事決定：AWS 身分（`aws-vault exec <profile> --`）、backend（`-backend-config=envs/<env>.tfbackend`）、變數（`-var-file=envs/<env>.tfvars`）、工作目錄（`TF_DATA_DIR=.terraform-<env>`）。`stacks.sh` 把後三個綁在一起，AWS 身分要自己換；打到錯的帳號會被 `allowed_account_ids` 擋下。
 
+## 第一次 apply
+
+複製範本的專案第一次在自己帳號部署時，照這個順序（以 `dev` 為例）：
+
+1. `./stacks.sh dev dns apply`：建 `dev.example.com` 的 zone，輸出 4 個 name server。之後要再看，跑 `./stacks.sh dev dns output`。
+2. 在上層網域 `example.com` 的 zone 加一筆 NS record：名稱 `dev.example.com`，值是上一步的 4 個 name server。上層網域不在同一個帳號或不在 Route 53 也可以，到它的 DNS 服務商加。加完用 `dig NS dev.example.com +short` 確認回來的是這 4 個。
+3. `./stacks.sh dev all apply`：已經 apply 過的 stack 不會有變更；`certificate` 會等到兩張憑證都簽發才結束。委派沒做或做錯的話，ACM 驗不到 DNS record，等滿 45 分鐘（`acm-certificate` 的 `validation_timeout`）後 timeout 失敗，錯誤訊息看得出是在等驗證。這時修好委派再跑一次就好。
+4. 之後的 apply 不用再等：憑證已經簽發，到期前 ACM 自動續約，只要 DNS 驗證 record 還在 zone 裡。
+
+`stacks.sh` 不檢查委派：離線沒有可靠的方式判斷，所以這一步靠人確認。兩張憑證的 `api.<zone>` 共用同一筆驗證 record，`acm-certificate` 用 `allow_overwrite` 處理，不會衝突。
+
 ## 改值的細節
 
 README〈複製出去之後要改什麼〉每一步的完整說明，照這個順序改：
 
 1. **module 的 `source`**：從 HCP private registry 引用（`app.terraform.io/libterty/<module>/aws`，ADR-0004）。用自己的 organization 就換掉前綴；拿不到 HCP token 就改成 `git::...?ref=<module>-v<semver>`。一次改完的指令見 `docs/guides/consuming-modules.md`。
-2. **帳號表**：`common.tf` 的 `accounts_by_env` 目前是 `111111111111`（dev）與 `222222222222`（sit）。填真實帳號，11 個 stack 一起改，保持一字不差。
+2. **帳號表**：`common.tf` 的 `accounts_by_env` 目前是 `111111111111`（dev）與 `222222222222`（sit）。填真實帳號，13 個 stack 一起改，保持一字不差。
 3. **state bucket**：每份 `envs/*.tfbackend` 的 `bucket` 是 `<state-bucket>`，換成真實 bucket；`key` 的 `example-` 前綴換成自己的 `project`（格式 `<project>-<env>/<stack>/terraform.tfstate`，`validate.sh` 會檢查）。
 4. **tfvars 的佔位值**：每份 `envs/*.tfvars` 的 `project`、`expected_account_id`，以及：
 
    | stack | 要改的值 |
    |---|---|
    | `foundation` | `alarm_emails`（現在是 `ops@example.com`） |
+   | `dns` | `zone_name`（現在是 `<env>.example.com`，換成自己網域底下的子網域） |
    | `network` | `vpc_cidr`、`azs`、`alb_ingress`（現在是文件用的 `203.0.113.0/24`） |
    | `loadbalancer` | `origin_verify_host_headers`、`rate_limit_allowlist_cidrs`（現在是 `198.51.100.0/24`） |
    | `application` | `cors_allow_origins`、各映像的 `*_image_tag`（`operation` 與 `agent` 也有映像 tag） |
@@ -206,8 +224,9 @@ README〈複製出去之後要改什麼〉每一步的完整說明，照這個�
 | S3 bucket（`operation` 的 import 與 eval-batch bucket、`loadbalancer` 的 access log bucket） | `force_destroy = false` | bucket 不是空的會刪不掉。先清空（含舊版本與刪除標記），確認資料不需要再刪 |
 | Secrets Manager secret（`foundation`） | `recovery_window_in_days = 7` | 刪除後保留 7 天，期間不能用同名重建；secret 的值是在 Terraform 外面寫的，刪了就沒有，要先備份 |
 | Redis（`database`） | module 沒有設定 final snapshot | 要保留資料就先手動做 snapshot |
+| hosted zone（`dns`） | `force_destroy = false` | zone 裡有 Terraform 以外建的 record 就刪不掉，先刪掉那些 record。上層網域的 NS 委派要自己拿掉 |
 
-`bridge` 之後的 stack（7–11）只依賴樹 B，要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經這樣排；單獨 destroy 某個 stack 時要自己注意順序。外部發布的樹 B、state bucket 本身不是這份範本建的，destroy 不會刪。
+`bridge` 之後的 stack（9–13）只依賴樹 B，要先 destroy 它們，再 destroy `bridge`。`stacks.sh` 的反向順序已經這樣排；單獨 destroy 某個 stack 時要自己注意順序。外部發布的樹 B、state bucket 本身不是這份範本建的，destroy 不會刪。
 
 ## 已知限制的細節
 
