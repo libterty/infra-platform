@@ -6,7 +6,7 @@
 
 ## module
 
-共 73 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 74 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -51,6 +51,7 @@
 | 共用基礎 | `s3-bucket` | S3 bucket | [![s3-bucket](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fs3-bucket%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=s3-bucket-v) |
 | 共用基礎 | `sns-alarm-topic` | 告警用的 SNS topic | [![sns-alarm-topic](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsns-alarm-topic%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sns-alarm-topic-v) |
 | 共用基礎 | `security-group` | security group 與規則 | [![security-group](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsecurity-group%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=security-group-v) |
+| 共用基礎 | `secrets-manager-secret` | Secrets Manager secret 容器（不含值）、resource policy、輪替 | [![secrets-manager-secret](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsecrets-manager-secret%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=secrets-manager-secret-v) |
 | IAM | `iam-role` | IAM role 與 inline policy | [![iam-role](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiam-role%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iam-role-v) |
 | IAM | `iam-role-policy` | 替既有的 role 加 inline policy | [![iam-role-policy](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiam-role-policy%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iam-role-policy-v) |
 | IAM | `iam-oidc-provider` | EKS 的 IAM OIDC provider | [![iam-oidc-provider](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiam-oidc-provider%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iam-oidc-provider-v) |
