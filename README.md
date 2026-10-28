@@ -117,6 +117,7 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 | [`templates/example3/`](./templates/example3/infra/README.md) | 跑在 EKS 的應用，用 Helm 部署 |
 | [`templates/example4/`](./templates/example4/infra/README.md) | 資料平台：串流收資料、ETL、資料倉儲、BI 與搜尋 |
 | [`templates/example5/`](./templates/example5/infra/README.md) | IoT Edge AI：裝置開通與 OTA、遙測進 S3 與搜尋、Greengrass 邊緣推論、模型訓練與核准 |
+| [`templates/example6/`](./templates/example6/infra/README.md) | Serverless Web 應用：Cognito 登入、API Gateway 加 Lambda、DynamoDB，前端與 API 共用 CloudFront 和 WAF |
 
 ## 不同團隊怎麼用
 
