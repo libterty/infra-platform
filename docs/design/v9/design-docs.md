@@ -1,6 +1,6 @@
 # infra-platform v9 設計文件：邊緣層與 serverless module、example2 接 CDN、templates/example6
 
-> 狀態：設計已確認（2026-10-28），實作中，見 [`implement-process.md`](./implement-process.md)。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
+> 狀態：已實作（2026-10-28，I0–I10，見 [`implement-process.md`](./implement-process.md)）。實作時跟設計不同的決定記在 §14，兩邊不同時以 §14 與程式碼為準。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
 > 範圍：新增 7 個 module（Secrets Manager secret、ACM 憑證、Route 53 zone 與 record、CloudFront distribution、API Gateway HTTP API、Cognito user pool），3 個既有 module 升 minor（`waf-web-acl`、`s3-bucket`、`log-delivery`）。example2 加上 DNS、憑證與 CloudFront；新建 serverless 範本 `templates/example6`；範本裡 6 處自己宣告的 secret 改用新 module。帳號層的治理（CloudTrail、Config、GuardDuty、Security Hub、Backup、Budgets）不在這一版。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。provider schema 是 aws 6.70.0（`terraform providers schema -json`，2026-10-28）的結果。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
 
@@ -420,22 +420,21 @@ containerimage foundation dns certificate auth data iam api web
 
 範本 stack 的測試照 example5：每個 stack 的 `tests/` 用 mock 驗 SSM 讀寫、名稱與跨 stack 一致的值。
 
-## 10. 成本估計（粗估，美元／月，未查證）
+## 10. 成本估計（美元／月，2026-10-28 查官方價目頁）
 
-> 這一節的價格沒有逐項查過官方價目表，只能拿來判斷量級，不要當報價。實作 I10 時照 v8 §10 的做法查 Tokyo 價格並更新，來源寫進 §13。
-
-| 項目 | dev 估計 | 說明 |
+| 項目 | 價格 | dev 閒置估計 |
 |---|---|---|
-| Route 53 hosted zone | 0.5 | 每個 zone，查詢量另計 |
-| ACM 公開憑證 | 0 | |
-| Secrets Manager | 0.4／secret | 加 API 呼叫 |
-| CloudFront | 接近 0 | 低流量時落在免費額度內 |
-| CloudFront WAF（example2、example6 各一個） | 約 10 起 | web ACL 加每條規則月費，加請求費 |
-| API Gateway HTTP API | 接近 0 | 依請求數 |
-| Cognito `ESSENTIALS` | 0 | 免費額度內的 MAU |
-| Lambda、DynamoDB on-demand | 接近 0 | 依用量 |
+| Route 53 hosted zone | 每個 zone 0.50；標準查詢每百萬 0.40；指到 CloudFront 的 alias 查詢免費 | 0.5 |
+| ACM 公開憑證 | 免費 | 0 |
+| Secrets Manager | 每個 secret 0.40；每 1 萬次 API 呼叫 0.05 | example2 0.8、example6 0.8 |
+| CloudFront WAF | web ACL 5.00；每條規則或 managed rule group 1.00；每百萬請求 0.60 | 每個範本約 8（兩個 managed rule group 加一條 rate limit） |
+| CloudFront | 依流量；flat-rate Free 方案月費 0（每月 100 萬請求、100 GB、含 5 條 WAF 規則） | 接近 0 |
+| API Gateway HTTP API | 每百萬請求約 1.00（官方範例價，Tokyo 未列）；前 12 個月每月 100 萬次免費 | 接近 0 |
+| Cognito `ESSENTIALS` | 每月 10,000 MAU 免費，之後每 MAU 0.015 | 0 |
+| Lambda、DynamoDB on-demand | 依用量 | 接近 0 |
 
-example2 與 example6 每個環境的固定成本主要都是 CloudFront WAF；example6 其他部分閒置時接近 0。
+- example2 每個環境的增量約 9 美元／月（WAF 8、zone 0.5、請求費另計）；example6 每個環境閒置約 10 美元／月（WAF 8、zone 0.5、兩個 secret 0.8、CMK 1）。
+- flat-rate Free 方案可能省下 dev／sit 的 WAF 月費，範本沒有設定，記在兩份 REFERENCE 當選項。
 
 ## 11. 風險與 mock 驗不到的事
 
@@ -474,8 +473,51 @@ I1–I5 的目錄互不重疊，可以在各自的 worktree 平行做。I1 的�
 - aws provider 6.70.0 schema：本機 `terraform providers schema -json`（2026-10-28），§2 第 1–5 點、§5 的 resource 與屬性。
 - example2 現況：`templates/example2/infra/terraform/loadbalancer/variables.tf`（`certificate_arn` 為 `null` 時只開 HTTP）、`network/variables.tf`（`alb_ingress` 與 prefix list 配額）、`application/variables.tf`（`trusted_proxies`）。
 - 範本的 secret：`templates/*/infra/terraform/foundation/secrets.tf`、`templates/project-infra/infra/terraform/agent/knowledge-bases.tf`；S8 例外清單：`scripts/validate.sh` 的 `s8_allowed`。
-- 未查證、實作時補來源：HTTP API 與 WAF 的支援範圍（§2 第 6 點）、CloudFront 轉送 Host 時的 SNI 行為（K8）、Cognito `COGNITO_DEFAULT` 寄信上限（K11）、§10 的價格。
+- 實作時查證（2026-10-28）：
+  - HTTP API 不能掛 WAF：<https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html>
+  - HTTP API access log 不需要帳號層 CloudWatch role：<https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html>
+  - `COGNITO_DEFAULT` 每個帳號每天 50 封：<https://docs.aws.amazon.com/cognito/latest/developerguide/quotas.html>
+  - CloudFront 轉送 Host 時用 Host 做 SNI 與憑證比對（K8）：<https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-cloudfront-to-custom-origin.html>
+  - 價格：<https://aws.amazon.com/waf/pricing/>、<https://aws.amazon.com/route53/pricing/>、<https://aws.amazon.com/secrets-manager/pricing/>、<https://aws.amazon.com/cloudfront/pricing/>、<https://aws.amazon.com/api-gateway/pricing/>、<https://aws.amazon.com/cognito/pricing/>
 
 ## 14. 實作後的變更
 
-（實作時填。）
+### 查證結果
+
+- §2 第 6 點成立：AWS WAF 只保護 REST API，不保護 HTTP API。
+- K8 成立：轉送 Host 時，CloudFront 用 Host 做 SNI 與憑證比對，ALB 憑證含 `api.<env>` 是必要的。
+- K11 的上限是每個帳號每天 50 封，不能提高。
+- §5.6 的 access log 不需要帳號層的 CloudWatch role。
+- §4.1 的換值中斷成立：`alb` 的 `origin_verify_header_value` 只收一個值，REFERENCE 寫了換值步驟。
+
+### module
+
+- `secrets-manager-secret`：拿掉「`-` 加 6 個字元結尾」的名稱檢查。它會擋到 example4、example5 既有的 `opensearch-master`，改名等於重建 secret；README 改成提醒一律用完整 ARN 引用。
+- `acm-certificate`：
+  - 驗證 record 的 `for_each` key 由輸入名稱計算（去掉 `*.`），plan 時已知。
+  - `allow_overwrite = true` 套在所有驗證 record：同帳號兩張憑證涵蓋同一個名稱時（example2 的 ALB 與 CloudFront 憑證），驗證 record 完全相同。
+  - 加 `create_before_destroy`；不加 `Name` tag（ACM 的 tag 值不收 `*`）。
+- `cloudfront-distribution`：
+  - 多一個必填的 `name`（OAC 名稱、`Name` tag、`comment` 預設值）。
+  - `spa_fallback` 改用只掛在預設 behavior 的 CloudFront Function（viewer-request）。原本的 `custom_error_response` 套用到整個 distribution，會把 `/api/*` 的 403、404 換成 `/index.html` 加 200。§5.5 原本把 CloudFront Functions 列在「刻意不做」。
+  - `response_headers_policy` 不能設 `null` 取消；用預設憑證時不設 TLS 最低版本。
+  - cache 與 origin request policy 的 data source `id` 無法 mock，測試只確認查詢的名稱。
+- `apigateway-http`：public route 不收 scope；明寫 `disable_execute_api_endpoint = false` 會覆蓋預設。
+- `cognito-user-pool`：`domain_prefix` 必填（code flow 需要 hosted UI）；`sign_in_attributes` 只收 `email`、`phone_number`；使用者名稱不分大小寫；多了 `temporary_password_validity_days`。
+- `log-delivery` 原本已是 0.2.1，這次升到 0.3.0，不是 §5.8 寫的 0.2.0。
+- `waf-web-acl` 0.2.0：`CLOUDFRONT` 時 logging 的 KMS key 必須在 us-east-1。`s3-bucket` 0.5.0：distribution 必須在目前帳號（precondition）；缺檔時 CloudFront 收到 403。
+
+### 範本
+
+- secret 搬遷：依賴 AWS 預設 30 天的地方（example4、example5、project-infra 的 `app` 與 `kb_db`）明寫 `recovery_window_in_days = 30`；module 會加 `Name` tag，這些 secret 第一次 plan 會有一個 in-place 的 tag 變更。project-infra 的 `kb_db` 不能用 `moved`（Terraform 不接受整組 for_each resource 搬進 for_each module），REFERENCE 寫 `terraform state mv`。
+- example2：
+  - `bridge` 檢查兩張憑證的 region（ALB 憑證在 `aws_region`、CloudFront 憑證在 us-east-1）。
+  - `common.tf` 的註解不再寫 stack 數。
+- example6：
+  - `auth` 讀 `dns/zone_name` 組 callback 網址；`api` 沒有 custom domain，不讀 `dns`。
+  - 多發布 `dns/name_servers`、`web/site_bucket_name`、`web/distribution_id`（上傳前端與清 cache 用）。
+  - `app` 同時建 A 與 AAAA alias；CloudFront log bucket 與前端 bucket 都用 SSE-S3，前端 bucket `never_expire = true`。
+  - `containerimage` 在 `foundation` 之前，ECR 用 AES256。
+  - Lambda 拉 ECR 映像靠部署身分，execution role 不給 ECR 權限，跟 example2 一樣（未確認，列在 REFERENCE）。
+  - WAF rate limit 每 5 分鐘 2000；header 名稱在 `api`、`web` 兩份 tfvars，測試鎖住兩邊一致。
+  - origin verify 換值：Lambda 同時接受 secret 的 `AWSCURRENT` 與 `AWSPREVIOUS`，換完 CloudFront 再拿掉舊值（REFERENCE 的建議做法）。

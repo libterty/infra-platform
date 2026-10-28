@@ -1,6 +1,6 @@
 # infra-platform v9 實作流程：邊緣層與 serverless module、example2 接 CDN、templates/example6
 
-> 狀態：I0 完成，I1 起實作中。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：I0–I10 全部完成（2026-10-28）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -46,16 +46,16 @@
 | Phase | 內容 | 狀態 | PR |
 |---|---|---|---|
 | I0 | v9 設計文件與實作流程 | 完成（2026-10-28 確認） | #242 |
-| I1 | `secrets-manager-secret`；6 處 secret 搬遷；S8 例外清單；標準指南 | | |
-| I2 | `route53-zone`、`route53-record`、`acm-certificate` | | |
-| I3 | `waf-web-acl` 0.2.0、`s3-bucket` 0.5.0、`log-delivery` 0.2.0 | | |
-| I4 | `apigateway-http`、`cognito-user-pool` | | |
-| I5 | `cloudfront-distribution` | | |
-| I6 | example2 `dns`、`certificate`、`bridge`、`loadbalancer` HTTPS | | |
-| I7 | example2 `edge`、tfvars、README、REFERENCE、架構圖 | | |
-| I8 | example6 骨架、`containerimage`、`foundation`、`dns`、`certificate`、`data`、`iam` | | |
-| I9 | example6 `auth`、`api`、`web` | | |
-| I10 | example6 文件、根 README、全量驗證、價格查證、design §14 | | |
+| I1 | `secrets-manager-secret`；6 處 secret 搬遷；S8 例外清單；標準指南 | 完成：發版、HCP ok；範本搬遷另一個 PR | #243、#258 |
+| I2 | `route53-zone`、`route53-record`、`acm-certificate` | 完成：發版、HCP ok | #244 |
+| I3 | `waf-web-acl` 0.2.0、`s3-bucket` 0.5.0、`log-delivery` 0.2.0 | 完成：waf-web-acl 0.2.0、s3-bucket 0.5.0、log-delivery 0.3.0，HCP ok | #252 |
+| I4 | `apigateway-http`、`cognito-user-pool` | 完成：發版、HCP ok | #250 |
+| I5 | `cloudfront-distribution` | 完成：發版、HCP ok；spa_fallback 改 CloudFront Function | #249 |
+| I6 | example2 `dns`、`certificate`、`bridge`、`loadbalancer` HTTPS | 完成 | #260 |
+| I7 | example2 `edge`、tfvars、README、REFERENCE、架構圖 | 完成 | I7PR |
+| I8 | example6 骨架、`containerimage`、`foundation`、`dns`、`certificate`、`data`、`iam` | 完成 | #259 |
+| I9 | example6 `auth`、`api`、`web` | 完成 | #261 |
+| I10 | example6 文件、根 README、全量驗證、價格查證、design §14 | 完成 | I10PR |
 
 ## 每個 Phase 的做法與驗收
 

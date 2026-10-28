@@ -6,9 +6,10 @@
 
 ## 成本
 
-價格還沒逐項查證，只能用來判斷量級，不要當報價；估算方式見 [design §10](../../../docs/design/v9/design-docs.md)。
+價格是 2026-10-28 查 AWS 官方價目頁的公開牌價（us-east-1 起算的全域價格，WAF、Route 53、Secrets Manager 不分 region），細節與來源見 [design §10](../../../docs/design/v9/design-docs.md)。
 
-- 閒置時每個環境的固定成本主要是 CloudFront WAF（web ACL 月費加兩個 managed rule group 與一條 rate limit 規則的月費，再加請求費），約 10 美元／月起。
+- 閒置時每個環境的固定成本主要是 CloudFront WAF：web ACL 5 美元，加兩個 managed rule group 與一條 rate limit 規則各 1 美元，共 8 美元／月，另加每百萬請求 0.6 美元。
+- CloudFront 的 flat-rate Free 方案（月費 0、每月 100 萬請求、100 GB 傳輸、含 5 條 WAF 規則）可能讓 dev／sit 省下這筆 WAF 月費；範本沒有設定 flat-rate，要用的話在 console 對這個 distribution 啟用，並確認規則數在 5 條內。
 - 其他固定費用很小：hosted zone 每個約 0.5、兩個 secret 各約 0.4、CMK 約 1。
 - 依用量計費、低流量時接近 0：CloudFront、API Gateway HTTP API、Lambda、DynamoDB on-demand、Cognito `ESSENTIALS`（免費額度內的 MAU）、CloudWatch Logs、ECR 儲存。
 
