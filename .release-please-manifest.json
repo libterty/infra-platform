@@ -73,5 +73,6 @@
   "modules/sagemaker-pipeline": "0.1.0",
   "modules/sagemaker-endpoint": "0.1.0",
   "modules/secrets-manager-secret": "0.1.0",
-  "modules/route53-zone": "0.1.0"
+  "modules/route53-zone": "0.1.0",
+  "modules/route53-record": "0.1.0"
 }
