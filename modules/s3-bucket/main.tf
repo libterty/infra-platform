@@ -15,8 +15,14 @@ locals {
 
   # The for expressions run once when the source is selected and zero times otherwise. This avoids a conditional
   # between a list of objects and [], which Terraform cannot unify.
-  vended_selected   = setintersection(var.log_delivery, ["vended_logs"])
-  flow_log_selected = setintersection(var.log_delivery, ["vpc_flow_logs"])
+  vended_selected     = setintersection(var.log_delivery, ["vended_logs"])
+  flow_log_selected   = setintersection(var.log_delivery, ["vpc_flow_logs"])
+  cloudtrail_selected = setintersection(var.log_delivery, ["cloudtrail"])
+  config_selected     = setintersection(var.log_delivery, ["config"])
+  # The organization statements need both the source and an organization ID.
+  org_selected            = var.organization_id == null ? [] : [var.organization_id]
+  cloudtrail_org_selected = [for o in local.org_selected : o if length(local.cloudtrail_selected) > 0]
+  config_org_selected     = [for o in local.org_selected : o if length(local.config_selected) > 0]
 
   expiration_days = var.never_expire ? null : coalesce(var.expiration_days, 90)
 
@@ -70,6 +76,87 @@ locals {
       Action    = "s3:GetBucketAcl"
       Resource  = local.bucket_arn
       Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+    }],
+  )
+
+  # The trail name is not known here, so aws:SourceArn allows any trail of this account (AWS docs pin one trail).
+  cloudtrail_source_conditions = {
+    StringEquals = { "aws:SourceAccount" = local.account_id }
+    ArnLike      = { "aws:SourceArn" = "arn:${split(":", local.bucket_arn)[1]}:cloudtrail:*:${local.account_id}:trail/*" }
+  }
+
+  cloudtrail_statements = concat(
+    [for _ in local.cloudtrail_selected : {
+      Sid       = "AllowCloudTrailWrite"
+      Effect    = "Allow"
+      Principal = { Service = "cloudtrail.amazonaws.com" }
+      Action    = "s3:PutObject"
+      Resource  = "${local.bucket_arn}/AWSLogs/${local.account_id}/*"
+      Condition = merge(local.cloudtrail_source_conditions, {
+        StringEquals = merge(local.cloudtrail_source_conditions.StringEquals, { "s3:x-amz-acl" = "bucket-owner-full-control" })
+      })
+    }],
+    [for _ in local.cloudtrail_selected : {
+      Sid       = "AllowCloudTrailAclCheck"
+      Effect    = "Allow"
+      Principal = { Service = "cloudtrail.amazonaws.com" }
+      Action    = "s3:GetBucketAcl"
+      Resource  = local.bucket_arn
+      Condition = local.cloudtrail_source_conditions
+    }],
+    # An organization trail lives in the management account, which may not own this bucket, so the
+    # organization path is scoped by aws:SourceOrgID instead of the bucket account.
+    [for o in local.cloudtrail_org_selected : {
+      Sid       = "AllowCloudTrailOrganizationWrite"
+      Effect    = "Allow"
+      Principal = { Service = "cloudtrail.amazonaws.com" }
+      Action    = "s3:PutObject"
+      Resource  = "${local.bucket_arn}/AWSLogs/${o}/*"
+      Condition = { StringEquals = { "aws:SourceOrgID" = o, "s3:x-amz-acl" = "bucket-owner-full-control" } }
+    }],
+    [for o in local.cloudtrail_org_selected : {
+      Sid       = "AllowCloudTrailOrganizationAclCheck"
+      Effect    = "Allow"
+      Principal = { Service = "cloudtrail.amazonaws.com" }
+      Action    = "s3:GetBucketAcl"
+      Resource  = local.bucket_arn
+      Condition = { StringEquals = { "aws:SourceOrgID" = o } }
+    }],
+  )
+
+  config_statements = concat(
+    [for _ in local.config_selected : {
+      Sid       = "AllowConfigWrite"
+      Effect    = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action    = "s3:PutObject"
+      Resource  = "${local.bucket_arn}/AWSLogs/${local.account_id}/Config/*"
+      Condition = { StringEquals = { "aws:SourceAccount" = local.account_id, "s3:x-amz-acl" = "bucket-owner-full-control" } }
+    }],
+    [for _ in local.config_selected : {
+      Sid       = "AllowConfigAclCheck"
+      Effect    = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action    = ["s3:GetBucketAcl", "s3:ListBucket"]
+      Resource  = local.bucket_arn
+      Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+    }],
+    # Member accounts deliver under their own account ID, so the key uses a wildcard and the organization limits it.
+    [for o in local.config_org_selected : {
+      Sid       = "AllowConfigOrganizationWrite"
+      Effect    = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action    = "s3:PutObject"
+      Resource  = "${local.bucket_arn}/AWSLogs/*/Config/*"
+      Condition = { StringEquals = { "aws:SourceOrgID" = o, "s3:x-amz-acl" = "bucket-owner-full-control" } }
+    }],
+    [for o in local.config_org_selected : {
+      Sid       = "AllowConfigOrganizationAclCheck"
+      Effect    = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action    = ["s3:GetBucketAcl", "s3:ListBucket"]
+      Resource  = local.bucket_arn
+      Condition = { StringEquals = { "aws:SourceOrgID" = o } }
     }],
   )
 
@@ -215,6 +302,8 @@ resource "aws_s3_bucket_policy" "this" {
       local.tls_only_statement,
       local.vended_statements,
       local.flow_log_statements,
+      local.cloudtrail_statements,
+      local.config_statements,
       local.cloudfront_statements,
     )
   })

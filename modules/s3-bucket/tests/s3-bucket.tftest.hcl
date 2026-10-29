@@ -368,7 +368,7 @@ run "expiration_accepts_upper_bound" {
 
 run "log_delivery_rejects_unknown" {
   command = plan
-  variables { log_delivery = ["cloudtrail"] }
+  variables { log_delivery = ["waf_logs"] }
   expect_failures = [var.log_delivery]
 }
 

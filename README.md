@@ -6,7 +6,7 @@
 
 ## module
 
-共 89 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 91 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -99,6 +99,8 @@
 | 帳號治理 | `backup-vault` | Backup vault：CMK、deny delete、vault lock、通知 | [![backup-vault](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fbackup-vault%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=backup-vault-v) |
 | 帳號治理 | `backup-plan` | Backup plan 與 tag 選資源 | [![backup-plan](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fbackup-plan%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=backup-plan-v) |
 | 帳號治理 | `budgets` | 成本預算與 SNS／email 通知 | [![budgets](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fbudgets%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=budgets-v) |
+| 帳號治理 | `account-security-defaults` | 帳號層安全預設：S3 public access block、EBS 預設加密、IMDSv2、密碼政策 | [![account-security-defaults](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Faccount-security-defaults%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=account-security-defaults-v) |
+| 帳號治理 | `access-analyzer` | IAM Access Analyzer 與 archive rule | [![access-analyzer](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Faccess-analyzer%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=access-analyzer-v) |
 
 消費端寫法：
 

@@ -35,3 +35,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "service_publishers" {
+  description = "可以發佈到這個 topic 的 AWS 服務 principal（例如 `budgets.amazonaws.com`、`backup.amazonaws.com`、`events.amazonaws.com`）。非空時建 topic policy：保留 SNS 預設給本帳號的權限，另給這些服務 `sns:Publish`，條件 `aws:SourceAccount` 等於目前帳號。空的就不建 topic policy，沿用 SNS 預設。"
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = alltrue([for p in var.service_publishers : can(regex("^[a-z0-9][a-z0-9.-]*[.]amazonaws[.]com$", p))])
+    error_message = "Every service_publishers entry must be an AWS service principal ending in .amazonaws.com, such as events.amazonaws.com."
+  }
+}
