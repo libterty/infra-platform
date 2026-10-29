@@ -1,6 +1,6 @@
 # infra-platform v10 實作流程：帳號層治理 module 與 templates/account-baseline
 
-> 狀態：還沒開始。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：J0–J9 全部完成（2026-10-29）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -44,16 +44,16 @@
 
 | Phase | 內容 | 狀態 | PR |
 |---|---|---|---|
-| J0 | v10 設計文件與實作流程 | 待審 | |
-| J1 | S4 例外；`s3-bucket` 0.6.0、`sns-alarm-topic` 0.2.0；`account-security-defaults`、`access-analyzer` | | |
-| J2 | `cloudtrail`、`config-recorder` | | |
-| J3 | `guardduty`、`securityhub`、`inspector` | | |
-| J4 | `backup-vault`、`backup-plan`、`budgets` | | |
-| J5 | `organization-delegated-admin` | | |
-| J6 | 範本骨架、`foundation`、`defaults`、`iam` | | |
-| J7 | `audit`、`detect` | | |
-| J8 | `backup`、`budget` | | |
-| J9 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | | |
+| J0 | v10 設計文件與實作流程 | 完成（2026-10-29 確認） | #265 |
+| J1 | S4 例外；`s3-bucket` 0.6.0、`sns-alarm-topic` 0.2.0；`account-security-defaults`、`access-analyzer` | 完成：發版、HCP ok | #284 |
+| J2 | `cloudtrail`、`config-recorder` | 完成：發版、HCP ok | #268 |
+| J3 | `guardduty`、`securityhub`、`inspector` | 完成：發版、HCP ok | #269 |
+| J4 | `backup-vault`、`backup-plan`、`budgets` | 完成：發版、HCP ok | #272 |
+| J5 | `organization-delegated-admin` | 完成：發版、HCP ok | #266 |
+| J6 | 範本骨架、`foundation`、`defaults`、`iam` | 完成；另加 iam-role 0.5.0（#289） | #291 |
+| J7 | `audit`、`detect` | 完成 | #291 |
+| J8 | `backup`、`budget` | 完成 | #291 |
+| J9 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | #292 |
 
 ## 每個 Phase 的做法與驗收
 

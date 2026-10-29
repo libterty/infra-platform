@@ -1,6 +1,6 @@
 # infra-platform v10 設計文件：帳號層治理 module 與 templates/account-baseline
 
-> 狀態：設計中，還沒實作。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
+> 狀態：已實作（2026-10-29，J0–J9，見 [`implement-process.md`](./implement-process.md)）。實作時跟設計不同的決定記在 §14，兩邊不同時以 §14 與程式碼為準。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
 > 範圍：新增帳號層治理用的 module（CloudTrail、Config、GuardDuty、Security Hub、Inspector、IAM Access Analyzer、Backup、Budgets、帳號層安全預設、Organizations 的委派管理），兩個既有 module 升 minor（`s3-bucket`、`sns-alarm-topic`），新建範本 `templates/account-baseline`。不改 example2–example6、project-infra。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。provider schema 是 aws 6.70.0（`terraform providers schema -json`）的結果。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
 
@@ -361,21 +361,22 @@ key 的實際寫法照 example6 的命名。
 
 範本 stack 的測試照 example6：每個 stack 的 `tests/` 驗 SSM 讀寫、名稱、跨 stack 一致的值，另外鎖住 §4 的控制（bucket policy 條件、vault deny、topic policy 條件）。
 
-## 10. 成本估計（粗估，美元／月，未查證）
+## 10. 成本估計（美元，2026-10-29 查官方價目頁，價目頁的例子用 us-east-1）
 
-> 價格沒有逐項查過，只能判斷量級。J9 時查官方價目頁並更新，來源寫進 §13。
-
-| 項目 | 計費方式 | dev 估計 |
+| 項目 | 價格 | dev 帳號閒置時的量級 |
 |---|---|---|
-| CloudTrail | 第一份 management event 免費；S3 與 KMS 另計 | 低於 1 |
-| Config | 每個 configuration item 與每次 rule 評估計費；Security Hub 的 control 也走 Config 評估 | 數元到十幾元，依資源數 |
-| GuardDuty | 依分析的事件量；前 30 天試用 | 數元起 |
-| Security Hub | 依 security check 次數與 finding 數；前 30 天試用 | 數元到十幾元，FSBP 加 CIS 約為單一標準的兩倍 |
-| Inspector | 依 EC2 instance、ECR 映像、Lambda 數 | 依資源數 |
+| CloudTrail | management event 第一份送到 S3 免費；額外一份每 10 萬筆 2.00；data event 每 10 萬筆 0.10 | 低於 1（只有 S3 與 KMS） |
+| Config | 每個 continuous configuration item 0.003；rule 評估前 10 萬次每次 0.001 | 數元到十幾元，依資源數與變更頻率 |
+| GuardDuty | management event 每百萬筆 4.00；VPC flow 與 DNS log 前 500 GB 每 GB 1.00；沒用過的帳號有 30 天試用 | 數元起 |
+| Security Hub | CSPM 已併入 Security Hub 的 Essentials 方案，按資源計價（價目頁的例子是每個 resource unit 3.75），不再按檢查次數；30 天試用 | 依資源數，要用 AWS Pricing Calculator 估（未確認） |
+| Inspector | EC2 每台每月 1.258（agent）或 1.75（agentless）；ECR 映像首次掃描 0.09、重掃 0.01；Lambda 每個每月 0.30；15 天試用 | 依資源數 |
 | Access Analyzer | 外部存取分析免費 | 0 |
-| Backup | 依備份儲存量 | 依資料量 |
-| Budgets | 一般預算免費（未確認上限） | 0 |
-| CMK | 每把 1 | 1 |
+| Backup | EBS 備份每 GB-月約 0.05 | 依資料量 |
+| Budgets | 一般預算免費；有 action 的預算前 2 個免費，之後每個每天 0.10 | 0 |
+| CMK | 每把每月 1 | 1 |
+
+- Security Hub 的計價方式在 2025 年改過，FSBP 加 CIS 的實際費用要依帳號的資源數用 Pricing Calculator 估，這是成本裡最不確定的一項。
+- 其他項目閒置時每個帳號每月約十幾到幾十美元，主要是 Config、GuardDuty 與 Inspector，依資源數變動。
 
 ## 11. 風險與 mock 驗不到的事
 
@@ -411,8 +412,52 @@ key 的實際寫法照 example6 的命名。
 
 - aws provider 6.70.0 schema：本機 `terraform providers schema -json`，§2 第 1–4 點、§5 的 resource。
 - 既有 module：`modules/sns-alarm-topic`（沒有 topic policy）、`modules/kms-key`（`service_principals` 支援條件）、`scripts/validate.sh` 的 S4。
-- 未查證、實作時補來源：Security Hub 標準 ARN 與 CSPM 改名（§2 第 6 點）、CloudTrail 的 log group ARN 格式（§5.1）、委派管理員 resource 的組合（§5.11）、Budgets 送 SNS 的 region 限制（§11）、§10 的價格。
+- 實作時查證（2026-10-29）：
+  - Security Hub 標準：<https://docs.aws.amazon.com/securityhub/latest/userguide/cis-aws-foundations-benchmark.html>、<https://docs.aws.amazon.com/securityhub/latest/userguide/fsbp-standard.html>、<https://docs.aws.amazon.com/securityhub/latest/userguide/standards-reference.html>
+  - GuardDuty feature：<https://docs.aws.amazon.com/guardduty/latest/APIReference/API_DetectorFeatureConfiguration.html>
+  - 委派管理員：<https://docs.aws.amazon.com/organizations/latest/userguide/orgs_integrate_services_list.html>、<https://docs.aws.amazon.com/securityhub/latest/userguide/designate-orgs-admin-account.html>、<https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-add-delegated-administrator.html>
+  - CloudTrail 與 Config 的 bucket policy：<https://docs.aws.amazon.com/awscloudtrail/latest/userguide/create-s3-bucket-policy-for-cloudtrail.html>、<https://docs.aws.amazon.com/config/latest/developerguide/s3-bucket-policy.html>
+  - Config 的 recording group：<https://docs.aws.amazon.com/config/latest/APIReference/API_RecordingGroup.html>
+  - Backup：<https://docs.aws.amazon.com/aws-backup/latest/devguide/vault-lock.html>、<https://docs.aws.amazon.com/aws-backup/latest/devguide/point-in-time-recovery.html>
+  - Budgets 的 SNS policy：<https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-sns-policy.html>
+  - 價格：<https://aws.amazon.com/config/pricing/>、<https://aws.amazon.com/security-hub/pricing/>、<https://aws.amazon.com/guardduty/pricing/>、<https://aws.amazon.com/inspector/pricing/>、<https://aws.amazon.com/cloudtrail/pricing/>、<https://aws.amazon.com/backup/pricing/>、<https://aws.amazon.com/aws-cost-management/aws-budgets/pricing/>
 
 ## 14. 實作後的變更
 
-（實作時填。）
+### 查證結果
+
+- §2 第 6 點：FSBP 與 CIS 仍屬 Security Hub CSPM，`aws_securityhub_account` 加 `aws_securityhub_standards_subscription` 是正確的組合，跟 `*_v2` 可以並存。CIS 的最新版是 v5.0.0，AWS 建議用這一版（設計寫 3.0.0）。
+- §5.1：CloudTrail 的 log group ARN 要加 `:*`。
+- §5.11：GuardDuty、Security Hub、Inspector 要用各自的委派 API；再寫 `aws_organizations_delegated_administrator` 會重複註冊而衝突。CloudTrail 用自己的 API（會順便建 service-linked role）。
+- §10：Security Hub CSPM 改成按資源計價，見 §10。
+
+### module
+
+- `organization-delegated-admin`：
+  - 輸入改成 `regions`（set），因為 trusted access 與部分委派是 organization 全域的，同一個 organization 呼叫兩次會重複註冊。
+  - Config 開 `config.amazonaws.com` 與 `config-multiaccountsetup.amazonaws.com` 兩個 principal；GuardDuty 多開 `malware-protection.guardduty.amazonaws.com`。
+  - Backup 不在允許清單：委派還需要 `aws_organizations_resource_policy` 與 backup policy 類型。
+- `config-recorder`：`all_supported` 由 `exclusion_types` 推導；有 exclusion 時不能再開 global resource types。`aggregator.regions` 兩種形式都適用，空 list 代表所有 region。
+- `securityhub`：`organization` 輸入不給預設，因為 AWS 的 `DEFAULT` 會幫新成員開 CIS 1.2.0。
+- `guardduty`：不收 `EKS_RUNTIME_MONITORING`（已併入 `RUNTIME_MONITORING`），也不收新的 `AI_PROTECTION`、`AI_ANALYST`。
+- `inspector`：`LAMBDA_CODE` 必須搭配 `LAMBDA`。
+- `backup-plan`：多個 selection tag 是「符合任一個」。`backup-vault` 的 policy 也 deny `PutBackupVaultAccessPolicy`，之後要改 policy 只能刪掉 vault 重建。
+- `budgets`：0–1000 的門檻範圍只套用在 `PERCENTAGE`。
+- `s3-bucket` 0.6.0：
+  - CloudTrail 的 `aws:SourceArn` 放寬成本帳號的 `trail/*`，因為建 bucket 時還不知道 trail 名稱。
+  - organization 路徑用 `aws:SourceOrgID`；管理帳號自己的 `AWSLogs/<帳號>/` 路徑不開。
+  - `cloudtrail`、`config` 這兩種 `log_delivery` 可以搭配 versioning。
+  - 一個既有測試原本拿 `cloudtrail` 當未知值，改成 `waf_logs`。
+- `sns-alarm-topic` 0.2.0：topic policy 保留 SNS 預設的同帳號發佈。
+- `iam-role` 0.5.0（設計沒有排）：白名單加 `service-role/AWS_ConfigRole`、`service-role/AWSBackupServiceRolePolicyForBackup`、`service-role/AWSBackupServiceRolePolicyForRestores`，給 `account-baseline` 的 `iam` stack 用。
+- release-please 為已發布的 `cloudtrail`、`config-recorder`、`guardduty` 重複開了沒有差異的 release PR，已關閉。
+
+### 範本
+
+- `defaults` 不讀 `foundation`，多發布 `defaults/access_analyzer_arn`。EBS 預設加密用 AWS 管理的 `aws/ebs`：治理 CMK 沒有開給 EC2，用它會讓 instance 開不起來。
+- 治理 CMK：CloudTrail 的授權用 `StringLikeIfExists` 加 `aws:SourceArn`（本帳號的 `trail/*`），因為 DescribeKey 不帶 encryption context；另外開給 `cloudwatch.amazonaws.com`，讓告警能寫進加密的 topic。
+- `audit`：trail log group 的保存天數由 `trail_log_retention_days` 決定；未授權 API 呼叫的告警用 CIS 較新的 pattern，排除 `delivery.logs` 與 `HeadBucket`。
+- `detect`：Security Hub 的 rule 加 `RecordState = ACTIVE`，並排除 GuardDuty 來源的 finding，避免同一個 finding 寄兩封信；讀 `audit/config_recorder_name` 只為了保證 apply 順序。
+- `backup`：通知事件多加 `BACKUP_JOB_EXPIRED`（備份沒在時間窗內開始）；保留天數在 tfvars，驗證介於 lock 的最短天數與 365 之間。
+- `budget`：Budgets 的 topic policy 只有 `aws:SourceAccount`；AWS 文件建議再加 `aws:SourceArn`，但不是必要條件，第一次 apply 時確認。
+- `project` 的佔位值是 `baseline`。
