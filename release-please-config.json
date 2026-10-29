@@ -60,6 +60,7 @@
     "modules/nlb": { "release-type": "terraform-module", "component": "nlb", "initial-version": "0.1.0" },
     "modules/opensearch-config": { "release-type": "terraform-module", "component": "opensearch-config", "initial-version": "0.1.0" },
     "modules/opensearch-domain": { "release-type": "terraform-module", "component": "opensearch-domain", "initial-version": "0.1.0" },
+    "modules/organization-delegated-admin": { "release-type": "terraform-module", "component": "organization-delegated-admin", "initial-version": "0.1.0" },
     "modules/ota-signing": { "release-type": "terraform-module", "component": "ota-signing", "initial-version": "0.1.0" },
     "modules/quicksight-data": { "release-type": "terraform-module", "component": "quicksight-data", "initial-version": "0.1.0" },
     "modules/rds": { "release-type": "terraform-module", "component": "rds" },
