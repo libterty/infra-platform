@@ -85,5 +85,6 @@
   "modules/guardduty": "0.1.0",
   "modules/securityhub": "0.1.0",
   "modules/inspector": "0.1.0",
-  "modules/backup-vault": "0.1.0"
+  "modules/backup-vault": "0.1.0",
+  "modules/backup-plan": "0.1.0"
 }
