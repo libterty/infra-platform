@@ -5,6 +5,8 @@
   "separate-pull-requests": true,
   "last-release-sha": "86f438df01e5fc71f0f3bb7a734ba6309e3f232e",
   "packages": {
+    "modules/access-analyzer": { "release-type": "terraform-module", "component": "access-analyzer", "initial-version": "0.1.0" },
+    "modules/account-security-defaults": { "release-type": "terraform-module", "component": "account-security-defaults", "initial-version": "0.1.0" },
     "modules/acm-certificate": { "release-type": "terraform-module", "component": "acm-certificate", "initial-version": "0.1.0" },
     "modules/acm-pca": { "release-type": "terraform-module", "component": "acm-pca", "initial-version": "0.1.0" },
     "modules/agentcore-gateway": { "release-type": "terraform-module", "component": "agentcore-gateway" },
