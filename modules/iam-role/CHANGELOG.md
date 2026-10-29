@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.4.1...iam-role-v0.5.0) (2026-10-29)
+
+
+### Features
+
+* **iam-role:** allow the Config and AWS Backup service role policies ([e39efd9](https://github.com/libterty/infra-platform/commit/e39efd9df55a42c7361e921fbf7cfa2eb5f3e2e7))
+
 ## [0.4.1](https://github.com/libterty/infra-platform/compare/iam-role-v0.4.0...iam-role-v0.4.1) (2026-10-23)
 
 
