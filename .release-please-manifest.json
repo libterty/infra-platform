@@ -83,5 +83,6 @@
   "modules/cloudtrail": "0.1.0",
   "modules/config-recorder": "0.1.0",
   "modules/guardduty": "0.1.0",
-  "modules/securityhub": "0.1.0"
+  "modules/securityhub": "0.1.0",
+  "modules/inspector": "0.1.0"
 }
