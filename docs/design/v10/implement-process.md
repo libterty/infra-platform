@@ -53,7 +53,7 @@
 | J6 | 範本骨架、`foundation`、`defaults`、`iam` | 完成；另加 iam-role 0.5.0（#289） | #291 |
 | J7 | `audit`、`detect` | 完成 | #291 |
 | J8 | `backup`、`budget` | 完成 | #291 |
-| J9 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | J9PR |
+| J9 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | #292 |
 
 ## 每個 Phase 的做法與驗收
 
