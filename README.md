@@ -109,11 +109,11 @@ module "api" {
 }
 ```
 
-`<org>` 換成 HCP Terraform 的 organization。本 repo 的 module 發布在 `app.terraform.io/libterty`，這是 private registry，只有該 organization 的成員抓得到。不是成員或沒有 HCP token，就改用 `git::...?ref=<tag>` 的備案寫法。
+把 `<org>` 換成你的 HCP Terraform organization 名稱。這個 repo 的 module 發布在 `app.terraform.io/libterty` 這個 private registry，要是這個 organization 的成員才能下載。如果你不是成員，或手上沒有 HCP token，就改用 `git::...?ref=<tag>` 的寫法。
 
-「最新版」讀 `.release-please-manifest.json`，就是 registry 上的版本號。
+每個 module 目前的最新版本記在 `.release-please-manifest.json`，跟 registry 上的版本號一致。
 
-HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)；module 怎麼登記到 HCP，見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+HCP 怎麼認證、怎麼升版、範本複製出去要改哪些地方、git 的寫法怎麼寫，都在 [`consuming-modules.md`](./docs/guides/consuming-modules.md)；要把 module 登記到 HCP，看 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 範本
 
