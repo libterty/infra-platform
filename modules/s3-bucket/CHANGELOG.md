@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.5.0...s3-bucket-v0.6.0) (2026-10-29)
+
+
+### Features
+
+* **s3-bucket:** allow CloudTrail and Config delivery with organization paths ([91c54df](https://github.com/libterty/infra-platform/commit/91c54df1d2df333da4c32c6327d91892dd8f201d))
+
 ## [0.5.0](https://github.com/libterty/infra-platform/compare/s3-bucket-v0.4.0...s3-bucket-v0.5.0) (2026-10-28)
 
 
