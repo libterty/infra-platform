@@ -47,6 +47,15 @@ module "raw" {
   ]
 }
 
+module "audit_logs" {
+  source = "../.."
+
+  name            = "alpha-dev-audit-logs"
+  log_delivery    = ["cloudtrail", "config"]
+  expiration_days = 365
+  versioning      = {}
+}
+
 output "access_logs_bucket" {
   value = module.access_logs.bucket_name
 }

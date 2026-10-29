@@ -49,6 +49,15 @@ module "web" {
   never_expire                 = true
   cloudfront_distribution_arns = [module.cdn.arn]
 }
+
+module "audit_logs" {
+  source = "git::https://github.com/<org>/<repo>.git//modules/s3-bucket?ref=s3-bucket-v0.6.0"
+
+  name            = "alpha-dev-audit-logs"
+  log_delivery    = ["cloudtrail", "config"]
+  expiration_days = 365
+  versioning      = {}
+}
 ```
 
 完整範例見 [`examples/basic/`](./examples/basic/main.tf)。
@@ -72,6 +81,17 @@ module "web" {
 |---|---|---|---|
 | `vended_logs` | `delivery.logs.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl`、`s3:ListBucket` on bucket | `aws:SourceAccount`、`aws:SourceArn` 符合 `arn:<partition>:logs:*:<account>:delivery-source:*`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
 | `vpc_flow_logs` | `delivery.logs.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl` on bucket | `aws:SourceAccount`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
+| `cloudtrail`（0.6.0 起） | `cloudtrail.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/*`；`s3:GetBucketAcl` on bucket | `aws:SourceAccount`、`aws:SourceArn` 符合 `arn:<partition>:cloudtrail:*:<account>:trail/*`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
+| `config`（0.6.0 起） | `config.amazonaws.com` | `s3:PutObject` on `<bucket>/AWSLogs/<account>/Config/*`；`s3:GetBucketAcl`、`s3:ListBucket` on bucket | `aws:SourceAccount`；PutObject 另加 `s3:x-amz-acl = bucket-owner-full-control` |
+
+`organization_id`（0.6.0 起）有給時，每種稽核來源再多兩段，條件改成 `aws:SourceOrgID = <organization ID>`：
+
+| 來源 | 動作與資源 |
+|---|---|
+| `cloudtrail` | `s3:PutObject` on `<bucket>/AWSLogs/<organization ID>/*`（organization trail 的成員帳號路徑）；`s3:GetBucketAcl` on bucket |
+| `config` | `s3:PutObject` on `<bucket>/AWSLogs/*/Config/*`（各成員帳號的路徑）；`s3:GetBucketAcl`、`s3:ListBucket` on bucket |
+
+新的 statement 排在 `vpc_flow_logs` 之後、CloudFront 之前。沒有 `cloudtrail`、`config` 時，policy 跟 0.5.0 完全一樣。
 
 ## CloudFront 讀取
 
@@ -94,12 +114,16 @@ module "web" {
 - 寫入範圍是 `AWSLogs/<account>/*`，對應 `log-delivery` 預設的路徑。`log-delivery` 不開放 destination prefix 與 Hive 相容路徑；之後要開的話，這裡的 resource 也要跟著改。
 - **用 SSE-KMS 時必須是客戶管理的 key**，key policy 要允許 `delivery.logs.amazonaws.com` 使用（AWS 文件〈Logs sent to Amazon S3〉）；用 AWS 管理的 key，log 會變成讀不了的格式。key policy 不在這個 module 管。
 - 0.3.0 移除了 `alb_access_logs`：`alb` 不再支援傳統的 `access_logs`，ALB access log 改用 `log-delivery` 送，bucket 改給 `vended_logs`。
+- **`cloudtrail` 不鎖單一 trail**：AWS 文件建議 `aws:SourceArn` 寫死 trail ARN，但 bucket 通常比 trail 先建，所以這裡放寬成本帳號的任何 trail，另加 `aws:SourceAccount`。trail 設了 S3 key prefix 就寫不進來，寫入路徑固定是 `AWSLogs/`。
+- **organization trail 的管理帳號路徑**：organization trail 的管理帳號自己的 log 寫在 `AWSLogs/<管理帳號>/`。bucket 跟 trail 在同一個帳號時，`cloudtrail` 的本帳號 statement 已經涵蓋；bucket 放在 log 封存帳號時，這條路徑沒有開，這個 module 只開 `AWSLogs/<organization ID>/`。
+- **`config` 用 IAM role 投遞時**，跨帳號的 bucket 還要給那個 role `s3:ListBucket`，這個 module 不開；同帳號、或 Config 改用服務 principal 投遞時不需要。
+- **稽核 bucket 用 SSE-KMS 時**，key policy 要允許 `cloudtrail.amazonaws.com`、`config.amazonaws.com` 使用這把 key（用 `kms-key` 的 `service_principals`）。
 - 投遞失敗不會讓 `apply` 失敗，驗收條件是「S3 上真的有物件」。
 - bucket 名稱不可含 `.`（會破壞 TLS virtual-host 定址）。
 - `force_destroy` 預設 `false`，只放可重建的觀測資料時才在呼叫端打開。
 - **不過期一律要明寫 `never_expire = true`。** `expiration_days = null` 代表預設的 90 天，不是不過期：呼叫端常用 `optional(number)` 轉傳，沒給值時就是 null，如果 null 代表不過期，log bucket 會在沒人注意時變成永久保存。
 - `never_expire = true` 時不能再給 `expiration_days`，也不能有 `log_delivery`（log bucket 一定要過期），兩種都會被 validation 擋下。
-- 預設沒有 versioning，物件被刪掉就救不回來；要保留舊版本就給 `versioning`（0.2.0 起）。`versioning` 不能跟 `log_delivery` 一起用。清舊版本的 rule 套用整個 bucket，不受 `expiration_prefix` 限制。
+- 預設沒有 versioning，物件被刪掉就救不回來；要保留舊版本就給 `versioning`（0.2.0 起）。`versioning` 不能跟 `vended_logs`、`vpc_flow_logs` 一起用；`cloudtrail`、`config` 的 bucket 放的是稽核證據，0.6.0 起可以開 versioning。清舊版本的 rule 套用整個 bucket，不受 `expiration_prefix` 限制。
 - `expiration_prefix` 只限制「目前版本過期」那條 rule；沒給時範圍是整個 bucket，跟 0.1.1 相同。
 - `lambda_notifications` 只建 bucket 這一側的 notification。呼叫端要自己讓 `s3.amazonaws.com` 有權限 invoke 那支 Lambda（permission 要帶 `source_account` 與 `source_arn`），而且要在 notification 之前建好，否則 S3 會拒絕建立 notification。
 - 一個 bucket 只能有一個 `aws_s3_bucket_notification`，所以 `lambda_notifications` 設了之後，不要在 module 外面再對同一個 bucket 建 notification。
@@ -123,9 +147,10 @@ replication、object lock、bucket 本身的 access logging（要開就用 `log-
 | `kms_key_arn` | `string` | `null` | 否 | `null` 用 SSE-S3（`AES256`）；有給就用 SSE-KMS。`log_delivery` 含 `vended_logs` 或 `vpc_flow_logs` 時必須是客戶管理的 key，而且 key policy 要允許 `delivery.logs.amazonaws.com` 使用。 |
 | `expiration_days` | `number` | `null` | 否 | 物件過期天數，1–3650；`null` 當成 90。`never_expire = true` 時必須是 `null`。 |
 | `never_expire` | `bool` | `false` | 否 | 不設過期，物件保留到被明確刪除，lifecycle rule 沒有 expiration。給內容 bucket（例如 Knowledge Base 語料），不要用在 log bucket；與非空的 `log_delivery` 互斥。 |
-| `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`。 |
+| `log_delivery` | `set(string)` | `[]` | 否 | 允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`、`cloudtrail`（本帳號 trail 寫到 `AWSLogs/<帳號>/`）、`config`（本帳號 Config delivery channel 寫到 `AWSLogs/<帳號>/Config/`）。 |
+| `organization_id` | `string` | `null` | 否 | AWS Organizations 的 organization ID（`o-` 開頭）。有給時，`log_delivery` 的 `cloudtrail` 多開 organization trail 的寫入路徑 `AWSLogs/<organization ID>/`，`config` 多開成員帳號的 `AWSLogs/<帳號>/Config/`，兩者都以 `aws:SourceOrgID` 限制；`log_delivery` 至少要有 `cloudtrail` 或 `config` 其中一種。`null` 只開本帳號的路徑。 |
 | `cloudfront_distribution_arns` | `set(string)` | `[]` | 否 | 可以透過 OAC 讀取物件（`s3:GetObject`）的 CloudFront distribution ARN（`arn:aws:cloudfront::<帳號>:distribution/<id>`），必須是目前帳號。非空時 bucket policy 多一條 principal 為 `cloudfront.amazonaws.com`、條件為 `AWS:SourceArn` 的 statement；空的就不加。 |
-| `versioning` | `object` | `null` | 否 | `null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與非空的 `log_delivery` 互斥。 |
+| `versioning` | `object` | `null` | 否 | `null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與 `log_delivery` 的 `vended_logs`、`vpc_flow_logs` 互斥；`cloudtrail`、`config` 是稽核證據，可以開。 |
 | `expiration_prefix` | `string` | `null` | 否 | 目前版本的過期規則只套用在這個 prefix 底下（1–1024 字元）；`null` 套用整個 bucket。 |
 | `transitions` | `list(object)` | `[]` | 否 | 目前版本的 lifecycle 分層，依序列出 `days`（物件建立後第幾天，至少 1，必須嚴格遞增）與 `storage_class`（`STANDARD_IA`、`ONEZONE_IA`、`INTELLIGENT_TIERING`、`GLACIER_IR`、`GLACIER`、`DEEP_ARCHIVE`）。每個 `days` 都要小於過期天數（沒給 `expiration_days` 時是 90）；`never_expire = true` 時不比較。跟過期規則共用 `expiration_prefix`。空的就不分層。 |
 | `eventbridge` | `bool` | `false` | 否 | 是否把這個 bucket 的所有 S3 事件送到本帳號 default event bus（`aws.s3`，例如 `Object Created`）。為 `true` 時建立 notification，可以跟 `lambda_notifications` 並存；呼叫端另外建 EventBridge rule 與 target。 |

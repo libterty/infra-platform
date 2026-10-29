@@ -45,11 +45,27 @@ variable "never_expire" {
 variable "log_delivery" {
   type        = set(string)
   default     = []
-  description = "允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`。"
+  description = "允許寫入的 log 來源：`vended_logs`（本帳號 CloudWatch Logs 的 vended delivery，例如用 `log-delivery` 設定的 ALB、NLB、S3 access log）、`vpc_flow_logs`、`cloudtrail`（本帳號 trail 寫到 `AWSLogs/<帳號>/`）、`config`（本帳號 Config delivery channel 寫到 `AWSLogs/<帳號>/Config/`）。"
 
   validation {
-    condition     = alltrue([for v in var.log_delivery : contains(["vended_logs", "vpc_flow_logs"], v)])
-    error_message = "log_delivery accepts vended_logs and vpc_flow_logs."
+    condition     = alltrue([for v in var.log_delivery : contains(["vended_logs", "vpc_flow_logs", "cloudtrail", "config"], v)])
+    error_message = "log_delivery accepts vended_logs, vpc_flow_logs, cloudtrail and config."
+  }
+}
+
+variable "organization_id" {
+  type        = string
+  default     = null
+  description = "AWS Organizations 的 organization ID（`o-` 開頭）。有給時，`log_delivery` 的 `cloudtrail` 多開 organization trail 的寫入路徑 `AWSLogs/<organization ID>/`，`config` 多開成員帳號的 `AWSLogs/<帳號>/Config/`，兩者都以 `aws:SourceOrgID` 限制；`log_delivery` 至少要有 `cloudtrail` 或 `config` 其中一種。`null` 只開本帳號的路徑。"
+
+  validation {
+    condition     = var.organization_id == null ? true : can(regex("^o-[a-z0-9]{10,32}$", var.organization_id))
+    error_message = "organization_id must look like o-<10-32 lowercase letters or digits>."
+  }
+
+  validation {
+    condition     = var.organization_id == null ? true : length(setintersection(var.log_delivery, ["cloudtrail", "config"])) > 0
+    error_message = "organization_id requires cloudtrail or config in log_delivery."
   }
 }
 
@@ -70,7 +86,7 @@ variable "versioning" {
     noncurrent_expiration_days = optional(number, 30)
   })
   default     = null
-  description = "`null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與非空的 `log_delivery` 互斥。"
+  description = "`null` 不開 versioning。給物件就開 versioning：舊版本在 `noncurrent_expiration_days`（1–3650，預設 30）天後過期，並清掉過期的 delete marker。與 `log_delivery` 的 `vended_logs`、`vpc_flow_logs` 互斥；`cloudtrail`、`config` 是稽核證據，可以開。"
 
   validation {
     condition     = var.versioning == null ? true : (var.versioning.noncurrent_expiration_days >= 1 && var.versioning.noncurrent_expiration_days <= 3650)
@@ -78,8 +94,8 @@ variable "versioning" {
   }
 
   validation {
-    condition     = var.versioning == null ? true : length(var.log_delivery) == 0
-    error_message = "versioning cannot be combined with log_delivery; log buckets must not keep old versions."
+    condition     = var.versioning == null ? true : length(setintersection(var.log_delivery, ["vended_logs", "vpc_flow_logs"])) == 0
+    error_message = "versioning cannot be combined with vended_logs or vpc_flow_logs; high-volume log buckets must not keep old versions."
   }
 }
 
