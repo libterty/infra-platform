@@ -109,11 +109,11 @@ module "api" {
 }
 ```
 
-`<org>` 換成 HCP Terraform 的 organization。本 repo 的 module 發布在 `app.terraform.io/libterty`，這是 private registry，只有該 organization 的成員抓得到。不是成員或沒有 HCP token，就改用 `git::...?ref=<tag>` 的備案寫法。
+把 `<org>` 換成你的 HCP Terraform organization 名稱。這個 repo 的 module 發布在 `app.terraform.io/libterty` 這個 private registry，要是這個 organization 的成員才能下載。如果你不是成員，或手上沒有 HCP token，就改用 `git::...?ref=<tag>` 的寫法。
 
-「最新版」讀 `.release-please-manifest.json`，就是 registry 上的版本號。
+每個 module 目前的最新版本記在 `.release-please-manifest.json`，跟 registry 上的版本號一致。
 
-HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)；module 怎麼登記到 HCP，見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
+HCP 怎麼認證、怎麼升版、範本複製出去要改哪些地方、git 的寫法怎麼寫，都在 [`consuming-modules.md`](./docs/guides/consuming-modules.md)；要把 module 登記到 HCP，看 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)。
 
 ## 範本
 
@@ -149,16 +149,11 @@ scripts/validate.sh modules/ssm-publish          # 只跑指定目錄
 scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
 ```
 
-要不要 HCP Terraform 帳號，看你改的是哪裡：
+改 `modules/` 不需要 HCP Terraform 帳號：`scripts/validate.sh modules/<module>` 只用 mock provider，不會連到 HCP。
 
-- 只改 `modules/` 不用帳號。`scripts/validate.sh modules/<module>` 用 mock provider 跑，不連 HCP。
-- 改到範本（`templates/`）就要。範本的 stack 從 `app.terraform.io/libterty` 抓 module，你要用自己的 HCP 帳號 `terraform login`，而且這個帳號要是 `libterty` organization 的成員。不要借用別人的帳號或 token。
+改範本（`templates/`）才需要帳號。範本的 stack 會從 `app.terraform.io/libterty` 下載 module，所以要先用自己的 HCP 帳號跑 `terraform login`，而且這個帳號要已經加入 `libterty` organization。請不要借用別人的帳號或 token。
 
-`libterty` 目前是 Personal 方案，只有 `owners` 一個 team，加進來就有整個 organization 的管理權，所以現在只有 repo owner 能在本機驗範本。fork 開的 PR 拿不到 CI 的 token，範本一樣驗不過。
-
-沒有帳號又要驗範本，可以先把 `source` 改成 git 寫法（[`consuming-modules.md`](./docs/guides/consuming-modules.md)〈備案〉）；repo 是公開的，不用帳號。要讓整個團隊都能用，得先把 registry 搬到能建唯讀 team 的 organization（[`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)〈CI 的 token〉）。
-
-不准跑 `terraform plan`、`apply`、帶 backend 的 `init`，也不准跑任何 `aws` 指令。`validate.sh` 檢查哪些事、commit 怎麼寫，見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)；安全問題照 [`SECURITY.md`](./SECURITY.md) 私下回報；授權是 Apache-2.0（[`LICENSE`](./LICENSE)）。
+如果沒有帳號但要驗範本，可以先把 `source` 改成 git 的寫法；repo 是公開的，不需要帳號（見 [`consuming-modules.md`](./docs/guides/consuming-modules.md)〈備案〉）。如果要讓整個團隊都能用，就要先把 registry 搬到可以建立唯讀 team 的 organization（見 [`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)〈CI 的 token〉）。
 
 ## 文件地圖
 
