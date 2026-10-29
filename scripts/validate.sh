@@ -350,13 +350,15 @@ for f in ${files_tf[@]+"${files_tf[@]}"}; do
   esac
   case "$r" in
     modules/* | templates/*)
-      # S4: IAM only in iam-role (all types), iam-role-policy (aws_iam_role_policy only)
-      # and iam-oidc-provider (aws_iam_openid_connect_provider only)
+      # S4: IAM only in iam-role (all types), iam-role-policy (aws_iam_role_policy only),
+      # iam-oidc-provider (aws_iam_openid_connect_provider only) and account-security-defaults
+      # (aws_iam_account_password_policy only: an account setting, not a permission)
       case "$r" in
         modules/iam-role/*) ;;
         modules/iam-role-policy/*) scan_pattern S4 'modules/iam-role-policy 只允許 aws_iam_role_policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_role_policy"' ;;
         modules/iam-oidc-provider/*) scan_pattern S4 'modules/iam-oidc-provider 只允許 aws_iam_openid_connect_provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_openid_connect_provider"' ;;
-        *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role、modules/iam-role-policy 與 modules/iam-oidc-provider' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
+        modules/account-security-defaults/*) scan_pattern S4 'modules/account-security-defaults 只允許 aws_iam_account_password_policy' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' '"aws_iam_account_password_policy"' ;;
+        *) scan_pattern S4 'aws_iam_* 只能出現在 modules/iam-role、modules/iam-role-policy、modules/iam-oidc-provider 與 modules/account-security-defaults（只限 aws_iam_account_password_policy）' "$f" '^[[:space:]]*resource[[:space:]]+"aws_iam_' ;;
       esac
       # S4: awscc has its own IAM and security group types; no module or stack may declare them
       scan_pattern S4 'awscc_iam_* 不得出現在 modules 與 templates（IAM 只經 iam-role、iam-role-policy、iam-oidc-provider）' "$f" '^[[:space:]]*resource[[:space:]]+"awscc_iam_'
