@@ -20,5 +20,9 @@ locals {
     "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
     "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2",
     "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+    # Account baseline service roles (design v10 section 8.1): the Config recorder and AWS Backup.
+    "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
+    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
+    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
   ])
 }
