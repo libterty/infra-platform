@@ -6,7 +6,7 @@
 
 ## module
 
-共 83 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 86 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -93,6 +93,9 @@
 | 機器學習 | `sagemaker-endpoint` | SageMaker 推論 endpoint（real-time 或 serverless） | [![sagemaker-endpoint](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-endpoint%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-endpoint-v) |
 | 帳號治理 | `cloudtrail` | CloudTrail trail：multi-region、CMK、log file validation、CloudWatch Logs | [![cloudtrail](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcloudtrail%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=cloudtrail-v) |
 | 帳號治理 | `config-recorder` | Config recorder、delivery channel、保留期、managed rule、aggregator | [![config-recorder](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fconfig-recorder%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=config-recorder-v) |
+| 帳號治理 | `guardduty` | GuardDuty detector、防護功能、organization 自動啟用 | [![guardduty](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fguardduty%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=guardduty-v) |
+| 帳號治理 | `securityhub` | Security Hub CSPM：FSBP、CIS、跨 region 彙整、organization 設定 | [![securityhub](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsecurityhub%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=securityhub-v) |
+| 帳號治理 | `inspector` | Inspector 掃描（EC2、ECR、Lambda）與 organization 自動啟用 | [![inspector](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Finspector%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=inspector-v) |
 
 消費端寫法：
 
