@@ -80,5 +80,6 @@
   "modules/apigateway-http": "0.1.0",
   "modules/cognito-user-pool": "0.1.0",
   "modules/organization-delegated-admin": "0.1.0",
-  "modules/cloudtrail": "0.1.0"
+  "modules/cloudtrail": "0.1.0",
+  "modules/config-recorder": "0.1.0"
 }
