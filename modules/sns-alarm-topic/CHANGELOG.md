@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/libterty/infra-platform/compare/sns-alarm-topic-v0.1.1...sns-alarm-topic-v0.2.0) (2026-10-29)
+
+
+### Features
+
+* **sns-alarm-topic:** allow AWS service principals to publish through a topic policy ([1569292](https://github.com/libterty/infra-platform/commit/1569292d35f21ba01e14598d3fc6801833446d9e))
+
 ## [0.1.1](https://github.com/libterty/infra-platform/compare/sns-alarm-topic-v0.1.0...sns-alarm-topic-v0.1.1) (2026-10-23)
 
 
