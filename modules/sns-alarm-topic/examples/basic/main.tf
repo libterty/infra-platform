@@ -18,6 +18,7 @@ module "alarm_topic" {
 
   name                = "alpha-dev-alarms"
   email_subscriptions = ["ops@example.com"]
+  service_publishers  = ["budgets.amazonaws.com", "events.amazonaws.com"]
 
   tags = {
     Project = "alpha"
