@@ -6,7 +6,7 @@
 
 ## module
 
-共 80 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 81 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -61,6 +61,7 @@
 | IAM | `iam-role-policy` | 替既有的 role 加 inline policy | [![iam-role-policy](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiam-role-policy%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iam-role-policy-v) |
 | IAM | `iam-oidc-provider` | EKS 的 IAM OIDC provider | [![iam-oidc-provider](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fiam-oidc-provider%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=iam-oidc-provider-v) |
 | IAM | `cognito-user-pool` | Cognito user pool：public client（PKCE）、prefix domain、resource server | [![cognito-user-pool](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcognito-user-pool%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=cognito-user-pool-v) |
+| IAM | `organization-delegated-admin` | Organizations 的 trusted access 與各服務的委派管理員 | [![organization-delegated-admin](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Forganization-delegated-admin%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=organization-delegated-admin-v) |
 | 跨 stack 傳值 | `ssm-publish` | 寫入跨 stack 的值 | [![ssm-publish](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fssm-publish%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=ssm-publish-v) |
 | 跨 stack 傳值 | `ssm-read` | 讀取跨 stack 的值 | [![ssm-read](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fssm-read%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=ssm-read-v) |
 | EKS | `eks-cluster` | EKS 叢集 | [![eks-cluster](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Feks-cluster%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=eks-cluster-v) |
