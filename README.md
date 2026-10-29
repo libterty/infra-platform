@@ -6,7 +6,7 @@
 
 ## module
 
-共 81 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 83 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -91,6 +91,8 @@
 | 機器學習 | `sagemaker-model-registry` | SageMaker model package group | [![sagemaker-model-registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-model-registry%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-model-registry-v) |
 | 機器學習 | `sagemaker-pipeline` | SageMaker Pipeline | [![sagemaker-pipeline](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-pipeline%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-pipeline-v) |
 | 機器學習 | `sagemaker-endpoint` | SageMaker 推論 endpoint（real-time 或 serverless） | [![sagemaker-endpoint](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fsagemaker-endpoint%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=sagemaker-endpoint-v) |
+| 帳號治理 | `cloudtrail` | CloudTrail trail：multi-region、CMK、log file validation、CloudWatch Logs | [![cloudtrail](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcloudtrail%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=cloudtrail-v) |
+| 帳號治理 | `config-recorder` | Config recorder、delivery channel、保留期、managed rule、aggregator | [![config-recorder](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fconfig-recorder%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=config-recorder-v) |
 
 消費端寫法：
 
