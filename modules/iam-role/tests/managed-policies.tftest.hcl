@@ -125,3 +125,23 @@ run "one_bad_entry_rejects_the_set" {
 
   expect_failures = [var.managed_policy_arns]
 }
+
+run "account_baseline_service_role_policies_accepted" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["config.amazonaws.com"]
+    }
+    managed_policy_arns = [
+      "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
+      "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
+      "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
+    ]
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy_attachment.this) == 3
+    error_message = "The Config and Backup service role policies must be allowlisted"
+  }
+}
