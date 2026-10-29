@@ -141,13 +141,22 @@ HCP 認證、升版、範本複製出去要改哪裡、git 備案怎麼寫，見
 
 ## 開發
 
-需要 terraform 1.15.8、tflint 0.64.0、terraform-docs 0.24.x、bash、jq，不需要 AWS 憑證。範本從 `app.terraform.io/libterty` 抓 module，要先用該 organization 成員的帳號 `terraform login`。
+需要 terraform 1.15.8、tflint 0.64.0、terraform-docs 0.24.x、bash、jq，不需要 AWS 憑證。
 
 ```bash
 scripts/validate.sh                              # 全部
 scripts/validate.sh modules/ssm-publish          # 只跑指定目錄
 scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得到的目錄
 ```
+
+要不要 HCP Terraform 帳號，看你改的是哪裡：
+
+- 只改 `modules/` 不用帳號。`scripts/validate.sh modules/<module>` 用 mock provider 跑，不連 HCP。
+- 改到範本（`templates/`）就要。範本的 stack 從 `app.terraform.io/libterty` 抓 module，你要用自己的 HCP 帳號 `terraform login`，而且這個帳號要是 `libterty` organization 的成員。不要借用別人的帳號或 token。
+
+`libterty` 目前是 Personal 方案，只有 `owners` 一個 team，加進來就有整個 organization 的管理權，所以現在只有 repo owner 能在本機驗範本。fork 開的 PR 拿不到 CI 的 token，範本一樣驗不過。
+
+沒有帳號又要驗範本，可以先把 `source` 改成 git 寫法（[`consuming-modules.md`](./docs/guides/consuming-modules.md)〈備案〉）；repo 是公開的，不用帳號。要讓整個團隊都能用，得先把 registry 搬到能建唯讀 team 的 organization（[`hcp-registry-setup.md`](./docs/guides/hcp-registry-setup.md)〈CI 的 token〉）。
 
 不准跑 `terraform plan`、`apply`、帶 backend 的 `init`，也不准跑任何 `aws` 指令。`validate.sh` 檢查哪些事、commit 怎麼寫，見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)；安全問題照 [`SECURITY.md`](./SECURITY.md) 私下回報；授權是 Apache-2.0（[`LICENSE`](./LICENSE)）。
 
