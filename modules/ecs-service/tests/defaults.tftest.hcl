@@ -105,37 +105,37 @@ run "service_defaults" {
   command = plan
 
   assert {
-    condition     = one(aws_ecs_service.this.network_configuration).assign_public_ip == false
+    condition     = one(aws_ecs_service.this[0].network_configuration).assign_public_ip == false
     error_message = "assign_public_ip must be false"
   }
 
   assert {
-    condition     = aws_ecs_service.this.deployment_minimum_healthy_percent == 100 && aws_ecs_service.this.deployment_maximum_percent == 200
+    condition     = aws_ecs_service.this[0].deployment_minimum_healthy_percent == 100 && aws_ecs_service.this[0].deployment_maximum_percent == 200
     error_message = "Deployment must be 100/200"
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.deployment_circuit_breaker).enable == true && one(aws_ecs_service.this.deployment_circuit_breaker).rollback == true
+    condition     = one(aws_ecs_service.this[0].deployment_circuit_breaker).enable == true && one(aws_ecs_service.this[0].deployment_circuit_breaker).rollback == true
     error_message = "Circuit breaker with rollback must be on"
   }
 
   assert {
-    condition     = aws_ecs_service.this.propagate_tags == "SERVICE" && aws_ecs_service.this.availability_zone_rebalancing == "ENABLED"
+    condition     = aws_ecs_service.this[0].propagate_tags == "SERVICE" && aws_ecs_service.this[0].availability_zone_rebalancing == "ENABLED"
     error_message = "propagate_tags and AZ rebalancing must be set"
   }
 
   assert {
-    condition     = aws_ecs_service.this.wait_for_steady_state == false && aws_ecs_service.this.enable_execute_command == false
+    condition     = aws_ecs_service.this[0].wait_for_steady_state == false && aws_ecs_service.this[0].enable_execute_command == false
     error_message = "wait_for_steady_state and ECS Exec must default to false"
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.capacity_provider_strategy).capacity_provider == "FARGATE"
+    condition     = one(aws_ecs_service.this[0].capacity_provider_strategy).capacity_provider == "FARGATE"
     error_message = "Default strategy must be FARGATE"
   }
 
   assert {
-    condition     = aws_ecs_service.this.cluster == "arn:aws:ecs:ap-northeast-1:111111111111:cluster/alpha-dev" && aws_ecs_service.this.desired_count == 2
+    condition     = aws_ecs_service.this[0].cluster == "arn:aws:ecs:ap-northeast-1:111111111111:cluster/alpha-dev" && aws_ecs_service.this[0].desired_count == 2
     error_message = "cluster and desired_count must pass through"
   }
 }
@@ -171,12 +171,12 @@ run "network_passed_through" {
   command = plan
 
   assert {
-    condition     = one(aws_ecs_service.this.network_configuration).subnets == toset(["subnet-aaa", "subnet-bbb"])
+    condition     = one(aws_ecs_service.this[0].network_configuration).subnets == toset(["subnet-aaa", "subnet-bbb"])
     error_message = "subnets must equal the input"
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.network_configuration).security_groups == toset(["sg-111"])
+    condition     = one(aws_ecs_service.this[0].network_configuration).security_groups == toset(["sg-111"])
     error_message = "security_groups must equal the input"
   }
 }
@@ -202,7 +202,7 @@ run "execute_command_when_enabled" {
   }
 
   assert {
-    condition     = aws_ecs_service.this.enable_execute_command == true
+    condition     = aws_ecs_service.this[0].enable_execute_command == true
     error_message = "enable_execute_command must follow the input"
   }
 }
@@ -215,7 +215,7 @@ run "tags_are_applied" {
   }
 
   assert {
-    condition     = aws_ecs_service.this.tags == tomap({ Project = "alpha", Name = "alpha-api" })
+    condition     = aws_ecs_service.this[0].tags == tomap({ Project = "alpha", Name = "alpha-api" })
     error_message = "Service must carry tags plus Name"
   }
 

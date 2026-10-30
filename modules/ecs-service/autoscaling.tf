@@ -31,7 +31,7 @@ locals {
 resource "aws_appautoscaling_target" "this" {
   service_namespace  = "ecs"
   scalable_dimension = "ecs:service:DesiredCount"
-  resource_id        = "service/${local.cluster_name}/${aws_ecs_service.this.name}"
+  resource_id        = "service/${local.cluster_name}/${local.service.name}"
   min_capacity       = var.autoscaling == null ? var.desired_count : var.autoscaling.min_capacity
   max_capacity       = var.autoscaling == null ? var.desired_count : var.autoscaling.max_capacity
 
@@ -127,7 +127,7 @@ resource "aws_cloudwatch_metric_alarm" "scaling" {
 
   dimensions = {
     ClusterName = local.cluster_name
-    ServiceName = aws_ecs_service.this.name
+    ServiceName = local.service.name
   }
 
   tags = local.tags
