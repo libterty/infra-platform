@@ -89,5 +89,6 @@
   "modules/backup-plan": "0.1.0",
   "modules/budgets": "0.1.0",
   "modules/account-security-defaults": "0.1.0",
-  "modules/access-analyzer": "0.1.0"
+  "modules/access-analyzer": "0.1.0",
+  "modules/codepipeline": "0.1.0"
 }
