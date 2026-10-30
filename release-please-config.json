@@ -24,6 +24,8 @@
     "modules/client-vpn": { "release-type": "terraform-module", "component": "client-vpn", "initial-version": "0.1.0" },
     "modules/cloudfront-distribution": { "release-type": "terraform-module", "component": "cloudfront-distribution", "initial-version": "0.1.0" },
     "modules/cloudtrail": { "release-type": "terraform-module", "component": "cloudtrail", "initial-version": "0.1.0" },
+    "modules/codebuild-project": { "release-type": "terraform-module", "component": "codebuild-project", "initial-version": "0.1.0" },
+    "modules/codeconnections-connection": { "release-type": "terraform-module", "component": "codeconnections-connection", "initial-version": "0.1.0" },
     "modules/codepipeline": { "release-type": "terraform-module", "component": "codepipeline", "initial-version": "0.1.0" },
     "modules/cognito-user-pool": { "release-type": "terraform-module", "component": "cognito-user-pool", "initial-version": "0.1.0" },
     "modules/config-recorder": { "release-type": "terraform-module", "component": "config-recorder", "initial-version": "0.1.0" },

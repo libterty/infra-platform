@@ -6,7 +6,7 @@
 
 ## module
 
-共 92 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
+共 94 個 module，tag 格式是 `<module>-v<MAJOR>.<MINOR>.<PATCH>`。
 
 | 分類 | module | 用途 | 最新版 |
 | --- | --- | --- | --- |
@@ -102,6 +102,8 @@
 | 帳號治理 | `access-analyzer` | IAM Access Analyzer 與 archive rule | [![access-analyzer](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Faccess-analyzer%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=access-analyzer-v) |
 | 帳號治理 | `organization-delegated-admin` | Organizations 的 trusted access 與各服務的委派管理員 | [![organization-delegated-admin](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Forganization-delegated-admin%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=organization-delegated-admin-v) |
 | CI/CD | `codepipeline` | CodePipeline V2：手動執行、GitHub source stage | [![codepipeline](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcodepipeline%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=codepipeline-v) |
+| CI/CD | `codeconnections-connection` | CodeConnections connection（GitHub、GitLab、Bitbucket） | [![codeconnections-connection](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcodeconnections-connection%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=codeconnections-connection-v) |
+| CI/CD | `codebuild-project` | 給 CodePipeline 用的 CodeBuild 專案：CMK、自己的 log group | [![codebuild-project](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Flibterty%2Finfra-platform%2Fmain%2F.release-please-manifest.json&query=%24%5B%27modules%2Fcodebuild-project%27%5D&prefix=v&label=&color=blue)](https://github.com/libterty/infra-platform/releases?q=codebuild-project-v) |
 
 消費端寫法：
 
