@@ -67,6 +67,7 @@ module "ebs_csi" {
 - AWS managed policy 的白名單寫在 `locals.tf`，ARN 路徑還沒在真實環境核對（設計文件 §6），第一次用之前要先核對。
 - 0.4.0 起白名單加入 `CloudWatchAgentServerPolicy`，給 Container Insights 的採集元件（CloudWatch agent 與 Fluent Bit 共用的 ServiceAccount）用，見 v4 設計文件 W2。
 - 0.5.0 起白名單加入 `service-role/AWS_ConfigRole`、`service-role/AWSBackupServiceRolePolicyForBackup`、`service-role/AWSBackupServiceRolePolicyForRestores`，給 Config recorder 與 AWS Backup 的 role 用，見 v10 設計文件 §8.1。
+- 0.6.0 起白名單加入 `AmazonECSInfrastructureRolePolicyForLoadBalancers`，給 `ecs-service` 原生 blue/green 讓 ECS 改 ALB listener rule 的 role 用，見 v11 設計文件 §5.6。這個 policy 的 ARN 不帶 `service-role/` 路徑（[AWS managed policy 參考](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonECSInfrastructureRolePolicyForLoadBalancers.html)）。
 - 設計文件寫的 `AmazonEKSBlockStoragePolicyV2` 未確認是否真的存在，白名單暫時同時放 `AmazonEKSBlockStoragePolicy` 與 `AmazonEKSBlockStoragePolicyV2`，核對後只留一個。
 - `AmazonEBSCSIDriverPolicyV2` 的 ARN 帶 `service-role/` 路徑；不帶路徑的寫法會被拒絕。
 - IRSA（`federated`）只建議用在 Fargate，因為 Fargate 不支援 Pod Identity；其他 workload 用 Pod Identity（`pods.eks.amazonaws.com` 加 `tag_session`）。兩套並存會讓權限審查要看兩個地方，所以 `subject` 一定要指到單一 service account，不收萬用字元。

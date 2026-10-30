@@ -24,5 +24,7 @@ locals {
     "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
     "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
     "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
+    # ECS native blue/green: the role ECS uses to shift ALB listener rule weights (design v11 section 5.6).
+    "arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers",
   ])
 }

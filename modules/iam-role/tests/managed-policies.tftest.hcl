@@ -145,3 +145,45 @@ run "account_baseline_service_role_policies_accepted" {
     error_message = "The Config and Backup service role policies must be allowlisted"
   }
 }
+
+run "ecs_load_balancer_infrastructure_policy_accepted" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["ecs.amazonaws.com"]
+    }
+    managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers"]
+  }
+
+  assert {
+    condition     = toset(keys(aws_iam_role_policy_attachment.this)) == toset(["arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers"])
+    error_message = "The ECS infrastructure policy for load balancers must be allowlisted"
+  }
+}
+
+run "ecs_load_balancer_policy_wrong_path_rejected" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["ecs.amazonaws.com"]
+    }
+    managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRolePolicyForLoadBalancers"]
+  }
+
+  expect_failures = [var.managed_policy_arns]
+}
+
+run "other_ecs_managed_policy_rejected" {
+  command = plan
+
+  variables {
+    trust = {
+      service_principals = ["ecs.amazonaws.com"]
+    }
+    managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonECS_FullAccess"]
+  }
+
+  expect_failures = [var.managed_policy_arns]
+}
