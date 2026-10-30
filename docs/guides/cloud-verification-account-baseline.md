@@ -2,18 +2,18 @@
 
 ## 結論
 
-這份 runbook 列出 `templates/account-baseline` 第一次在真實 AWS 帳號 apply 時要逐項確認的事，照做完就能把 REFERENCE〈雲端整合待驗證〉表與 design v10 §11、§14 的「未確認」改成有證據的結論。
+這份 runbook 列出 `templates/account-baseline` 第一次在真實 AWS 帳號 apply 時要逐項確認的事，照著做完，就能把 REFERENCE〈雲端整合待驗證〉表與 design v10 §11、§14 的「未確認」改成有證據的結論。
 
 - 範圍：apply 前的盤點（本文第 0 項）、REFERENCE 表上的 8 項（第 1–8 項）、design §11 與 §14 裡表上沒涵蓋的 5 項（S1–S5）。
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的指令標【寫入】，只在 `dev` 執行。
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設命名或行為），執行時以實際輸出為準。
 - 這份範本改的是**整個帳號**，不是某個專案。apply 要帳號管理者等級的權限，有幾個動作會影響同帳號的其他專案，或做了就收不回來。哪些動作、怎麼復原，集中寫在〈帳號層的動作與復原〉，執行前一定要先看。
-- 從程式碼就看得出來、第一次驗證很可能不通過或要調整的四件事，先講：
-  1. **`destroy` 失敗後保護已經被拆掉**：`backup` 的 vault policy 與 lock、`foundation` 的 bucket policy、lifecycle、加密設定都依賴 vault 或 bucket，Terraform 會先刪它們，再去刪 vault 或 bucket，然後因為裡面有資料而失敗。結果是 vault 與 bucket 留著，保護卻沒了。REFERENCE〈destroy〉只寫「刪不掉是預期的」，沒寫這件事。第 8 項會確認，並寫了怎麼補回來。
-  2. **`destroy` 不是復原**：`defaults` 的 destroy 是刪掉設定（public access block 被刪、密碼政策被刪），不是回到 apply 前的值（`modules/account-security-defaults/README.md:38`）。帳號原本就有密碼政策或 public access block 時，要靠第 0 項的快照手動恢復。
+- 有四件事從程式碼就看得出來，第一次驗證很可能不通過或要調整，先講：
+  1. **`destroy` 失敗後保護已經被拆掉**：`backup` 的 vault policy 與 lock、`foundation` 的 bucket policy、lifecycle、加密設定都依賴 vault 或 bucket，所以 Terraform 會先刪掉這些設定，再去刪 vault 或 bucket；vault 與 bucket 裡面有資料，刪除失敗。結果 vault 與 bucket 還在，保護卻沒了。REFERENCE〈destroy〉只寫「刪不掉是預期的」，沒寫這件事。第 8 項會確認，並寫了怎麼補回來。
+  2. **`destroy` 不是復原**：`defaults` 的 destroy 會直接刪掉設定（public access block、密碼政策都被刪），不會回到 apply 前的值（`modules/account-security-defaults/README.md:38`）。帳號原本就有密碼政策或 public access block 時，要靠第 0 項的快照手動恢復。
   3. **第一天會收到很多信**：Security Hub 的 rule 會把所有 `HIGH`、`CRITICAL` 而且 `ACTIVE` 的 finding 寄出來（`detect/findings.tf:14-26`），包括 FSBP、CIS 第一次評估時 `FAILED` 的 control；`UnauthorizedApiCalls` 告警門檻是 1 分鐘內 1 次（`modules/log-metric-alarm/variables.tf:32-37`），帳號裡任何 `AccessDenied` 都會觸發。第 2、5 項要記下第一週收到幾封，決定要不要調門檻。
-  4. **EBS 的 recovery point 不一定用治理 CMK 加密**：REFERENCE〈Backup 的 tag 約定〉說「備份用治理 CMK 加密存進 vault」（`REFERENCE.md:74`）。EBS 這類沒有完整 AWS Backup 管理的資源，snapshot 可能沿用來源 volume 的 key（推測）。第 6 項會記下實際的 key。
+  4. **EBS 的 recovery point 不一定用治理 CMK 加密**：REFERENCE〈Backup 的 tag 約定〉說「備份用治理 CMK 加密存進 vault」（`REFERENCE.md:74`）。像 EBS 這種不是由 AWS Backup 完整管理的資源，snapshot 可能沿用來源 volume 的 key（推測）。第 6 項會記下實際的 key。
 
 ## 範圍
 
@@ -25,7 +25,7 @@
 | 1–8 | CloudTrail、CloudTrail 告警、Config、Security Hub、finding 告警、Backup、Budgets、destroy | `templates/account-baseline/infra/REFERENCE.md:359-372`〈雲端整合待驗證〉 |
 | S1–S5 | design §11、§14 與 REFERENCE〈已知限制的細節〉裡上表沒涵蓋的部分（對照見下表） | `docs/design/v10/design-docs.md` §11、§14；`REFERENCE.md:326-341` |
 
-design §11、§14 與 REFERENCE〈已知限制的細節〉各點的去處：
+design §11、§14 與 REFERENCE〈已知限制的細節〉的每一點，在本文對應到哪裡：
 
 | 來源 | 內容 | 在本文 |
 |---|---|---|
@@ -75,7 +75,7 @@ design §11、§14 與 REFERENCE〈已知限制的細節〉各點的去處：
 
 驗證身分要的 AWS 權限（唯讀）：`ssm:GetParameter`、`sts:GetCallerIdentity`、`cloudtrail:Describe*`、`cloudtrail:Get*`、`cloudtrail:LookupEvents`、`cloudtrail:ListPublicKeys`、`s3:ListBucket`、`s3:GetObject`（兩個 log bucket）、`s3:GetBucket*`、`s3:ListAllMyBuckets`、`s3:GetAccountPublicAccessBlock`、`kms:Decrypt`、`kms:DescribeKey`、`kms:GetKeyPolicy`、`kms:GetKeyRotationStatus`（治理 CMK）、`logs:Describe*`、`logs:TestMetricFilter`、`logs:FilterLogEvents`、`cloudwatch:DescribeAlarms`、`cloudwatch:GetMetricStatistics`、`config:Describe*`、`config:ListDiscoveredResources`、`guardduty:Get*`、`guardduty:List*`、`securityhub:Describe*`、`securityhub:Get*`、`securityhub:List*`、`inspector2:BatchGetAccountStatus`、`inspector2:ListCoverage`、`access-analyzer:Get*`、`access-analyzer:List*`、`events:DescribeRule`、`events:ListTargetsByRule`、`events:TestEventPattern`、`sns:GetTopicAttributes`、`sns:ListSubscriptionsByTopic`、`backup:Describe*`、`backup:Get*`、`backup:List*`、`budgets:ViewBudget`、`ec2:GetEbsEncryptionByDefault`、`ec2:GetEbsDefaultKmsKeyId`、`ec2:GetInstanceMetadataDefaults`、`ec2:DescribeVolumes`、`iam:GetAccountPasswordPolicy`、`iam:ListRoles`。
 
-`validate-logs` 要讀 trail bucket 的物件，物件用治理 CMK 加密，所以要 `kms:Decrypt`。key policy 的第一條放行帳號 root（`modules/kms-key/main.tf:7-13`），用 IAM policy 給就好。
+`validate-logs` 要讀 trail bucket 的物件，物件用治理 CMK 加密，所以要 `kms:Decrypt`。key policy 的第一條已經放行帳號 root（`modules/kms-key/main.tf:7-13`），所以用 IAM policy 給這個權限就好。
 
 【寫入】要另外的權限：`cloudwatch:SetAlarmState`、`guardduty:CreateSampleFindings`、`guardduty:ArchiveFindings`、`securityhub:BatchImportFindings`、`config:DeliverConfigSnapshot`、`ec2:CreateVolume`、`ec2:DeleteVolume`、`ec2:CreateTags`、`backup:StartBackupJob`、`iam:PassRole`（`<project>-<env>-backup`）、`backup:DeleteRecoveryPoint`（用來確認被 deny）。
 
@@ -83,11 +83,11 @@ design §11、§14 與 REFERENCE〈已知限制的細節〉各點的去處：
 
 ### 帳號層的動作與復原
 
-apply 這份範本會做下面這些事。影響範圍是整個帳號（或整個 region），不只這個 project。dev 帳號如果還有別的專案或別人在用，apply 前先通知。
+apply 這份範本會做下面這些事。影響的是整個帳號（或整個 region），不只這個 project。dev 帳號如果還有別的專案或別人在用，apply 前先通知。
 
 | 動作 | stack | 影響 | 復原 |
 |---|---|---|---|
-| S3 account public access block 四項全開 | `defaults` | 帳號裡所有 bucket 立刻不能公開，包括靜態網站與用 public ACL 的 bucket（`modules/account-security-defaults/README.md:39`） | 【寫入】`aws s3control delete-public-access-block --account-id <account>`，或照第 0 項快照 `put-public-access-block`。之後 Terraform state 還認為它在，要 `terraform state rm` 或重 apply |
+| S3 account public access block 四項全開 | `defaults` | 帳號裡所有 bucket 立刻不能公開，包括靜態網站與用 public ACL 的 bucket（`modules/account-security-defaults/README.md:39`） | 【寫入】`aws s3control delete-public-access-block --account-id <account>`，或照第 0 項快照 `put-public-access-block`。之後 Terraform state 裡還記著它，要 `terraform state rm` 或重 apply |
 | EBS 預設加密（`aws/ebs`） | `defaults` | 這個 region 之後新建的 volume 都加密 | 【寫入】`aws ec2 disable-ebs-encryption-by-default`。期間建的 volume 維持加密，改不回來 |
 | IMDSv2 預設、hop limit 2 | `defaults` | 這個 region 之後新開、沒自己設 metadata options 的 instance 只能用 IMDSv2；還在用 IMDSv1 的程式會拿不到憑證 | 【寫入】`aws ec2 modify-instance-metadata-defaults --http-tokens no-preference --http-put-response-hop-limit -1`（`-1` 代表不設定，推測）。期間開的 instance 不會跟著改 |
 | IAM 密碼政策（14 字元、90 天到期、記 24 組） | `defaults` | 帳號所有 IAM 使用者的 console 密碼。密碼已經超過 90 天的使用者，下次登入可能被要求改密碼（推測） | 【寫入】照第 0 項快照 `aws iam update-account-password-policy ...`；原本沒有就 `aws iam delete-account-password-policy` |
@@ -104,7 +104,7 @@ apply 這份範本會做下面這些事。影響範圍是整個帳號（或整�
 
 ## 共用變數
 
-每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。還沒 apply 的 stack，對應的 `ssm` 會回 `ParameterNotFound`，先跳過。
+每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。stack 還沒 apply 時，對應的 `ssm` 會回 `ParameterNotFound`，先跳過。
 
 ```bash
 export AWS_REGION=ap-northeast-1          # common.tf:24，aws_region 預設值；改過就跟著改
@@ -162,7 +162,7 @@ cd templates/account-baseline/infra/terraform    # 複製出去之後是 infra/t
 | H | 隔天以後 | 第 1 項的 `validate-logs`（digest 每小時一份）、第 3 項的 snapshot（每 24 小時）、第 6 項的排程備份（台北時間 03:00）、第 7 項的通知、第 2、5 項第一週的信件量 |
 | I | 最後，而且只在可以拆掉的 dev 帳號 | 第 8 項 |
 
-`iam` 一定要在 `audit` 之前：trail 與 recorder 要先有 role（REFERENCE〈stack 的內容〉）。`detect` 讀 `audit/config_recorder_name` 只是為了擋住順序（`detect/ssm-inputs.tf:4-6`）。
+`iam` 一定要在 `audit` 之前：trail 與 recorder 要先有 role（REFERENCE〈stack 的內容〉）。`detect` 讀 `audit/config_recorder_name` 只是用來確保順序（`detect/ssm-inputs.tf:4-6`）。
 
 ---
 
@@ -171,7 +171,7 @@ cd templates/account-baseline/infra/terraform    # 複製出去之後是 infra/t
 **前提**
 
 - 還沒 apply 任何 stack。
-- 這一項全部唯讀。輸出存成檔案，〈帳號層的動作與復原〉要靠它恢復原值。
+- 這一項全部唯讀。輸出存成檔案，之後〈帳號層的動作與復原〉要靠這份檔案恢復原值。
 
 **指令**
 
@@ -205,8 +205,8 @@ done
 
 **預期結果**
 
-- `describe-configuration-recorders`、`list-detectors` 是空的；`describe-hub` 回 `InvalidAccessException` 之類的「沒有啟用」錯誤（推測錯誤名稱）。有任何一個不是空的，先做 S2，不然 `audit`、`detect` 會 apply 失敗（`REFERENCE.md:76-78`）。
-- `describe-trails` 有既有的 trail 時，記下名稱與是不是 multi-region；要留就照 S2 import，不留就跟帳號擁有者確認後刪。
+- `describe-configuration-recorders`、`list-detectors` 是空的；`describe-hub` 回 `InvalidAccessException` 之類的「沒有啟用」錯誤（推測錯誤名稱）。只要有一個不是空的，就先做 S2，不然 `audit`、`detect` 會 apply 失敗（`REFERENCE.md:76-78`）。
+- 如果 `describe-trails` 列出既有的 trail，記下名稱與是不是 multi-region；要留就照 S2 import，不留就跟帳號擁有者確認後刪。
 - 沒有 `public:` 開頭的輸出。有的話，那些 bucket 在階段 B 之後會變成不能公開，先跟 bucket 的負責人確認。
 - 檔案存好，記下密碼政策與三個 EBS／IMDS 設定的原值。
 
@@ -219,7 +219,7 @@ done
 - 階段 A–D 完成。
 - trail 是 multi-region、只記 management event、log file validation 開、治理 CMK 加密（`audit/trail.tf:13-23`；`modules/cloudtrail/main.tf:10-12`）。
 - CloudTrail 寫 CloudWatch Logs 用 `<prefix>-trail-logs` role，只能寫 `/aws/cloudtrail/<prefix>` 的 log stream（`iam/policies.tf:32-40`、`iam/naming.tf:4-5`）。
-- bucket policy 的 `aws:SourceArn` 是本帳號的 `trail/*`（`modules/s3-bucket/main.tf:82-106`）；key policy 對 CloudTrail 用 `StringLikeIfExists` 加 `aws:SourceArn`（`foundation/kms.tf:8-22`）。這兩組條件是不是 CloudTrail 實際送的 key，第一次 apply 才知道。
+- bucket policy 的 `aws:SourceArn` 是本帳號的 `trail/*`（`modules/s3-bucket/main.tf:82-106`）；key policy 對 CloudTrail 用 `StringLikeIfExists` 加 `aws:SourceArn`（`foundation/kms.tf:8-22`）。這兩組條件用的 key 是不是 CloudTrail 實際會送的，要到第一次 apply 才知道。
 
 **指令**
 
@@ -303,7 +303,7 @@ aws logs describe-metric-filters --log-group-name "$TRAIL_LG" \
   --query 'metricFilters[].[filterName,metricTransformations[0].metricNamespace,metricTransformations[0].metricName]' --output table
 ```
 
-用 filter 原樣測樣本 event（唯讀）。前兩筆應該命中，後三筆不應該：
+用 filter 原樣測樣本 event（唯讀），每個 pattern 該命中哪幾筆寫在指令下面：
 
 ```bash
 ROOT_PATTERN=$(aws logs describe-metric-filters --log-group-name "$TRAIL_LG" --filter-name-prefix "$PREFIX-trail-root" --query 'metricFilters[0].filterPattern' --output text)
@@ -348,8 +348,8 @@ aws cloudwatch get-metric-statistics --namespace "$P/$E/cloudtrail" --metric-nam
 - 兩條告警存在、`OK`，namespace 與 metric 跟上表一樣；metric filter 兩條。
 - `test-metric-filter`：root 的 pattern 只命中第 1 筆，unauthorized 的只命中第 1、2 筆。
 - `set-alarm-state` 之後收到 `ALARM` 與 `OK` 兩封信。收不到時，先看 `AWS/SNS` 的 `NumberOfNotificationsFailed`，再看 KMS（CloudWatch 對加密 topic 發佈失敗時，告警歷史會有 action 失敗的紀錄）。
-- 真實的 `AccessDenied` 會讓 `UnauthorizedApiCalls` 有資料點，收到信。
-- 第一週記下兩條告警各觸發幾次，作為要不要調門檻的依據。
+- 真實的 `AccessDenied` 會讓 `UnauthorizedApiCalls` 有資料點，也會收到信。
+- 第一週記下兩條告警各觸發幾次，用來決定要不要調門檻。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／root 只驗 pattern □ ／第一週觸發次數 ______
 
@@ -389,7 +389,7 @@ aws configservice list-discovered-resources --resource-type AWS::IAM::Role --lim
 aws configservice list-discovered-resources --resource-type AWS::S3::Bucket --limit 5 --query 'resourceIdentifiers[].resourceName'
 ```
 
-【寫入】不想等 24 小時，手動送一份 snapshot（只是多寫一個物件）：
+【寫入】不想等 24 小時的話，手動送一份 snapshot（只會多寫一個物件）：
 
 ```bash
 aws configservice deliver-config-snapshot --delivery-channel-name "$RECORDER"
@@ -540,7 +540,7 @@ for r in guardduty securityhub; do
 done
 ```
 
-做完 archive sample finding：
+做完之後 archive sample finding：
 
 ```bash
 aws guardduty archive-findings --detector-id "$DETECTOR" \
@@ -618,7 +618,7 @@ aws backup start-backup-job --backup-vault-name "$VAULT" --resource-arn "$VOL_AR
   --lifecycle DeleteAfterDays=400 --query BackupJobId --output text
 ```
 
-這個請求可能直接被 API 拒絕，也可能建出一個之後 `FAILED` 的工作（推測）。直接拒絕就不會有通知；這時改用「先刪 volume、再對它的 ARN 開工作」再試一次（同樣是推測，記下實際行為）。`BACKUP_JOB_EXPIRED` 沒有簡單的觸發方式，只確認它在通知清單裡。
+這個請求可能直接被 API 拒絕，也可能建出一個之後 `FAILED` 的工作（推測）。如果直接被拒絕，就不會有通知；這時改用「先刪 volume、再對它的 ARN 開工作」再試一次（同樣是推測，記下實際行為）。`BACKUP_JOB_EXPIRED` 沒有簡單的觸發方式，只確認它在通知清單裡。
 
 隔天（排程跑過一次之後）：
 
@@ -646,7 +646,7 @@ aws ec2 delete-volume --volume-id "$VOL"    # 【寫入】
 - 手動的工作 `COMPLETED`，vault 多一個 recovery point，`delete` 是 7。記下 recovery point 的 `key`：是治理 CMK，還是 `aws/ebs`（見〈結論〉第 4 點）。
 - `delete-recovery-point` 回 `AccessDenied`，訊息提到 vault 的 access policy。
 - 失敗的工作會寄一封 `BACKUP_JOB_FAILED` 的信；如果請求被直接拒絕，備註寫「失敗通知沒有驗到」與實際錯誤訊息。
-- 隔天有一個由 plan 建立的工作（`plan` 等於 `$PLAN_ID`），狀態 `COMPLETED`。這證明 tag 選擇有效。
+- 隔天有一個 plan 建立的工作（`plan` 等於 `$PLAN_ID`），狀態 `COMPLETED`，表示 tag 選擇有效。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／recovery point 的 key ______ ／失敗通知 □ 有 □ 沒驗到
 
@@ -656,7 +656,7 @@ aws ec2 delete-volume --volume-id "$VOL"    # 【寫入】
 
 - 階段 A、G 完成，告警 topic 的 email 訂閱已確認，`budget_emails` 是收得到信的地址。
 - 預算 `<prefix>-monthly`：每月 dev 100、sit 300 美元（佔位），三個通知：實際 80%、實際 100%、預測 100%，每個通知送告警 topic 與 `budget_emails`（`budget/budget.tf:3-22`）。
-- topic policy 給 `budgets.amazonaws.com` 的條件只有 `aws:SourceAccount`（`modules/sns-alarm-topic/main.tf:47-54`），沒有 `aws:SourceArn`。Budgets 是全域服務，topic 在 `ap-northeast-1`，能不能送到還沒確認（design §11 第 6 點）。
+- topic policy 給 `budgets.amazonaws.com` 的條件只有 `aws:SourceAccount`（`modules/sns-alarm-topic/main.tf:47-54`），沒有 `aws:SourceArn`。Budgets 是全域服務、topic 在 `ap-northeast-1`，兩者之間送不送得到還沒確認（design §11 第 6 點）。
 - `FORECASTED` 要累積約 5 週的資料才會發（`modules/budgets/README.md:44`），新帳號這一條先不驗。
 
 **指令**
@@ -699,7 +699,7 @@ done
 - 三個通知：`ACTUAL` 80、`ACTUAL` 100、`FORECASTED` 100，都是 `GREATER_THAN`、`PERCENTAGE`。
 - 80% 那個通知的訂閱者是 `SNS` `$TOPIC_ARN` 加每個 `budget_emails` 的 `EMAIL`。
 - 調低之後：`budget_emails` 收到 Budgets 直接寄的信；告警 topic 的訂閱者也收到信，`NumberOfMessagesPublished` 有值。
-- email 收到、topic 沒收到（`NumberOfMessagesPublished` 是 `None`）：表示 Budgets 發佈到 topic 被擋。先把 `budgets.amazonaws.com` 的條件加上 `aws:SourceArn`（`arn:aws:budgets::<account>:*`）或暫時拿掉條件再試，記下哪一種會通，開 issue 給 `sns-alarm-topic`。
+- 如果 email 收到了、topic 沒收到（`NumberOfMessagesPublished` 是 `None`），就是 Budgets 發佈到 topic 時被擋。先把 `budgets.amazonaws.com` 的條件加上 `aws:SourceArn`（`arn:aws:budgets::<account>:*`）或暫時拿掉條件再試，記下哪一種會通，開 issue 給 `sns-alarm-topic`。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／topic 有收到 □ email 有收到 □ ／tfvars 已改回 □
 
@@ -730,7 +730,7 @@ done
 
 **8b. 【寫入】真的 destroy（可拆掉的 dev 帳號）**
 
-順序照 `stacks.sh` 的反向（`stacks.sh:72-78`）。`all destroy` 遇到第一個失敗就停，所以一個一個跑：
+順序是 `stacks.sh` 的反向（`stacks.sh:72-78`）。`all destroy` 遇到第一個失敗就停，所以一個一個跑：
 
 ```bash
 ./stacks.sh dev budget destroy
@@ -772,7 +772,7 @@ aws iam list-roles --path-prefix /aws-service-role/ --query 'Roles[].RoleName' -
 
 復原（要繼續用這個帳號時）：
 
-- 重新 `./stacks.sh dev <stack> apply` 依 `ORDER` 跑一次，vault 與 bucket 還在 state 裡，policy、lock、lifecycle、加密設定會補回來。
+- 依 `ORDER` 重新跑一次 `./stacks.sh dev <stack> apply`。vault 與 bucket 還在 state 裡，所以 policy、lock、lifecycle、加密設定會補回來。
 - `defaults` 的四個帳號設定，apply 前的原值見第 0 項的快照；原本有值的要手動恢復（〈帳號層的動作與復原〉）。
 - 真的要清掉 vault 與 bucket：vault 要等 recovery point 到期（dev 最後一次備份後 7 天）；bucket 要清空所有版本。key 要留到這兩者都不需要為止（REFERENCE〈destroy〉）。
 
@@ -780,7 +780,7 @@ aws iam list-roles --path-prefix /aws-service-role/ --query 'Roles[].RoleName' -
 
 **預期結果**
 
-- 8a：每個 stack 的 `Plan:` 只有 `to destroy`，數量跟 apply 時建的一樣；`backup` 與 `foundation` 的清單包括 vault policy、lock、bucket policy、lifecycle（後面 8b 會被先刪掉的那些）。
+- 8a：每個 stack 的 `Plan:` 只有 `to destroy`，數量跟 apply 時建的一樣；`backup` 與 `foundation` 的清單包括 vault policy、lock、bucket policy、lifecycle（8b 會先刪掉的就是這些）。
 - `budget`、`detect`、`audit`、`iam`、`defaults` destroy 成功。`detect` 之後 GuardDuty detector 與 Security Hub 都停用；`defaults` 之後 public access block 不存在、密碼政策不存在、EBS 預設加密 `false`。
 - `backup` destroy 失敗，錯誤是 vault 裡還有 recovery point。失敗後 vault 還在、recovery point 還在；**記下 vault policy 與 lock 是不是已經不見了**（照 Terraform 的相依順序應該已經刪掉，這是〈結論〉第 1 點）。
 - `foundation` destroy 失敗，錯誤是 bucket 不是空的（`BucketNotEmpty`）。bucket 還在；**記下 bucket policy、lifecycle、加密設定是不是已經不見了，versioning 是 `Enabled` 還是 `Suspended`**（推測 provider 刪 versioning resource 時會改成 `Suspended`）。key 應該還是 `Enabled`（bucket 沒刪成，key 不會被排進刪除）；topic 可能已經刪掉（topic 只依賴 key，不依賴 bucket）。
@@ -925,7 +925,7 @@ aws inspector2 list-coverage --query 'coveredResources[].[resourceType,scanStatu
 **預期結果**
 
 - detector `ENABLED`，頻率 `FIFTEEN_MINUTES`。
-- `S3_DATA_EVENTS`、`EKS_AUDIT_LOGS`、`EBS_MALWARE_PROTECTION`、`RDS_LOGIN_EVENTS`、`LAMBDA_NETWORK_LOGS` 是 `ENABLED`，`RUNTIME_MONITORING` 是 `DISABLED`。清單裡其他沒列在 module 的 feature（例如 `EKS_RUNTIME_MONITORING`），module 不管，照實記下它們的狀態（`modules/guardduty/README.md` 的「只管理列出的 feature」）。
+- `S3_DATA_EVENTS`、`EKS_AUDIT_LOGS`、`EBS_MALWARE_PROTECTION`、`RDS_LOGIN_EVENTS`、`LAMBDA_NETWORK_LOGS` 是 `ENABLED`，`RUNTIME_MONITORING` 是 `DISABLED`。清單裡 module 沒列到的其他 feature（例如 `EKS_RUNTIME_MONITORING`）module 不管，照實記下狀態（`modules/guardduty/README.md` 的「只管理列出的 feature」）。
 - Inspector `state` 是 `ENABLED`，`ec2`、`ecr`、`lambda` 是 `ENABLED`，`lambdaCode` 是 `DISABLED`。
 - `list-coverage` 列出帳號裡的 ECR 映像、Lambda 與受 SSM 管理的 EC2；EC2 沒有 SSM agent 的會是不能掃的狀態（`modules/inspector/README.md` 的 EC2 說明），記下數量。
 

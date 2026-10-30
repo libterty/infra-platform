@@ -2,15 +2,15 @@
 
 ## 結論
 
-這份 runbook 列出 `templates/example9` 第一次在真實 AWS 帳號 apply 時要逐項確認的事，照做完就能把 REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v11 §11、§14 的「未確認」改成有證據的結論。
+`templates/example9` 第一次在真實 AWS 帳號 apply 時，照這份 runbook 逐項確認。做完之後，REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v11 §11、§14 裡的「未確認」就能改成有證據的結論。
 
 - 範圍：REFERENCE 表上的 10 項，加上 design §2、§5.4、§11、§14 與 REFERENCE 其他段落裡表上沒涵蓋的 8 項（本文 S1–S8）。
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的指令標【寫入】，只在 `dev` 執行。sit 只做唯讀的設定檢查；sit 才有的行為（Approval、Lambda canary）在 dev 暫時改 tfvars 重現，做完改回來。
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設命名或行為），執行時以實際輸出為準。
-- 從程式碼看得出來、第一次驗證最可能不通過的兩件事，先講：
-  1. **Lambda 部署 action 不帶 input artifact**（`pipeline/pipelines.tf:69-84`）：只靠 `PublishedTargetVersion` 切 alias 的寫法照文件寫，沒有實例。第 4 項會直接回答。
-  2. **`api-deploy` 的 buildspec 依賴 `jq`**：CodeBuild 的 `amazonlinux-aarch64-standard:3.0` 有沒有內建，REFERENCE 自己也寫沒確認（REFERENCE.md:259）。沒有的話第 3 項會在 `jq: command not found` 失敗，S1 記錄。
+- 從程式碼看，第一次驗證最可能卡在這兩件事：
+  1. **Lambda 部署 action 不帶 input artifact**（`pipeline/pipelines.tf:69-84`）：只靠 `PublishedTargetVersion` 切 alias 是照文件寫的，沒有實例可以對照。第 4 項會直接驗證。
+  2. **`api-deploy` 的 buildspec 依賴 `jq`**：CodeBuild 的 `amazonlinux-aarch64-standard:3.0` 有沒有內建它，REFERENCE 自己也寫了還沒確認（REFERENCE.md:259）。沒有的話，第 3 項會因為 `jq: command not found` 失敗，結果記在 S1。
 - 寫這份 runbook 時查過 AWS service authorization reference（2026-10-30，`servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json`）：
   - `ecs:RegisterTaskDefinition` 的 resource type 是 `task-definition`，所以 `iam/policies.tf:109-114` 限定在 api family 的寫法有文件支持；`ecs:DescribeTaskDefinition` 沒有 resource type，程式碼用 `*` 是對的。S2 仍用 policy simulator 確認一次。
   - `cloudfront:CreateInvalidation` 的 resource type 是 `distribution`，`distribution` 支援 `aws:ResourceTag/${TagKey}`，所以 web 的 invalidation 用 tag 限定範圍也有文件支持。S3 確認實際行為。
@@ -52,7 +52,7 @@ design 與 REFERENCE 各個「未確認」的去處：
 
 不涵蓋：
 
-- CodeConnections 的價格（REFERENCE.md:560）：要看帳單，不是一次驗證能回答的。用一個月後到 Cost Explorer 依服務篩 CodeConnections 確認。
+- CodeConnections 的價格（REFERENCE.md:560）：要看帳單，一次驗證答不出來。一個月後到 Cost Explorer 依服務篩 CodeConnections 確認。
 - 內部 ALB 沒有 HTTPS、access log、WAF，前端沒有 WAF、log、自訂網域（REFERENCE.md:557-558）：刻意不做，不需要驗證。
 - Lambda 部署 action 沒有設 `Alarms`（REFERENCE.md:549）：刻意不做；第 4 項只記錄 canary 期間不會自動回滾。
 
@@ -82,7 +82,7 @@ design 與 REFERENCE 各個「未確認」的去處：
 
 ## 共用變數
 
-每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（範本是 `cicd`；env 是 `dev` 或 `sit`）。還沒 apply 的 stack 的 key 會回 `ParameterNotFound`，那幾行先略過。
+每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（範本是 `cicd`；env 是 `dev` 或 `sit`）。stack 還沒 apply 的話，它的 key 會回 `ParameterNotFound`，那幾行先略過。
 
 ```bash
 export AWS_REGION=ap-northeast-1          # common.tf:24，aws_region 預設值；改過就跟著改
@@ -185,7 +185,7 @@ actions "$API_PL" "$EXEC" | jq '.[] | select(.stage=="Source") | {status, vars}'
 
 - apply 完 `status` 是 `PENDING`、`provider` 是 `GitHub`；授權後是 `AVAILABLE`。
 - policy 的 `Action` 有 `codeconnections:UseConnection` 與 `codestar-connections:UseConnection`，`Resource` 是兩個 ARN（前綴不同、其餘相同）。
-- Source action `Succeeded`，`vars` 有 `CommitId`、`BranchName`（CodeStarSourceConnection 的輸出變數，推測），`BranchName` 是 tfvars 的 `branch`，`CommitId` 等於該分支當下最新的 commit（`git ls-remote origin <branch>` 對照）。
+- Source action `Succeeded`，`vars` 有 `CommitId`、`BranchName`（CodeStarSourceConnection 的輸出變數，推測），`BranchName` 是 tfvars 的 `branch`，`CommitId` 等於這個分支當下最新的 commit（`git ls-remote origin <branch>` 對照）。
 - 不通過時記下 Source action 的錯誤訊息（例如沒授權的 `connection is not available`、GitHub App 沒裝到這個 repo）。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
@@ -254,7 +254,7 @@ aws codepipeline list-pipeline-executions --pipeline-name "$WEB_PL" --max-result
 
 - 階段 F：dev 的 api pipeline 至少成功一次。應用程式 repo 有 `buildspec/api-build.yml`、`buildspec/api-deploy.yml`（照 REFERENCE.md:206-255）。
 - api 的映像要在 8080 回應 `GET /health`（REFERENCE.md:142）。
-- Build action 的 namespace 是 `BuildVariables`（`pipeline/pipelines.tf:24`、`:36`）；Deploy action 用 `EnvironmentVariables` 帶 `IMAGE_URI = #{BuildVariables.IMAGE_URI}`（`pipeline/pipelines.tf:46-49`）。`api-deploy` 專案本身沒有 `IMAGE_URI` 變數（`pipeline/builds.tf:23-29`），所以這是「加上」而不是蓋掉專案層級的值。
+- Build action 的 namespace 是 `BuildVariables`（`pipeline/pipelines.tf:24`、`:36`）；Deploy action 用 `EnvironmentVariables` 帶 `IMAGE_URI = #{BuildVariables.IMAGE_URI}`（`pipeline/pipelines.tf:46-49`）。`api-deploy` 專案本身沒有 `IMAGE_URI` 變數（`pipeline/builds.tf:23-29`），所以 pipeline 是新加這個變數，沒有專案層級的值被蓋掉。
 
 **指令**
 
@@ -288,12 +288,12 @@ aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
   --query 'TargetHealthDescriptions[].[Target.Id,TargetHealth.State]' --output text
 ```
 
-`REV-1` 是 pipeline 之前的最後一版。第一次跑 pipeline 時它是 Terraform 註冊的版本；之後可能是上一次 pipeline 的版本，兩者都應該只有映像不同。
+`REV-1` 是這次 pipeline 之前的最後一版：第一次跑 pipeline 時是 Terraform 註冊的版本，之後可能是上一次 pipeline 註冊的。不管是哪一種，都應該只有映像不同。
 
 【寫入】circuit breaker：部署一個啟動就結束的映像，只在 dev 做。兩種做法擇一：
 
-- 在 `develop` 上放一個短期的 commit，讓 api 的 Dockerfile `CMD` 直接 `exit 1`，跑 api pipeline，記錄完 revert 再跑一次。這條路徑會一起驗第 9 項。
-- 不動分支：手動推一個壞映像 `$API_REPO:broken-<日期>`，用 `api-deploy` 專案直接跑一次（`--source-type-override NO_SOURCE` 能不能用在 `CODEPIPELINE` 類型的專案，推測，不行就用第一種）：
+- 在 `develop` 上放一個短期的 commit，讓 api 的 Dockerfile `CMD` 直接 `exit 1`，跑 api pipeline，記錄完 revert 再跑一次。這個做法會順便驗到第 9 項。
+- 不動分支：手動推一個壞映像 `$API_REPO:broken-<日期>`，用 `api-deploy` 專案直接跑一次（推測 `--source-type-override NO_SOURCE` 也能用在 `CODEPIPELINE` 類型的專案；不行就用第一種）：
 
   ```bash
   aws codebuild start-build --project-name "$PFX-api-deploy" \
@@ -302,7 +302,7 @@ aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
     --environment-variables-override name=IMAGE_URI,value="$API_REPO:broken-<日期>",type=PLAINTEXT
   ```
 
-  `api-deploy.yml` 是 REFERENCE.md:228-255 那份存到本機。
+  `api-deploy.yml` 是把 REFERENCE.md:228-255 那份存到本機的檔案。
 
 ```bash
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
@@ -318,7 +318,7 @@ aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
 - service 用的 task definition 映像等於 `IMAGE_URI`。
 - `diff` 印出「除了映像以外相同」：CPU、記憶體、role、log 設定、port、tag 都跟前一版一樣。
 - `deployments` 只剩一個 `PRIMARY`、`rollout` 是 `COMPLETED`；`running` 等於 `desired`（dev 1、sit 2：`application/envs/*.tfvars:15`）；target 都是 `healthy`。
-- 壞映像：新的 deployment `rollout` 變 `FAILED`，`reason` 提到 circuit breaker，service 回到原本的 task definition；`aws ecs wait services-stable` 回傳失敗（或 10 分鐘逾時），build 失敗。走 pipeline 的做法時，pipeline 執行是 `Failed`，第 9 項的告警信會到。
+- 壞映像：新的 deployment `rollout` 變 `FAILED`，`reason` 提到 circuit breaker，service 回到原本的 task definition；`aws ecs wait services-stable` 回傳失敗（或 10 分鐘逾時），build 跟著失敗。走 pipeline 的做法時，pipeline 執行是 `Failed`，會收到第 9 項的告警信。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／用了哪種壞映像做法 ______
 
@@ -373,7 +373,7 @@ aws codepipeline get-pipeline --name "$P-sit-fn" \
   --query 'pipeline.stages[?name==`Deploy`].actions[0].configuration' --output json
 ```
 
-名稱怎麼來的：函式 `"${local.name_prefix}-fn"`、alias `live`（`application/function.tf:8`、`:14`）；`$LATEST` 的映像被 Terraform 忽略、alias 的 `function_version` 與 `routing_config` 被忽略（`modules/lambda-function/main.tf:90-92`、`:116-118`）；Lambda 部署 action 的 log group `/<region>/codepipeline/<pipeline>`（`iam/policies.tf:256`，REFERENCE.md:522）；`fn-build` 專案的變數 `REPOSITORY_URI`、`FUNCTION_NAME`（`pipeline/builds.tf:34-37`）。
+名稱怎麼來的：函式 `"${local.name_prefix}-fn"`、alias `live`（`application/function.tf:8`、`:14`）；Terraform 忽略 `$LATEST` 的映像，也忽略 alias 的 `function_version` 與 `routing_config`（`modules/lambda-function/main.tf:90-92`、`:116-118`）；Lambda 部署 action 的 log group `/<region>/codepipeline/<pipeline>`（`iam/policies.tf:256`，REFERENCE.md:522）；`fn-build` 專案的變數 `REPOSITORY_URI`、`FUNCTION_NAME`（`pipeline/builds.tf:34-37`）。
 
 **預期結果**
 
@@ -435,7 +435,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://$WEB_BUCKET.s3.$AWS_REGION.ama
 **前提**
 
 - dev（階段 H）：`pipeline/envs/dev.tfvars` 暫時改 `approval_required = true`，apply `pipeline`。Approval stage 名稱 `Approval`、action `Approve`、`CustomData` 是「部署到 <env> 之前請確認」（`pipeline/pipelines.tf:13-21`）。
-- 核准身分照 REFERENCE.md:387-396。另一個沒有 `PutApprovalResult` 的身分（例如只有執行權限的人）用來測「不能核准」。
+- 核准身分照 REFERENCE.md:387-396。再準備一個沒有 `PutApprovalResult` 的身分（例如只有執行權限的人），用來測「不能核准」。
 
 **指令**
 
@@ -491,7 +491,7 @@ aws codepipeline list-pipeline-executions --pipeline-name "$API_PL" --max-result
 - sit 三條的 stage：api、fn 是 `Source Build Approval Deploy`，web 是 `Source Build Approval Deploy Invalidate`。
 - `simulate-custom-policy` 回 `allowed`。
 - dev 實測：執行停在 `Approval` 的 `InProgress`；沒有權限的身分得到 `AccessDeniedException`；核准後 Deploy 開始；拒絕的那次執行是 `Failed`。
-- 沒人處理的 Approval 7 天後失敗（REFERENCE.md:339）不在這次驗證，需要的話留一個不處理，7 天後看。
+- Approval 沒人處理時 7 天後會失敗（REFERENCE.md:339），這次不驗；需要的話留一個不處理，7 天後再看。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
 
@@ -555,7 +555,7 @@ done
 aws iam get-role --role-name "$PFX-pipeline" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition' --output json
 ```
 
-CloudTrail 的 `Username` 對 assumed role 是 session 名稱還是 role 名稱，依服務而定（推測）。查不到東西時改用 `AttributeKey=EventName` 搭配 `jq` 篩 `.userIdentity.sessionContext.sessionIssuer.userName`。
+assumed role 在 CloudTrail 的 `Username` 是 session 名稱還是 role 名稱，依服務而定（推測）。查不到東西時改用 `AttributeKey=EventName` 搭配 `jq` 篩 `.userIdentity.sessionContext.sessionIssuer.userName`。
 
 名稱怎麼來的：role 名稱（`iam/roles.tf:7-21`）；trust 的 `aws:SourceAccount` 與 `aws:SourceArn`（`iam/roles.tf:14`、`:21`、`:34`，條件的組法在 `modules/iam-role/main.tf:32-35`）；repository 名稱 `<prefix>-api`、`<prefix>-fn`（`containerimage/repositories.tf:5-6`）；artifact bucket `<prefix>-artifacts-<account>`（`foundation/buckets.tf:6`）；各 Sid 與動作（`iam/policies.tf:89-253`）；只有 3 個建置專案能寫 artifact（`iam/policies.tf:29`、`:48`）。
 
@@ -624,7 +624,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$ALB_DNS/health"
 - 函式 `Active`、`arm64`、512、30，映像是 `<fn repo>:bootstrap`；alias `live` 指到 `1`。
 - 三個 log group 的保存天數是 dev 30／sit 90；`/ecs/` 與 `/aws/lambda/` 的 `kmsKeyId` 是共用 CMK。
 - `curl` 回 `200`。
-- apply 過程中因為權限失敗的話（REFERENCE〈執行 apply 的身分要有的權限〉的那幾項），把錯誤訊息與補的權限記在備註。
+- apply 過程中如果因為權限失敗（REFERENCE〈執行 apply 的身分要有的權限〉的那幾項），把錯誤訊息和補上的權限記在備註。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／apply 補過的權限 ______
 
@@ -667,7 +667,7 @@ for m in TriggeredRules Invocations FailedInvocations; do
 done
 ```
 
-事件的實際欄位（`detail.pipeline`、`detail.state`）是 CodePipeline 文件的格式，上面的 `ev` 照它組（推測，以收到的信為準）。
+事件欄位（`detail.pipeline`、`detail.state`）照 CodePipeline 文件的格式，上面的 `ev` 也照這個格式組（推測，以收到的信為準）。
 
 名稱怎麼來的：rule 名稱（`pipeline/alerts.tf:5`）；topic `<prefix>-alerts`（`foundation/alerts.tf:3`）；`TriggeredRules` 等是 EventBridge 的指標名稱（推測）。
 
@@ -708,7 +708,7 @@ cd templates/example9/infra/terraform    # 複製出去的專案就是 infra/ter
 ./stacks.sh dev all destroy
 ```
 
-每次停下來時記下哪個 stack、什麼錯誤，照 REFERENCE.md:510-520 處理後再跑一次：
+每次停下來，記下是哪個 stack、什麼錯誤，照 REFERENCE.md:510-520 處理後再跑一次：
 
 ```bash
 aws s3 rm "s3://$WEB_BUCKET" --recursive            # web 停在前端 bucket
@@ -769,7 +769,7 @@ for k in api-build api-deploy fn-build web-build web-invalidate; do
 done
 ```
 
-`actions` 回的 `build` 欄位對 CodeBuild action 是 build ID（`<專案>:<uuid>`），對 Lambda、S3、Manual action 不是，上面用有沒有冒號篩。
+`actions` 回的 `build` 欄位，在 CodeBuild action 是 build ID（`<專案>:<uuid>`），在 Lambda、S3、Manual action 不是，所以上面用有沒有冒號來篩。
 
 名稱怎麼來的：log group `/aws/codebuild/<name>`（`modules/codebuild-project/main.tf:2`）；專案名稱（`pipeline/builds.tf:5-11`）。
 
@@ -778,7 +778,7 @@ done
 - 5 個 build 都 `SUCCEEDED`，`image` 與 `type` 跟上面一致，`buildspec` 是 `buildspec/<名稱>.yml`。
 - `commit_match` 都是 `true`：`CODEBUILD_RESOLVED_SOURCE_VERSION` 就是 commit ID（REFERENCE.md:202 的假設）。
 - `exported`：`api-build` 有 `IMAGE_URI`、`fn-build` 有 `VERSION`，其他沒有。
-- 沒有任何 `command not found`；特別是 `api-deploy` 的 `jq`。有的話在 REFERENCE 的範例加 `install` phase，記在備註。
+- 沒有任何 `command not found`，特別要看 `api-deploy` 的 `jq`。有的話，在 REFERENCE 的範例加 `install` phase，並記在備註。
 - 推上去的映像是 arm64：`aws ecr describe-images --repository-name "$PFX-api" --image-ids imageTag=<tag>` 的 `artifactMediaType` 與 manifest（`aws ecr batch-get-image`）看得到 `arm64`。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／`jq` 是否內建 ______
@@ -811,7 +811,7 @@ for ev in RegisterTaskDefinition TagResource UpdateService; do
 done
 ```
 
-【寫入】反向探測（選做，dev）：用 `api-deploy` 專案跑一份只做探測的 buildspec，以這個 role 的身分試著註冊別的 family。`--source-type-override NO_SOURCE` 是否適用同第 3 項（推測）。
+【寫入】反向探測（選做，dev）：用 `api-deploy` 專案跑一份只做探測的 buildspec，以這個 role 的身分試著註冊別的 family。`--source-type-override NO_SOURCE` 能不能用，跟第 3 項一樣是推測。
 
 ```bash
 cat > probe.yml <<'YAML'
@@ -833,7 +833,7 @@ aws codebuild start-build --project-name "$PFX-api-deploy" --source-type-overrid
 
 **預期結果**
 
-- `sim` 的結果跟註解一致。如果第一行 `RegisterTaskDefinition` 對自己的 family 就是 `implicitDeny`，或第 3 項 CloudTrail 的 `RegisterTaskDefinition` 是 `AccessDenied`：ECS 實際上不接受這個動作的 resource-level 限定（跟 service authorization reference 不一致），要改成 `Resource "*"` 並靠 `iam:PassRole` 的條件與 `UpdateService` 的 `ecs:task-definition` 條件限制範圍，記在備註並開 issue。
+- `sim` 的結果跟註解一致。如果第一行 `RegisterTaskDefinition` 對自己的 family 就是 `implicitDeny`，或第 3 項 CloudTrail 的 `RegisterTaskDefinition` 是 `AccessDenied`，代表 ECS 實際上不接受這個動作的 resource-level 限定（跟 service authorization reference 不一致）。這時要改成 `Resource "*"`，靠 `iam:PassRole` 的條件與 `UpdateService` 的 `ecs:task-definition` 條件限制範圍；記在備註並開 issue。
 - 第 3 項的 `RegisterTaskDefinition`、`TagResource`、`UpdateService` 都是 `OK`。
 - 探測的 build log 有 `AccessDeniedException` 與 `PROBE_DENIED`。
 
@@ -941,15 +941,15 @@ aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,Attribut
 
 **預期結果**
 
-- 記下 repository policy 的實際內容。預期有一條 `lambda.amazonaws.com` 的 `ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`，是建立函式時 Lambda 自己加的（推測）；或是 `RepositoryPolicyNotFoundException`。
-- `SetRepositoryPolicy` 如果出現，記下是哪個身分（apply 身分）。apply 身分沒有 `ecr:SetRepositoryPolicy` 而建立函式失敗時，記下錯誤訊息，補進 REFERENCE〈執行 apply 的身分要有的權限〉。
+- 記下 repository policy 的實際內容。預期有一條 `lambda.amazonaws.com` 的 `ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`，是建立函式時 Lambda 自己加的（推測）；也可能回 `RepositoryPolicyNotFoundException`。
+- 如果有 `SetRepositoryPolicy`，記下是哪個身分（apply 身分）。如果 apply 身分沒有 `ecr:SetRepositoryPolicy`，導致建立函式失敗，記下錯誤訊息，補進 REFERENCE〈執行 apply 的身分要有的權限〉。
 - `fn-build` 的 `UpdateFunctionCode` 都是 `OK`。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／repository policy 的內容 ______
 
 ### S6. 部署來源：`--source-revisions` 與 branch protection（design §11 第 6 點）
 
-**前提**：第 5 項跑過。有一個**不在** `develop` 上的 commit（例如另一個分支上的），記下它的 SHA。
+**前提**：第 5 項跑過。準備一個**不在** `develop` 上的 commit（例如別的分支上的），記下它的 SHA。
 
 **指令**
 
@@ -975,9 +975,9 @@ aws codepipeline start-pipeline-execution --name "$WEB_PL"
 
 **預期結果**
 
-- branch protection：至少一位 reviewer、`enforce_admins` 是 `true`、不允許 force push 與刪除（REFERENCE.md:407）；用 ruleset 的話，rule 清單裡有 `pull_request`、`non_fast_forward`、`deletion`。沒開就記為不通過，這是上線前一定要做的事（README.md:60）。
+- branch protection：至少一位 reviewer、`enforce_admins` 是 `true`、不允許 force push 與刪除（REFERENCE.md:407）；用 ruleset 的話，rule 清單裡有 `pull_request`、`non_fast_forward`、`deletion`。沒開就記為不通過；上線前一定要開（README.md:60）。
 - App 的安裝範圍只有應用程式 repo。
-- `--source-revisions`：記下實際結果。如果執行成功、Source 的 `CommitId` 是分支外的 SHA，代表有 `StartPipelineExecution` 的人可以部署 repo 裡任何 commit（REFERENCE.md:400 的保守假設成立），在備註寫明。如果被拒絕，記下錯誤訊息。
+- `--source-revisions`：記下實際結果。如果執行成功、Source 的 `CommitId` 是分支外的 SHA，代表有 `StartPipelineExecution` 權限的人可以部署 repo 裡任何 commit（REFERENCE.md:400 的保守假設成立），在備註寫明。如果被拒絕，記下錯誤訊息。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／分支外 commit 能不能部署 ______
 
@@ -1034,9 +1034,9 @@ aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'se
 
 第 4 步做兩次（第二次看會不會換回原本的 target group）。也看一次 CloudTrail 有沒有 `api-deploy` 或 infrastructure role 的 `AccessDenied`（第 7 項的迴圈加上 `api-ecs-infrastructure`）。
 
-選做：ECS assume infrastructure role 時有沒有帶 `aws:SourceAccount`。在 `api_ecs_infrastructure_role` 的 trust 加 `source_account = var.expected_account_id`，apply `iam`，再跑一次第 4 步。部署成功代表有帶，可以加回範本。
+選做：確認 ECS assume infrastructure role 時有沒有帶 `aws:SourceAccount`。做法是在 `api_ecs_infrastructure_role` 的 trust 加 `source_account = var.expected_account_id`，apply `iam`，再跑一次第 4 步。部署成功代表有帶，可以加回範本。
 
-還原：把 `deployment` 改回 `ROLLING`、`moved` 反過來寫，plan 確認是 update 再 apply；或直接拆掉 dev 重建。plan 要 replace service 時，記在備註，不要 apply。
+還原：把 `deployment` 改回 `ROLLING`、`moved` 反過來寫，plan 確認是 update 再 apply；或直接拆掉 dev 重建。如果 plan 要 replace service，記在備註，不要 apply。
 
 名稱怎麼來的：role 名稱與 policy ARN（REFERENCE.md:453-460，ARN 見 design §14〈查證結果〉、`modules/iam-role/locals.tf:28`）；alternate target group `cicd-dev-api-8080-alt`（REFERENCE.md:474）；listener rule priority 100（`application/api.tf:23`）。
 
@@ -1053,7 +1053,7 @@ aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'se
 
 ### S8. Lambda permission 沒有 qualifier（design §14〈module〉`lambda-function`）
 
-**前提**：example9 沒有傳 `permissions`（`application/function.tf:19-34`），不受影響。這一項是確認 module 的行為，給之後用 alias 加呼叫端的專案參考。module 的 `aws_lambda_permission` 沒有 `qualifier`（`modules/lambda-function/main.tf:121-130`）。
+**前提**：example9 沒有傳 `permissions`（`application/function.tf:19-34`），不受影響。這一項確認 module 的行為，給之後要在 alias 上加呼叫端的專案參考。module 的 `aws_lambda_permission` 沒有 `qualifier`（`modules/lambda-function/main.tf:121-130`）。
 
 **指令**
 

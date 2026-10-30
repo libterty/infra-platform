@@ -2,17 +2,17 @@
 
 ## 結論
 
-這份 runbook 列出 `templates/example4` 第一次在真實 AWS 帳號 apply 時要逐項確認的事。照做完，REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v7 §11、§14 的「未驗證」「推論」都會變成有證據的通過或不通過。
+這份 runbook 列出 `templates/example4` 第一次在真實 AWS 帳號 apply 時要逐項確認的事。全部做完後，REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v7 §11、§14 的「未驗證」「推論」都會變成有證據的通過或不通過。
 
 - 範圍：REFERENCE〈雲端整合待驗證〉的 21 列，整理成本文第 1–21 項；design v7 裡表上沒有的未確認點併進對應的項目；另加一項寫這份文件時發現的風險（S1）。
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、名稱怎麼來的、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的指令標【寫入】，只在 `dev` 執行。
 - 這份文件的指令都**沒有實際跑過**。名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設命名或 API 行為），執行時以實際輸出為準。
-- 從程式碼就看得出來、第一次驗證很可能不通過的事，先講（都沒有修，等驗證結果再決定）：
+- 下面幾件事從程式碼就看得出來，第一次驗證很可能不通過。都還沒修，等驗證結果再決定：
   1. **Glue 的 CloudWatch Logs 加密可能缺 `logs:AssociateKmsKey`**：`glue-etl` 的 security configuration 開了 `cloudwatch_encryption`（`modules/glue-etl/main.tf:15-18`），crawler 與 job 都掛它。AWS Glue 文件要求這時 role 要有 `logs:AssociateKmsKey`（推測，repo 裡沒有這個依據），`iam-base` 的 `WriteGlueLogs` 只有 `CreateLogGroup`、`CreateLogStream`、`PutLogEvents`（`iam-base/policies.tf:50-55`）。crawler 與 job 可能一跑就失敗。第 11、17 項會直接看到。
   2. **QuickSight VPC connection 的 SG 可能少一條 ingress**：AWS QuickSight 文件說 VPC connection 的 ENI 不是 stateful，它的 SG 要放行來自資料庫 SG 的回程流量（推測）。`network` 只給 `quicksight` 一條到 `redshift` 5439 的 egress（`network/security-groups.tf:19`），沒有從 `redshift` 進來的規則。Redshift 資料來源可能建不起來或連線逾時。第 16 項會看到。
   3. **REFERENCE 建議的「先 UNLOAD 到 curated」做不到**：`redshift` role 對 curated bucket 只有 `s3:GetObject`、`s3:ListBucket`、`s3:GetBucketLocation`（`iam-base/policies.tf:131-143`），沒有 `s3:PutObject`，所以 REFERENCE.md:251、:274 寫的 UNLOAD 會被拒。第 20 項改用手動 snapshot 備份。
-  4. **data subnet 只有兩個 `/27`**：dev 是 `10.30.5.0/27`、`10.30.5.32/27`（`network/vpc.tf:10` 的 `newbits = 7`、`netnum_base = 40`），每個 27 個可用位址。OpenSearch 7 台節點、Firehose、Redshift、Client VPN、QuickSight 的 ENI 都放在這兩個 subnet。OpenSearch 的 VPC domain 在 blue/green 更新時要額外的 IP（推測，AWS 文件寫每台節點要預留約 3 個），位址可能不夠。S1 每個階段記一次剩餘位址。
+  4. **data subnet 只有兩個 `/27`**：dev 是 `10.30.5.0/27`、`10.30.5.32/27`（`network/vpc.tf:10` 的 `newbits = 7`、`netnum_base = 40`），每個 27 個可用位址。OpenSearch 7 台節點、Firehose、Redshift、Client VPN、QuickSight 的 ENI 都放在這兩個 subnet。OpenSearch 的 VPC domain 在 blue/green 更新時要額外的 IP（推測，AWS 文件寫每台節點要預留約 3 個），位址可能不夠。S1 會在每個階段記一次剩餘位址。
   5. **寫進 Kinesis 的 `@timestamp` 會一路帶到 curated table**：REFERENCE.md:202 要求每筆資料都帶 `@timestamp`，範例 Glue job 不改欄位名稱就寫進 curated（`etl/raw_to_curated.py:63-74`）。Athena 文件說欄位名稱除了底線不支援特殊字元（推測），查 curated 的 `events` 時可能出錯。第 11 項會看到。
 
 ## 範圍
@@ -111,7 +111,7 @@ design v7 各點的去處（`docs/design/v7/design-docs.md`）：
 
 ## 共用變數
 
-每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。還沒 apply 的 stack 讀不到 key，會印 `ParameterNotFound`，該 stack apply 完再重跑一次。
+每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。還沒 apply 的 stack 讀不到 key，會印 `ParameterNotFound`；等該 stack apply 完再重跑一次。
 
 ```bash
 export AWS_REGION=ap-northeast-1          # common.tf:24，aws_region 預設值；改過就跟著改
@@ -262,7 +262,7 @@ aws s3 cp /dev/null "s3://$STATE_BUCKET/$P-runbook-sse-check" --sse AES256
 aws s3api head-object --bucket "$STATE_BUCKET" --key "$P-$E/foundation/terraform.tfstate"
 ```
 
-`plan` 與 `apply` 成功本身就是 lock 檔寫入正常的證據：`use_lockfile = true`（`foundation/envs/dev.tfbackend:5`）會在 state 旁寫 `.tflock`，若寫入沒帶 CMK 會被 `OnlyStateKey` 擋下。
+`plan` 與 `apply` 成功，就代表 lock 檔寫得進去：`use_lockfile = true`（`foundation/envs/dev.tfbackend:5`）會在 state 旁寫 `.tflock`，寫入時沒帶 CMK 就會被 `OnlyStateKey` 擋下。
 
 名稱怎麼來的：state key `"<project>-<env>/<stack>/terraform.tfstate"`（`foundation/envs/dev.tfbackend:2`，複製出去後換前綴）；policy 範例與 Sid（REFERENCE.md:73-112）。`<trail>` 是 bucket 擁有者的 trail，repo 裡沒有。
 
@@ -377,7 +377,7 @@ aws logs filter-log-events --log-group-name "/aws/client-vpn/$N-client-vpn" --ma
 **前提**
 
 - 階段 B 加了 `site_to_site`（照 `vpn/envs/examples/vpn.tfvars:19-25`），`customer_gateway.ip_address` 是一個真的公網位址。沒有地端設備也能驗 PSK 與 state 的部分；tunnel log 要有 IKE 協商才會有內容，沒有設備時那一段記「無法判定」。
-- 驗完不需要就把 `site_to_site` 拿掉再 apply `vpn`【寫入】，避免每月約 35 美元（`vpn/envs/dev.tfvars:6-7`）。
+- 驗完不需要就把 `site_to_site` 拿掉再 apply `vpn`【寫入】，省下每月約 35 美元的費用（`vpn/envs/dev.tfvars:6-7`）。
 
 **指令**
 
@@ -418,7 +418,7 @@ aws logs describe-resource-policies --query 'resourcePolicies[].[policyName,last
 **預期結果**
 
 - 連線 `available`；`PreSharedKeyArn` 等於 SSM 的 `preshared_key_secret_arn`；兩條 tunnel 的 IKE 都只有 `ikev2`；兩條 tunnel 的 log 選項指向上面的 log group。
-- 設備設定檔：兩行，都是 `masked-or-empty`。若出現 `NOT-MASKED`，表示 `customer_gateway_configuration` 含 PSK。
+- 設備設定檔：兩行，都是 `masked-or-empty`。出現 `NOT-MASKED` 就表示 `customer_gateway_configuration` 含 PSK。
 - state：`storage` 是 `SecretsManager`；`psk1_len`、`psk2_len` 是 0 或遮蔽字串的長度；`cgc_has_psk` 是 `false`。`true` 就是 PSK 進了 state，要回報（module README:69）。
 - secret 的 `OwningService` 有值；記下 `KmsKeyId`（module README:70 列為未確認）。
 - log group 的 `kmsKeyId` 是 `$KMS_KEY`。有地端設備時，tunnel 嘗試協商後出現 log stream；沒有設備就記「無法判定」。
@@ -451,7 +451,7 @@ osq "/_cat/indices/_warm?v"          # AWS 提供的篩選（推測），剛建�
 
 **預期結果**
 
-- apply 成功，沒有跟台數或 master 規格有關的錯誤。這就回答了「2 台 warm 能不能建立」。
+- apply 成功，沒有跟台數或 master 規格有關的錯誤，就代表 2 台 warm 建得起來。
 - `ClusterConfig`：`InstanceCount: 2`、`DedicatedMasterCount: 3`、`WarmEnabled: true`、`WarmCount: 2`、`WarmType: ultrawarm1.medium.search`、`ColdStorageOptions.Enabled: true`、`ZoneAwarenessConfig.AvailabilityZoneCount: 2`。
 - `processing` 變成 `false`、change progress `COMPLETED`。記下從 apply 開始到這時的時間，以及到 `_cat/nodes` 出現 warm 節點的時間（design §11 第 2 列）。
 - `_cat/nodes` 看得到 7 台節點；`box_type` 有 `hot` 與 `warm` 兩種。
@@ -465,7 +465,7 @@ osq "/_cat/indices/_warm?v"          # AWS 提供的篩選（推測），剛建�
 **前提**
 
 - 階段 C 完成。
-- REFERENCE.md:351 寫的是「log group 層的 resource policy」，但 module 實際用的是**帳號層**的 policy，log group 層的寫法沒有採用（`modules/opensearch-domain/main.tf:43-46`、module README〈注意〉）。本項驗證的是實際部署的帳號層 policy；log group 層那個問題已經不適用，回寫時把 REFERENCE 那一列改掉。
+- REFERENCE.md:351 寫的是「log group 層的 resource policy」，但 module 實際用的是**帳號層**的 policy，log group 層的寫法沒有採用（`modules/opensearch-domain/main.tf:43-46`、module README〈注意〉）。本項驗實際部署的帳號層 policy。log group 層的問題已經不適用，回寫時把 REFERENCE 那一列改掉。
 
 **指令**
 
@@ -500,7 +500,7 @@ done
 
 **前提**
 
-- 第 3 項的 VPN 已連上；第 5 項的 warm 節點已出現（REFERENCE.md:187，不然 ISM 的搬移會失敗）。
+- 第 3 項的 VPN 已連上；第 5 項的 warm 節點已出現（REFERENCE.md:187；warm 節點還沒出現時，ISM 搬移會失敗）。
 - 本機能連 AWS API 與 HCP registry（split tunnel）；`search-config` 已 `init`。
 
 **指令**
@@ -583,7 +583,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' --max-time 10 "https://$OS_ENDPOINT/_d
 
 - `$SG_OS` 只有三條 ingress（TCP 443，來源 `$SG_FH`、`$SG_VPN`、`search_admin`），沒有 egress、沒有 CIDR 來源。
 - access policy 只有一個 statement，principal 是 Firehose role，action `es:ESHttp*`。
-- `authinfo` 的 `user` 是 master 的名稱，`roles` 含 `all_access`：帳密請求沒有被 access policy 擋下。
+- `authinfo` 的 `user` 是 master 的名稱，`roles` 含 `all_access`，表示 access policy 沒有擋下帳密請求。
 - 個人帳號能登入 Dashboards。
 - 離開 VPN 後 DNS 仍回私有位址，但 `curl` 逾時（`000` 或「連不到」）。
 
@@ -635,7 +635,7 @@ osq "/$N-events*/_mapping" | jq '[.[] | .mappings.properties["@timestamp"].type]
 - ENI 在 data subnet、`in-use`。
 - `Success` 的平均是 `1`；Firehose log 沒有 `403`、`AccessDenied`、`security_exception`；`errors/` 底下沒有新物件。
 - `_cat/indices` 有一個 `<project>-<env>-events-<日期>`；`_count` 是 `20`（重送過就更多）；ISM explain 的 policy 是 `logs`；`@timestamp` 是 `date`。
-- 這些合起來代表 SigV4 過了 access policy、FGAC `firehose_writer` 的 mapping 生效。
+- 以上都符合，就代表 SigV4 請求通過了 access policy，FGAC `firehose_writer` 的 mapping 也生效了。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
 
@@ -705,10 +705,10 @@ for i in $(seq 1 10); do put_event "after-$i"; done
 - rule `ENABLED`，樣式是 `aws.s3`／`Object Created`／raw bucket／`raw/` 前綴；target 是 workflow ARN，role 是 `<project>-<env>-glue-events`。
 - trigger 是 `EVENT`、`ACTIVATED`，`BatchSize: 100`、`BatchWindow: 900`，action 是 `$JOB`。
 - 2 小時內 `raw/` 約 8 個物件；`Invocations` 每 900 秒約 1；`FailedInvocations` 是 0。
-- workflow run 次數約等於物件數，不超過每小時 4 次（REFERENCE.md:217 的上限推算）；`StartingEventBatchCondition` 的 `BatchSize` 小於 100（視窗先到）。記下實際的次數與每次間隔。
+- workflow run 次數約等於物件數，不超過每小時 4 次（REFERENCE.md:217 的上限推算）；`StartingEventBatchCondition` 的 `BatchSize` 小於 100（時間視窗先到）。記下實際的次數與每次間隔。
 - 手動重跑那次成功，job 沒有寫出新的 Parquet（第 11 項的筆數不變）。
 - rule 關掉期間沒有 workflow run；打開後的下一次 run 把 `missed-*` 與 `after-*` 一起處理。
-- 有時 workflow 重疊時 job 會因 `max_concurrent_runs = 1`（`modules/glue-etl/variables.tf:77`）失敗，記下有沒有發生。
+- workflow 重疊時，job 可能因為 `max_concurrent_runs = 1`（`modules/glue-etl/variables.tf:77`）失敗，記下有沒有發生。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／2 小時的 run 次數 ______
 
@@ -824,7 +824,7 @@ aws ce get-cost-and-usage --time-period Start=<YYYY-MM-DD>,End=<YYYY-MM-DD> --gr
 
 - 階段 0：確認這個帳號、這個 region 沒有別的專案管 catalog 加密（README〈前置作業〉第 3 點）。第二個專案的 `foundation` tfvars 要設 `glue_catalog_encryption = null`。
 - 階段 0：Lake Formation 維持 IAM 模式（REFERENCE.md:140）。
-- 第 11、14、16 項各自代表一種身分讀寫 catalog；本項彙整。
+- 第 11、14、16 項各用一種身分讀寫 catalog，本項把結果彙整起來。
 
 **指令**
 
@@ -946,7 +946,7 @@ aws redshift describe-clusters --cluster-identifier "$N-warehouse" \
 
   2. 【寫入】在 Secrets Manager 建 secret，內容 `{"username":"quicksight_reader","password":"..."}`，記下 ARN。
   3. QuickSight 管理者在主控台把這個 secret 授權給 QuickSight（REFERENCE.md:129）。
-  4. 把 `bi/envs/examples/redshift.tfvars:11` 的 ARN 與 `:13-14` 的 principal 換成真的，`./stacks.sh dev bi apply -- -var-file=envs/examples/redshift.tfvars`【寫入】。之後只用 `dev.tfvars` apply 會把 Redshift 來源拿掉，驗完要不要保留由專案決定。
+  4. 把 `bi/envs/examples/redshift.tfvars:11` 的 ARN 與 `:13-14` 的 principal 換成真的，`./stacks.sh dev bi apply -- -var-file=envs/examples/redshift.tfvars`【寫入】。之後如果只用 `dev.tfvars` apply，Redshift 來源會被拿掉；驗完要不要保留由專案決定。
 
 **指令**
 
@@ -1038,7 +1038,7 @@ aws iam get-service-last-accessed-details --job-id "$JOBID" \
 
 - 第一段的輸出是空的。有輸出時，每一行就是一個要補的動作，記下 role、服務、動作。很可能出現的（〈結論〉第 1 點、REFERENCE.md:299）：`glue-crawler`、`glue-job` 的 `logs:AssociateKmsKey`、`glue:GetSecurityConfiguration`。
 - Glue 與 Firehose 的 log 沒有權限錯誤；crawler `SUCCEEDED`。
-- Firehose 建 ENI 時只用了 data subnet。這樣 `iam-app/firehose-policy.tf:19-21` 可以收窄成只有 data subnet（design §11 第 16 列）。
+- Firehose 建 ENI 時只用了 data subnet。如果是這樣，`iam-app/firehose-policy.tf:19-21` 可以收窄成只有 data subnet（design §11 第 16 列）。
 - last-accessed 的 `es` 有紀錄；`es:DescribeDomain*` 有沒有被用過，有紀錄就記下，沒有動作層紀錄就記「無法判定」。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／要補的動作 ______ ／可以拿掉的動作 ______
@@ -1094,7 +1094,7 @@ aws cloudwatch set-alarm-state --alarm-name "$N-cluster-status-red" --state-valu
 **前提**
 
 - 第 7、8 項完成，VPN 連著。照 REFERENCE.md:163 的步驟做。
-- REFERENCE.md:119-122 產生密碼的指令沒有排除 `"`、`\`，但 `opensearch-domain` README〈注意〉建議避開這兩個字元與空白。下面加了 `--exclude-characters`。
+- REFERENCE.md:119-122 產生密碼的指令沒有排除 `"`、`\`，但 `opensearch-domain` README〈注意〉建議避開這兩個字元與空白，所以下面的指令加了 `--exclude-characters`。
 
 **指令**
 
@@ -1156,7 +1156,7 @@ aws opensearch describe-domain-change-progress --domain-name "$DOMAIN" --query '
 
 **指令**
 
-先驗會被擋（都是 plan，唯讀）：
+先確認防呆會擋下（都是 plan，唯讀）：
 
 ```bash
 ./stacks.sh dev warehouse plan                          # 1. 零差異
@@ -1274,7 +1274,7 @@ done
 
 **指令**
 
-階段 C、E、F、G 之後，以及第 19 項（若有 blue/green）、第 20 項之後各跑一次：
+階段 C、E、F、G 之後，以及第 19 項（如果有 blue/green）、第 20 項之後各跑一次：
 
 ```bash
 aws ec2 describe-subnets --subnet-ids $(tr ',' ' ' <<<"$SUBNETS_DATA") \
@@ -1295,7 +1295,7 @@ aws ec2 describe-network-interfaces --filters Name=subnet-id,Values="$SUBNETS_DA
 
 ## 結果怎麼回寫
 
-執行人是負責 apply 的專案 app team 成員；回寫分四處，都用 PR：
+執行人是專案 app team 裡負責 apply 的人。結果要回寫到四個地方，都走 PR：
 
 | 回寫到哪裡 | 誰改 | 怎麼改 | 誰審 |
 |---|---|---|---|

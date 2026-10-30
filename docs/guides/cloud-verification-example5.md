@@ -2,19 +2,19 @@
 
 ## 結論
 
-這份 runbook 列出 `templates/example5` 第一次在真實 AWS 帳號 apply 時要逐項確認的事。照做完，REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v8 §4.1、§11、§14 裡的「未確認」「未驗證」「推論」都會變成有證據的通過或不通過。
+這份 runbook 列出 `templates/example5` 第一次在真實 AWS 帳號 apply 時要逐項確認的事。照著做完，REFERENCE〈雲端整合待驗證〉表、〈已知限制的細節〉與 design v8 §4.1、§11、§14 裡的「未確認」「未驗證」「推論」，都會有證據判定通過或不通過。
 
 - 範圍：REFERENCE 表上的 21 項（本文第 1–21 項），加上表上沒涵蓋的 3 項（本文 S1–S3）。對照見〈範圍〉。
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、名稱怎麼來的、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的標【寫入】，只在 `dev` 執行。要在測試裝置或 core device 上跑的標【裝置端】，其餘在操作者的終端機跑。
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設命名、SDK 的範例名稱、裝置上的路徑），執行時以實際輸出為準。
-- 費用：OpenSearch 冷熱每個環境每月約 1,052 美元，整份 runbook 建議只在 `dev` 做。第 14 項（endpoint 每月約 109）、第 15 項（Private CA 每月約 400，region 第一個 CA 有 30 天試用）、第 20 項（Client VPN 每月約 126）做完就關。core device 用一台 EC2 或 VM。
+- 費用：OpenSearch 冷熱架構每個環境每月約 1,052 美元，所以整份 runbook 建議只在 `dev` 做。第 14 項（endpoint 每月約 109）、第 15 項（Private CA 每月約 400，region 第一個 CA 有 30 天試用）、第 20 項（Client VPN 每月約 126）做完就關。core device 用一台 EC2 或 VM。
 
-從程式碼就看得出來、第一次驗證很可能不通過的事，先講：
+有幾件事從程式碼就看得出來，第一次驗證很可能不通過，先列在這裡：
 
-1. **同序號第二次開通很可能會成功**（第 1 項）。design §4.1 補償控制 3 說「同序號第二次開通會失敗」，§14 已標成推論。provisioning template 的 thing resource 遇到同名 thing 時，AWS 的行為是更新既有 thing、再附加一張新憑證（推測，依 AWS 文件的 `OverrideSettings` 說明），也就是同一個 thing 會有兩張有效憑證。不通過的話，補償控制 3 要改寫，風險表要重新評估。
+1. **同序號第二次開通很可能會成功**（第 1 項）。design §4.1 補償控制 3 說「同序號第二次開通會失敗」，§14 已標成推論。provisioning template 的 thing resource 遇到同名 thing 時，AWS 的行為是更新既有 thing、再附加一張新憑證（推測，依 AWS 文件的 `OverrideSettings` 說明），結果同一個 thing 會有兩張有效憑證。這項不通過的話，補償控制 3 要改寫，風險表要重新評估。
 2. **claim policy 擋掉 `CreateCertificateFromCsr`**（第 1 項）。claim policy 只放行 `$aws/certificates/create/*`（`fleet/fleet.tf:78`、`:86`），用 CSR 換憑證的 topic 是 `$aws/certificates/create-from-csr/json`（AWS 的命名），`create/*` 比對不到。裝置自己產生私鑰、送 CSR 的開通流程會被拒；只有讓 AWS 產生金鑰的 `CreateKeysAndCertificate` 會通。
-3. **TES role 沒有 `s3:GetBucketLocation`**（第 3、4 項）。`iam-base/policies.tf:73` 只給 `artifacts/*` 的 `s3:GetObject`。AWS 文件的預設 token exchange policy 有 `s3:GetBucketLocation`，Greengrass 下載 artifact 時是否需要它沒有確認（推測）。如果需要，core device 下載 `com.example.Inference` 的 artifact 會 `AccessDenied`。
+3. **TES role 沒有 `s3:GetBucketLocation`**（第 3、4 項）。`iam-base/policies.tf:73` 只給 `artifacts/*` 的 `s3:GetObject`。AWS 文件的預設 token exchange policy 有 `s3:GetBucketLocation`，Greengrass 下載 artifact 時需不需要它，還沒確認（推測）。如果需要，core device 下載 `com.example.Inference` 的 artifact 會 `AccessDenied`。
 4. **endpoint role 寫不進 data capture**（第 14 項）。`inference/endpoint.tf:42` 把 20% 的請求 capture 到 ml-artifacts 的 `capture/`，但 endpoint role 只有 `models/*` 的 `s3:GetObject`（`iam-base/policies.tf:169`），沒有 `capture/*` 的 `s3:PutObject`。data capture 用的是 endpoint 的 execution role（推測，依 AWS 文件），所以 capture 很可能寫不進去。
 5. **Greengrass 的 log 不會上雲**（第 3 項）。REFERENCE 要驗「寫得到 `/aws/greengrass/*` log」，但部署的元件沒有 `aws.greengrass.LogManager`（`edge/envs/dev.tfvars:13-15`），nucleus 不會自己把 log 送進 CloudWatch。要驗這一點得暫時把 LogManager 加進 dev 的部署。
 6. **WARN 等級的 IoT logging 記不到成功的開通**（S1）。REFERENCE〈runbook：輪替 claim 憑證〉第 3 步說「查 `AWSIotLogsV2` 的開通紀錄」，但帳號層 logging 是 `WARN`（`fleet/envs/dev.tfvars:8`），成功的事件是 INFO 等級，不會寫進去（推測，依 AWS IoT logging 的等級定義）。懷疑外洩時，要靠 fleet indexing 查 `unverified` 群組。
@@ -30,7 +30,7 @@
 | S2 | core device 的開通：序號、`-core` policy、群組 | REFERENCE〈前置作業的細節〉第 6 項；design §4.1 補償控制 4；§14 `fleet` |
 | S3 | awscc 的 drift 與錯誤訊息 | design §11 第 11 點；REFERENCE〈已知限制的細節〉awscc 列 |
 
-design §4.1 補償控制與 §11、§14 各點的去處（行號是 `docs/design/v8/design-docs.md`）：
+design §4.1 補償控制與 §11、§14 各點在本文哪裡驗（行號指 `docs/design/v8/design-docs.md`）：
 
 | 出處 | 內容 | 在本文 |
 |---|---|---|
@@ -69,7 +69,7 @@ design §4.1 補償控制與 §11、§14 各點的去處（行號是 `docs/desig
 | REFERENCE:198 | SQS 訊息的欄位名稱 | 第 13 項 |
 | REFERENCE:262–272 | destroy 的各項「沒有確認」 | 第 18 項 |
 
-不涵蓋：沿用 example4 的 OpenSearch 細節（warm 最小台數、master 密碼輪替的完整步驟）只在第 7 項做最小確認，完整做法在 [example4 REFERENCE〈已知限制的細節〉](../../templates/example4/infra/REFERENCE.md#已知限制的細節)。
+不涵蓋：沿用 example4 的 OpenSearch 細節（warm 最小台數、master 密碼輪替的完整步驟）。本文只在第 7 項做最小確認，完整做法見 [example4 REFERENCE〈已知限制的細節〉](../../templates/example4/infra/REFERENCE.md#已知限制的細節)。
 
 ## 需要的權限與工具
 
@@ -77,16 +77,16 @@ design §4.1 補償控制與 §11、§14 各點的去處（行號是 `docs/desig
 
 - AWS CLI v2（要有 `greengrassv2`、`iotsitewise`、`iot-jobs-data`、`cloudcontrol`、`scheduler` 子指令）、`jq`、`openssl`、`curl`、Terraform（apply 用）。
 - `mosquitto_pub`、`mosquitto_sub`（Mosquitto 的 client）。第 2、15 項用它扮演裝置。
-- Python 3 與 AWS IoT Device SDK v2（`awsiotsdk`），用 SDK 附的 fleet provisioning 範例。範例的檔名與參數每個版本不同（推測），以你用的版本的 README 為準。
-- Amazon Root CA 1（`AmazonRootCA1.pem`，AWS 公開的 CA 憑證，下面寫成 `AmazonRootCA1.pem`）。
-- Docker：第 13 項要建 `<project>-<env>-preprocess`、`-train`、`-inference` 三個 image 推上 ECR，repo 沒有提供。
+- Python 3 與 AWS IoT Device SDK v2（`awsiotsdk`），用 SDK 附的 fleet provisioning 範例。範例的檔名與參數每個版本不同（推測），以實際使用版本的 README 為準。
+- Amazon Root CA 1（`AmazonRootCA1.pem`，AWS 公開的 CA 憑證，下面一律寫成 `AmazonRootCA1.pem`）。
+- Docker：第 13 項要建 `<project>-<env>-preprocess`、`-train`、`-inference` 三個 image 推上 ECR，這些 image repo 沒有提供。
 
 測試機器：
 
 | 用途 | 機器 | 條件 |
 |---|---|---|
 | 一般裝置（第 1、2、10 項、S1） | 操作者的筆電或任何 Linux | 能連 IoT Core 的 8883 port |
-| core device（第 3–5、11、12 項、S2） | 一台 EC2（Amazon Linux 2023 或 Ubuntu）或 VM，Linux、Java 11 以上、Python 3 與 pip | 要能對外連 443、8883。**不能放在範本的 VPC**：那裡沒有 NAT、沒有 public subnet（`network/vpc.tf:7`），放在另一個有對外路由的 VPC。不需要 instance profile，AWS 憑證走 TES |
+| core device（第 3–5、11、12 項、S2） | 一台 EC2（Amazon Linux 2023 或 Ubuntu）或 VM，Linux、Java 11 以上、Python 3 與 pip | 要能對外連 443、8883。**不能放在範本的 VPC**：那裡沒有 NAT、沒有 public subnet（`network/vpc.tf:7`），要放在另一個有對外路由的 VPC。不需要 instance profile，AWS 憑證走 TES |
 | 攝影機（第 11 項） | 真實的 RTSP 攝影機，或在 core device 上用 RTSP server 加 `ffmpeg` 循環播放測試影片（推測可行，repo 沒有提供） | core device 連得到 RTSP |
 | OpenSearch、`search-config`（第 7、20 項） | Client VPN 上的機器，或 VPC 內的 runner | REFERENCE〈`search-config` 的執行環境〉 |
 
@@ -154,12 +154,12 @@ IOT_CRED=$(aws iot describe-endpoint --endpoint-type iot:CredentialProvider --qu
 
 ## 執行順序
 
-順序照 `stacks.sh:8` 的 `ORDER` 與 README〈前置作業〉。每個 stack 第一次先 `./stacks.sh <env> <stack> init`，apply 前先 `--dry-run` 看一次指令。
+順序照 `stacks.sh:8` 的 `ORDER` 與 README〈前置作業〉。每個 stack 第一次要先跑 `./stacks.sh <env> <stack> init`；apply 前先用 `--dry-run` 看一次指令。
 
 | 階段 | 做什麼 | 在哪裡跑 | 做完接著驗 |
 |---|---|---|---|
 | 0 | 照 REFERENCE〈複製出去之後要改什麼〉換掉佔位值（`accounts_by_env`、`.tfbackend`、tfvars 的 `project`、`expected_account_id`；`foundation` 的 `alarm_emails` 換成會收信的地址，`foundation/envs/dev.tfvars:5`）；REFERENCE〈前置作業的細節〉第 1、2、4、5 項；先記下帳號層 IoT 設定的現況（第 8 項）；建好 core device 用的 EC2；準備 `com.example.Inference` 的 artifact（第 5 項）與三個 ECR image（第 13 項） | 自己的終端機 | 第 8 項的「apply 前」快照 |
-| A | `foundation` → 寫入 OpenSearch master secret（〈前置作業〉第 3 項）→ `network`、`vpn`（要做第 7、20 項時帶 Client VPN）、`pki`（預設零資源）、`storage`、`iam-base`、`search` | 能呼叫 AWS API 的地方 | 收到 SNS 訂閱確認信就點 |
+| A | `foundation` → 寫入 OpenSearch master secret（〈前置作業〉第 3 項）→ `network`、`vpn`（要做第 7、20 項時帶 Client VPN）、`pki`（預設零資源）、`storage`、`iam-base`、`search` | 能呼叫 AWS API 的地方 | 收到 SNS 訂閱確認信就點確認 |
 | B | `search-config` | Client VPN 或 VPC 內 | 無 |
 | C | `fleet`、`iam-app`、`ingest`、`sitewise`（`cameras = {}`）、`edge`、`ml`、`inference`（`model_package_arn = null`） | 能呼叫 AWS API 的地方 | 第 8、9 項的設定部分、第 17、19、21 項、S3 |
 | D | 〈前置作業〉第 6 項：建 claim 憑證 | 自己的終端機 | 無 |
@@ -172,7 +172,7 @@ IOT_CRED=$(aws iot describe-endpoint --endpoint-type iot:CredentialProvider --qu
 | K | 選配：開 `pki`，再 apply `fleet` | 自己的終端機與測試裝置 | 第 15 項 |
 | L | 全部做完、最後才做：destroy | 自己的終端機 | 第 18 項 |
 
-第 16 項（IAM）不是獨立的階段：每一項做完都跑一次第 16 項的 CloudTrail 查詢，收集 `AccessDenied`。
+第 16 項（IAM）沒有自己的階段：每做完一項，就跑一次第 16 項的 CloudTrail 查詢，收集 `AccessDenied`。
 
 ---
 
@@ -197,7 +197,7 @@ aws iot get-policy --policy-name "$PFX-claim" --query policyDocument --output te
 aws iot list-targets-for-policy --policy-name "$PFX-claim"
 ```
 
-【裝置端】開通（第一次）。用 SDK 的 fleet provisioning 範例，參數是 IoT data endpoint、claim 憑證與私鑰、`AmazonRootCA1.pem`、template 名稱、template 參數 `{"SerialNumber":"test-0001"}`。範例的 key 產生方式選 `CreateKeysAndCertificate`。成功時把範例回的裝置憑證與私鑰存成 `dev.crt`、`dev.key`。
+【裝置端】開通（第一次）。用 SDK 的 fleet provisioning 範例，參數是 IoT data endpoint、claim 憑證與私鑰、`AmazonRootCA1.pem`、template 名稱、template 參數 `{"SerialNumber":"test-0001"}`。範例的 key 產生方式選 `CreateKeysAndCertificate`。成功後把範例回傳的裝置憑證與私鑰存成 `dev.crt`、`dev.key`。
 
 ```bash
 # 開通後（操作者的終端機）
@@ -233,8 +233,8 @@ done
 - claim policy 的 Publish／Receive／Subscribe 只有 `$aws/certificates/create/*` 與 `$aws/provisioning-templates/<project>-<env>-fleet/provision/*`；`list-targets-for-policy` 只有 claim 憑證。
 - 開通後：thing `<project>-<env>-test-0001` 存在，type `<project>-<env>-device`、`attributes.serial = test-0001`；群組只有 `<project>-<env>-unverified`；principal 是一張 `ACTIVE` 的憑證，只附加 `<project>-<env>-device`。
 - 負面測試 1：client 被斷線（`mosquitto_pub -d` 看到連線關閉），訊息沒有進 Kinesis（第 6 項的 rule 沒有觸發）。
-- 負面測試 2：記下結果。被拒時，備註「claim policy 不支援 CSR 開通」，給 platform team 開 issue 決定要不要加 `create-from-csr/*`。
-- 負面測試 3：design 的期望是失敗、thing 只有一張憑證。若第二次成功、thing 有兩張 `ACTIVE` 憑證，記成**不通過**，design §4.1 控制 3 與 REFERENCE〈安全取捨〉要改寫。
+- 負面測試 2：記下結果。被拒時在備註寫「claim policy 不支援 CSR 開通」，並開 issue 給 platform team，決定要不要加 `create-from-csr/*`。
+- 負面測試 3：design 的期望是失敗、thing 只有一張憑證。如果第二次成功、thing 有兩張 `ACTIVE` 憑證，記成**不通過**，design §4.1 控制 3 與 REFERENCE〈安全取捨〉要改寫。
 - CloudTrail（第 16 項的查詢）沒有 provisioning role 的 `AccessDenied`。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／CSR 開通 ______ ／同序號第二次開通 ______
@@ -280,7 +280,7 @@ aws iot-data publish --endpoint-url "https://$IOT_DATA" --topic "$PFX/cmd/$PFX-t
   --cli-binary-format raw-in-base64-out --payload '{"cmd":"ping"}'
 ```
 
-失敗的連線與 publish 應該留在 IoT logging（ERROR 等級，`WARN` 會記到）：
+失敗的連線與 publish 是 ERROR 等級，設成 `WARN` 也會記，所以 IoT logging 應該查得到：
 
 ```bash
 aws logs filter-log-events --log-group-name AWSIotLogsV2 --start-time $(( ($(date +%s) - 900) * 1000 )) \
@@ -291,7 +291,7 @@ aws logs filter-log-events --log-group-name AWSIotLogsV2 --start-time $(( ($(dat
 
 **預期結果**
 
-- 測試 1 成功（`PUBACK` 或沒有斷線），第 6 項的 S3 `raw/` 之後看得到這筆。
+- 測試 1 成功（`PUBACK` 或沒有斷線），之後在第 6 項的 S3 `raw/` 看得到這筆。
 - 測試 2 訂閱成功，`iot-data publish` 的訊息收得到。
 - 測試 3 連線被拒；測試 4、5 被斷線。
 - `AWSIotLogsV2` 有對應的 `Failure` 事件（如果沒有，記在第 8 項）。
@@ -360,9 +360,9 @@ aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,Attribut
 **預期結果**
 
 - role alias 指向 `<project>-<env>-greengrass-tes`，`duration` 是 3600。trust 有 `StringEquals aws:SourceAccount = <account>`。
-- core 憑證的 `curl` 拿到憑證，`get-caller-identity` 是 `assumed-role/<project>-<env>-greengrass-tes/...`。**這一步成功就表示 credentials provider 有送 `aws:SourceAccount`**（或不檢查）；失敗是 `403`，訊息記在備註，`source_account` 的條件要拿掉或改。
+- core 憑證的 `curl` 拿到憑證，`get-caller-identity` 是 `assumed-role/<project>-<env>-greengrass-tes/...`。**這一步成功就表示 credentials provider 有送 `aws:SourceAccount`**（或不檢查）；失敗會回 `403`：把訊息記在備註，`source_account` 的條件要拿掉或修改。
 - artifact 下載成功（SSE-KMS 的 `kms:Decrypt` 夠用）；`ls` 與 OTA bucket 都是 `AccessDenied`。
-- `get-bucket-location` 的結果記下；如果第 4 項 Greengrass 下載 artifact 失敗、錯誤是 `GetBucketLocation`，就是〈結論〉第 3 點成立。
+- 記下 `get-bucket-location` 的結果。如果第 4 項 Greengrass 下載 artifact 失敗、錯誤是 `GetBucketLocation`，表示〈結論〉第 3 點成立。
 - 一般裝置的 `curl` 回 `403`。
 - LogManager 部署後，`/aws/greengrass/` 底下有 log group，而且有新的 log。
 
@@ -423,16 +423,16 @@ aws greengrassv2 list-installed-components --core-device-thing-name "$PFX-core-0
   --query 'installedComponents[?componentName==`com.example.Inference`].[componentVersion,lifecycleState]' --output text
 ```
 
-復原：部署改回 `1.0.0` 並 apply；部署不再引用 1.0.1 之後才刪檔案（REFERENCE:180）。
+復原：部署改回 `1.0.0` 並 apply；等部署不再引用 1.0.1，才刪檔案（REFERENCE:180）。
 
-【寫入】abort：只有一台 core device 時，暫時把 `abort.min_number_of_executed_things` 設成 `1`、再部署一次壞掉的 1.0.1，看 IoT job 是否被取消：
+【寫入】abort：只有一台 core device 時，暫時把 `abort.min_number_of_executed_things` 設成 `1`、再部署一次壞掉的 1.0.1，看 IoT job 有沒有被取消：
 
 ```bash
 JOB_ID=$(aws greengrassv2 get-deployment --deployment-id "<新的部署 id>" --query iotJobId --output text)
 aws iot describe-job --job-id "$JOB_ID" --query 'job.{status:status,reason:reasonCode,abort:abortConfig}'
 ```
 
-【寫入】拿掉元件：把 `aws.greengrass.StreamManager` 從 `components` 拿掉、apply，看 `list-installed-components` 是否少了它；驗完加回去。
+【寫入】拿掉元件：把 `aws.greengrass.StreamManager` 從 `components` 拿掉、apply，看 `list-installed-components` 有沒有少了它；驗完加回去。
 
 【裝置端】device 上的 log（路徑是 Greengrass 的預設，推測）：
 
@@ -452,7 +452,7 @@ sudo tail -n 50 /greengrass/v2/logs/greengrass.log
 - replace：plan 顯示部署 `must be replaced`；apply 後 `list-deployments` 有新的 id，舊的變 `CANCELED` 或查不到；`deployment_ids` 換成新的 id；裝置上的元件不受影響。
 - `ROLLBACK`：effective deployment `FAILED`，`com.example.Inference` 回到 `1.0.0`、`RUNNING`。
 - abort：job `CANCELED`，`reasonCode` 跟 abort 有關。
-- 拿掉 StreamManager 後裝置上的 StreamManager 被解除安裝。
+- 拿掉 StreamManager 後，裝置上的 StreamManager 會被解除安裝。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／drift ______ ／abort 有沒有實測 ______
 
@@ -579,7 +579,7 @@ curl -s --netrc-file /tmp/os.netrc "https://$OS_ENDPOINT/_plugins/_ism/explain/$
 rm -f /tmp/os.netrc
 ```
 
-不在 VPN 上時，同一個 `curl` 應該連不到（DNS 解出私有 IP）。
+不在 VPN 上時，同一個 `curl` 應該連不到（DNS 解出來是私有 IP）。
 
 名稱怎麼來的：domain `"${local.name_prefix}-search"`（`search/domain.tf:3`）；index `"${local.name_prefix}-events"`（`ingest/firehose.tf:25`）；ISM 與 index template 的 pattern `<prefix>-events*`、`@timestamp` 是 `date`（`search-config/config.tf:4`、`:31-36`）；dev 的天數 3／7／30（`search-config/envs/dev.tfvars:7-9`）；2 台 warm（`search/envs/dev.tfvars:19`）。
 
@@ -596,7 +596,7 @@ rm -f /tmp/os.netrc
 
 **前提**
 
-- 階段 0 先記下 apply 前的設定（帳號裡可能已經有別的專案的設定，REFERENCE:118）：
+- 階段 0 先記下 apply 前的設定（別的專案可能已經在這個帳號設定過，REFERENCE:118）：
 
   ```bash
   mkdir -p runbook-snapshots
@@ -606,7 +606,7 @@ rm -f /tmp/os.netrc
   aws iot describe-account-audit-configuration > runbook-snapshots/audit-before.json
   ```
 
-  有任何一個不是預設值、而且不是這個專案設的，**先停下來**：這個帳號已經有別的專案管帳號層設定，`fleet` 的 `account_settings` 與 `device_defender_audit` 要設 `null`（REFERENCE:118）。
+  只要有一個不是預設值、也不是這個專案設的，**先停下來**：表示已經有別的專案在管這個帳號的帳號層設定，`fleet` 的 `account_settings` 與 `device_defender_audit` 要設 `null`（REFERENCE:118）。
 - 階段 C 完成。
 
 **指令**
@@ -622,7 +622,7 @@ aws logs describe-log-groups --log-group-name-prefix AWSIotLogsV2 --query 'logGr
 aws iot search-index --query-string "thingName:$PFX-*" --query 'things[].[thingName,connectivity.connected]' --output text
 ```
 
-同帳號第二個專案不互蓋（只在要共用帳號時做，需要第二個專案的 `foundation`、`pki`、`storage`、`iam-base`）：【寫入】第二個專案的 `fleet` 設 `account_settings = null`、`device_defender_audit = null` 並 apply，之後重跑上面四個指令，跟第一個專案 apply 後的結果比對。
+確認同帳號的第二個專案不會蓋掉設定（只在要共用帳號時做；需要第二個專案的 `foundation`、`pki`、`storage`、`iam-base`）：【寫入】第二個專案的 `fleet` 設 `account_settings = null`、`device_defender_audit = null` 並 apply，之後重跑上面四個指令，跟第一個專案 apply 後的結果比對。
 
 名稱怎麼來的：indexing、logging、event 的值（`fleet/account-settings.tf:4-19`）；`log_level = "WARN"`（`fleet/envs/dev.tfvars:8`）；logging role `"${local.name_prefix}-iot-logging"`（`iam-base/roles.tf:17`），只能寫 `AWSIotLogsV2`（`iam-base/policies.tf:45-50`）；provider 刪除時不呼叫 AWS（`modules/iot-account-settings/main.tf:1-2`）。
 
@@ -694,7 +694,7 @@ aws iot list-thing-groups-for-thing --thing-name "$PFX-dd-test" --query 'thingGr
 - `enabled` 剛好是上面 8 個，`disabled` 是其他 9 個（含 `IOT_POLICY_POTENTIAL_MIS_CONFIGURATION_CHECK`，這個名稱對照最容易錯，design §14:577）；`role` 是 `<project>-<env>-iot-audit`；`sns.SNS.targetArn` 是告警 topic、`enabled = true`。
 - 排程 `WEEKLY`、`MON`，check 清單一樣。mitigation 的 `addThingsToThingGroupParams.thingGroupNames` 是 `[<project>-<env>-quarantine]`。
 - on-demand audit `COMPLETED`，每個 check 都不是 `FAILED`（`FAILED` 多半是 audit role 權限不夠，看 CloudTrail）；告警 email 收到 audit 結果（SSE-KMS topic 加 audit role 的 `kms:GenerateDataKey`）。
-- 先講的預測：`IOT_POLICY_OVERLY_PERMISSIVE_CHECK` 很可能對 `<project>-<env>-claim` 報 finding（`iot:Connect` 的 Resource 是 `client/*`，`fleet/fleet.tf:73`），也可能對 `-core` 的 Greengrass `*` 報（`fleet/fleet.tf:62-64`）。這兩個是設計上的取捨，記在備註，不算不通過。
+- 可以先預期：`IOT_POLICY_OVERLY_PERMISSIVE_CHECK` 很可能對 `<project>-<env>-claim` 報 finding（`iot:Connect` 的 Resource 是 `client/*`，`fleet/fleet.tf:73`），也可能對 `-core` 的 Greengrass `*` 報（`fleet/fleet.tf:62-64`）。這兩個是設計上的取捨，記在備註，不算不通過。
 - mitigation：`$PFX-dd-test` 出現在 `<project>-<env>-quarantine`。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／finding 清單 ______
@@ -705,7 +705,7 @@ aws iot list-thing-groups-for-thing --thing-name "$PFX-dd-test" --query 'thingGr
 
 - 〈前置作業的細節〉第 4 項：code signing 憑證已匯入 ACM，ARN 填進 `fleet` 的 `ota_signing_certificate_arn`。
 - 測試 thing 用第 1 項的 `$PFX-test-0001`（`-device` policy 有 jobs topic 的權限，`fleet/fleet.tf:31-39`）。
-- 一台裝置時 abort（至少執行 10 台才判斷）不會觸發，只驗 job 建立、job document、presigned URL。
+- 只有一台裝置時 abort 不會觸發（至少要執行 10 台才判斷），所以只驗 job 建立、job document、presigned URL。
 
 **指令**
 
@@ -844,9 +844,9 @@ aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventSource,Attrib
 - camera model 有 7 個 attribute（預設值跟 `sitewise.tf` 一致，`KinesisVideoStreamName` 等於 stream 名稱、`RTSPStreamSecretARN` 等於 secret ARN）與 4 個 measurement。
 - 兩個 stream `ACTIVE`、`KmsKeyId` 是共用 CMK、保留 24 小時。
 - 部署 `<project>-dev-kvs-<project>-dev-core-001` 成功，裝置上 `aws.iot.EdgeConnectorForKVS` 是 `RUNNING`。
-- 直播觸發後，**兩台**攝影機的 stream 都有 fragment。只有一台有，就是 edge connector 只認一個 hierarchy（design §14:595 不成立）。
+- 直播觸發後，**兩台**攝影機的 stream 都有 fragment。如果只有一台有，表示 edge connector 只認一個 hierarchy（design §14:595 不成立）。
 - CloudTrail 沒有 TES role 的 `AccessDenied`。有 `ListAssets` 的 `AccessDenied` 時，§14:597 不成立，`iam-base` 要放寬這個動作的 Resource。
-- 改 RTSP secret 或攝影機數量時 model 是 in-place 還是 replace（REFERENCE:250）：之後加第三台時看 plan，記在備註。
+- 改 RTSP secret 或攝影機數量時，model 會 in-place 更新還是 replace（REFERENCE:250）：之後加第三台時看 plan，記在備註。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／兩台都有 fragment □ ／`ListAssets` ______
 
@@ -924,7 +924,7 @@ aws sagemaker list-pipeline-executions --pipeline-name "$PIPELINE" --max-results
   --query 'PipelineExecutionSummaries[].[StartTime,PipelineExecutionStatus,PipelineExecutionDisplayName]' --output text
 ```
 
-【寫入】核准，看事件是否進 SSE-KMS 的 queue、欄位是否正確：
+【寫入】核准，看事件有沒有進 SSE-KMS 的 queue、欄位對不對：
 
 ```bash
 PKG=$(aws sagemaker list-model-packages --model-package-group-name "$MPG" --sort-by CreationTime --sort-order Descending \
@@ -995,7 +995,7 @@ aws sagemaker describe-endpoint --endpoint-name "$PFX-inference" \
   --query '{status:EndpointStatus,config:EndpointConfigName,last:LastDeploymentConfig}'
 ```
 
-apply 的結果（成功、失敗、錯誤訊息）與 rollback 後 Terraform state 是否跟實際一致（再跑一次 `plan`），都記在備註。
+把 apply 的結果（成功、失敗、錯誤訊息），以及 rollback 後 Terraform state 跟實際有沒有一致（再跑一次 `plan`），都記在備註。
 
 【寫入】serverless 範例：先 `model_package_arn = null` apply（instance 不能直接轉 serverless，`modules/sagemaker-endpoint/README.md`〈注意〉），再：
 
@@ -1012,7 +1012,7 @@ aws sagemaker describe-endpoint-config --endpoint-config-name "$(aws sagemaker d
 - endpoint `InService`；config 有 KMS key、一個 `primary` variant（`ml.m5.large`）；model `EnableNetworkIsolation = true`、VPC 是 data subnet 與 `sagemaker` SG、role 是 `<project>-<env>-sagemaker-endpoint`。
 - `Creating` 卡住或 `Failed` 時，記下 `FailureReason`。從程式碼看得到的兩個可能：`sagemaker` SG 的 egress 只到 VPC 網段（`network/security-groups.tf:58`），S3 gateway endpoint 的目的地是 S3 的 prefix list，不在 VPC 網段裡；如果模型是經 VPC 的 ENI 下載，會被 SG 擋（推測）。
 - `invoke-endpoint` 回結果。
-- data capture：依〈結論〉第 4 點，預期 `capture/` 沒有物件、CloudTrail 有 endpoint role 對 `capture/` 的 `PutObject` `AccessDenied`。有物件就是推測錯了，記下來。
+- data capture：依〈結論〉第 4 點，預期 `capture/` 沒有物件、CloudTrail 有 endpoint role 對 `capture/` 的 `PutObject` `AccessDenied`。如果有物件，表示推測錯了，記下來。
 - rollback：endpoint 回到原本的 config。
 - serverless：`ServerlessConfig` 是 2048 MB、並發 5。
 
@@ -1088,7 +1088,7 @@ aws iot update-certificate --certificate-id "${PKI_CERT_ARN##*/}" --new-status R
 
 ## 16. IAM 動作清單與 key policy
 
-**前提**：其他項目做的同時跑。這一項的目標是收集「權限不夠」與「給太多」的證據，`iam-base`、`iam-app` 的動作清單與 `foundation` 的 key policy 都是照文件寫的（`iam-base/policies.tf:1-3`、`iam-app/firehose-policy.tf:1-3`、`foundation/kms.tf:2`）。
+**前提**：跟其他項目同時進行。這一項收集「權限不夠」與「給太多」的證據，因為 `iam-base`、`iam-app` 的動作清單與 `foundation` 的 key policy 都是照文件寫的（`iam-base/policies.tf:1-3`、`iam-app/firehose-policy.tf:1-3`、`foundation/kms.tf:2`）。
 
 **指令**
 
@@ -1126,7 +1126,7 @@ aws kms get-key-policy --key-id "$KMS_KEY" --policy-name default --output text |
 
 **預期結果**
 
-- 所有項目做完，CloudTrail 沒有範本 role 的 `AccessDenied`。有的話逐筆記下 role、動作、Resource，開 issue 給 platform team（module 或 `iam-base` 的修改）。已知可能出現的：TES 的 `s3:GetBucketLocation`（第 3 項）、endpoint role 的 `capture/` `PutObject`（第 14 項）、TES 的 `iotsitewise:ListAssets`（第 11 項）。
+- 所有項目做完，CloudTrail 沒有範本 role 的 `AccessDenied`。有的話逐筆記下 role、動作、Resource，開 issue 給 platform team（module 或 `iam-base` 的修改）。預期可能出現的有：TES 的 `s3:GetBucketLocation`（第 3 項）、endpoint role 的 `capture/` `PutObject`（第 14 項）、TES 的 `iotsitewise:ListAssets`（第 11 項）。
 - 模擬的結果都是 `implicitDeny`（endpoint role 那一行依第 14 項的結論）。
 - key policy 被 KMS 接受（`foundation` apply 成功就是證據）；CloudWatch Logs、log delivery、CloudWatch、SNS、EventBridge、Scheduler 的使用都沒有 KMS 錯誤（第 6、9、13、19、21 項）。
 
@@ -1134,7 +1134,7 @@ aws kms get-key-policy --key-id "$KMS_KEY" --policy-name default --output text |
 
 ## 17. 特權操作
 
-**前提**：階段 A、C 完成。apply 用的身分固定是 deploy role，方便在 CloudTrail 篩選。
+**前提**：階段 A、C 完成。apply 一律用 deploy role，方便在 CloudTrail 篩選。
 
 **指令**
 
@@ -1196,7 +1196,7 @@ aws iot describe-account-audit-configuration > runbook-snapshots/audit-before-de
      --query 'installedComponents[].[componentName,lifecycleState]' --output text
    ```
 
-4. `sitewise`（有攝影機時）：destroy，記下 hierarchy 關聯是否擋住刪除順序。
+4. `sitewise`（有攝影機時）：destroy，記下 hierarchy 的關聯會不會卡住刪除順序。
 5. `fleet`：**thing 先留一個在 `-unverified`**（例如第 1 項的測試 thing，憑證先 detach `-device` policy），destroy，記下 thing group 刪不刪得掉。之後：
 
    ```bash
@@ -1206,7 +1206,7 @@ aws iot describe-account-audit-configuration > runbook-snapshots/audit-before-de
    aws signer get-signing-profile --profile-name "$SIGNING_PROFILE" --query status
    ```
 
-6. 同名 Signer profile 能否重建：`./stacks.sh dev fleet apply`（重建整個 `fleet`），記下 Signer profile 的錯誤。能重建就再 destroy 一次。
+6. 同名 Signer profile 能不能重建：`./stacks.sh dev fleet apply`（重建整個 `fleet`），記下 Signer profile 的錯誤。能重建就再 destroy 一次。
 7. 其餘 stack：`./stacks.sh dev all destroy` 會從 `inference` 往回跑，已經拆掉的 stack 沒有資源，不影響。拆到 `search-config` 時要在 Client VPN 上（REFERENCE:256）。
 
 名稱怎麼來的：destroy 的順序是 `ORDER` 反過來（`stacks.sh:73-77`）；帳號層設定刪除時 provider 不呼叫 AWS（`modules/iot-account-settings/main.tf:1-2`）；audit 設定刪除會讓 check 全部停用（`modules/iot-device-defender/README.md`〈注意〉）；Signer profile `"${replace(local.name_prefix, "-", "_")}_ota"`（`fleet/ota.tf:6`）。
@@ -1260,13 +1260,13 @@ done
 aws cloudwatch set-alarm-state --alarm-name "$PFX-rule-errors-received" --state-value ALARM --state-reason "runbook 通知測試"
 ```
 
-真實觸發：第 6 項的 error action 會讓 `rule-errors-received` 響；第 13 項的訊息不刪、等一天會讓 `model-approved-oldest-message-age` 響（只在需要時做）。
+真實觸發：第 6 項的 error action 會讓 `rule-errors-received` 響；第 13 項的訊息如果不刪，一天後會讓 `model-approved-oldest-message-age` 響（只在需要時做）。
 
 **預期結果**
 
 - 訂閱是完整 ARN，不是 `PendingConfirmation`。
 - 上表的 15 條（開 endpoint 時 17 條）都存在。穩定時大多是 `OK`；SQS、Firehose 的告警在沒有流量時可能是 `INSUFFICIENT_DATA`。
-- 維度檢查回 `1` 以上。SQS 的 queue 一段時間沒有活動時 CloudWatch 不發指標，回 `0` 不一定是維度錯，先送一則訊息再查。
+- 維度檢查回 `1` 以上。SQS 的 queue 一段時間沒有活動時，CloudWatch 不會發指標，所以回 `0` 不一定是維度錯；先送一則訊息再查。
 - `set-alarm-state` 收到 email，表示 SSE-KMS 的 topic 收得到 CloudWatch 的通知。
 - 門檻是起始值（REFERENCE:307），這裡不調；跑一段時間真實流量後另外調。
 
@@ -1430,13 +1430,13 @@ aws greengrassv2 list-effective-deployments --core-device-thing-name "$THING" \
 - 開通後只在 `-unverified`、只附加 `-device`；`curl` 回 `403`；`unverified` 沒有部署，Greengrass 就算裝了也收不到元件。
 - 附加 `-core`、搬進 `-core` 之後，`-core` 群組的部署送到這台 core device，`get-core-device` 是 `HEALTHY`。
 - 反例：名稱不符合 `<prefix>-core-*` 的 thing 附加了 `-core` policy 也連不上（client id 不符）、拿不到憑證。
-- 記下 `-core` policy 的 Greengrass data plane 四個動作夠不夠：Greengrass 的 log 沒有 `AccessDenied`，部署能完成。
+- 記下 `-core` policy 的 Greengrass data plane 四個動作夠不夠：夠的話，Greengrass 的 log 沒有 `AccessDenied`、部署能完成。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／備註 ______
 
 ### S3. awscc 的 drift 與錯誤訊息（design §11 第 11 點）
 
-**前提**：階段 C 完成，`fleet`、`edge` 已 apply（`sitewise` 有資源時一起做）。這一項是記錄行為，不是比對規格；結果寫回 design §11 與 REFERENCE〈已知限制的細節〉awscc 那一列。
+**前提**：階段 C 完成，`fleet`、`edge` 已 apply（`sitewise` 有資源時一起做）。這一項只記錄實際行為，不比對規格；結果寫回 design §11 與 REFERENCE〈已知限制的細節〉awscc 那一列。
 
 **指令**
 
@@ -1453,7 +1453,7 @@ aws cloudcontrol get-resource --type-name AWS::IoT::JobTemplate --identifier "$P
   --query 'ResourceDescription.Properties' --output text | jq 'keys'
 ```
 
-【寫入】3. 在 console 或 CLI 外部改一個 awscc 管的資源，看 plan 偵不偵測得到。用排程稽核（改了不影響裝置）：
+【寫入】3. 從外部（console 或 CLI）改一個 awscc 管的資源，看 plan 偵不偵測得到。這裡改排程稽核，因為改了不影響裝置：
 
 ```bash
 aws iot update-scheduled-audit --scheduled-audit-name "$PFX-weekly" --day-of-week TUE

@@ -8,8 +8,8 @@
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的指令標【寫入】，只在 `dev` 執行。
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的固定值、預設路徑或錯誤訊息），執行時以實際輸出為準。
-- 範本沒有附 API 的程式。第 3–7 項有一半是在驗應用程式有沒有照 REFERENCE〈應用程式合約〉做；映像沒做 origin verify 比對時，第 4 項一定不通過，而且這是安全缺口，不是可以先放著的瑕疵。
-- 從程式碼就看得出來、第一次驗證很可能不通過的兩件事，先講：
+- 範本沒有附 API 的程式。第 3–7 項有一半是在驗應用程式有沒有照 REFERENCE〈應用程式合約〉做；映像沒做 origin verify 比對時，第 4 項一定不通過，而且這是安全缺口，不能先放著。
+- 有兩件事從程式碼就看得出來，第一次驗證很可能不通過，先列在這裡：
   1. **Lambda 帳號的並行上限**：`api` 給 reserved concurrency dev 10、sit 50（`api/envs/dev.tfvars:7`、`sit.tfvars:7`）。AWS 要求帳號保留一定數量的未保留並行（推測：至少 100），新帳號的總上限有時很低（推測：可能只有 10），這時 `api` apply 會失敗。階段 0 先用 `aws lambda get-account-settings` 看。
   2. **`Authorization` header 經 CloudFront 能不能到 API Gateway**：`/api/*` 用 `Managed-CachingDisabled` 加 `Managed-AllViewerExceptHostHeader`（`web/distribution.tf:22`、`:24`）。CloudFront 對 `Authorization` 有特別規則（推測：GET、HEAD 請求要把它放進 cache policy 才會轉送，而 `Managed-CachingDisabled` 的 cache key 不含任何 header）。如果成立，`GET /api/items` 經 CloudFront 會回 401，直接打 execute-api 帶同一個 token 卻是 200。第 5 項會直接比對這兩個結果。
 
@@ -39,7 +39,7 @@ design §11、§14 各點的去處：
 | §8.1 | `web` 的 bucket policy 與 distribution 不形成循環 | 不在本文：I9 已用 `terraform validate` 離線確認；階段 D 的 apply 成功就是雲端的證據 |
 | §14 範本 | Lambda 拉 ECR 映像靠部署身分，execution role 沒有 ECR 權限 | 第 7 項 |
 
-不涵蓋：REFERENCE〈已知限制的細節〉裡刻意不做的事（custom domain、SES、VPC、CloudFront 與 DynamoDB 的告警），以及告警門檻的調校（要真實流量，不是一次性的驗證）。
+不涵蓋：REFERENCE〈已知限制的細節〉裡刻意不做的事（custom domain、SES、VPC、CloudFront 與 DynamoDB 的告警），以及告警門檻的調校（要有真實流量才調得了，一次性的驗證做不到）。
 
 ## 需要的權限與工具
 
@@ -68,7 +68,7 @@ design §11、§14 各點的去處：
 
 ## 共用變數
 
-每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。要在階段 D 之後才拿得到全部的值；階段 A、B 只會有 `dns` 以前的。
+每次開新的 shell 先跑這段。`<project>`、`<env>` 換成 tfvars 的值（`dev` 或 `sit`）。階段 D 之後才拿得到全部的值；階段 A、B 只拿得到 `dns` 以前的。
 
 ```bash
 export AWS_REGION=ap-northeast-1          # common.tf:24，aws_region 預設值；改過就跟著改
@@ -327,7 +327,7 @@ rm -f "$H"
 **預期結果**
 
 - `disabled` 是 `false`。
-- 不帶 header：`403`。帶錯的值：`403`。帶正確的值：`200`（證明前兩個 `403` 是 header 造成的，不是別的問題）。
+- 不帶 header：`403`。帶錯的值：`403`。帶正確的值：`200`（證明前兩個 `403` 是 header 造成的）。
 - `/api/items` 不帶 token：`401`；有 header、沒有 token 也是 `401`（JWT 在 Lambda 之前就擋了）。
 - stage 的 throttling 等於 tfvars（dev 50／100、sit 200／400），`autoDeploy` 是 `true`，access log 指到第 8 項的 log group；reserved concurrency 等於 tfvars。
 - 選做的壓測：出現 `429`（API Gateway 的 throttling），記下比例。
@@ -534,7 +534,7 @@ aws dynamodb scan --table-name "$TABLE" --select COUNT --query Count
 
 【寫入】（選做，只在 dev）換版也要拉得到映像：照 REFERENCE〈runbook：發布 SPA 與 API 新版本〉推一個新 tag、改 `api_image_tag`、apply `api`，再跑上面前兩個指令。
 
-名稱怎麼來的：function 名稱（`api/function.tf:6`，跟 `iam/naming.tf:5` 同一規則）；映像 `<repository>:<api_image_tag>`（`api/function.tf:7`），repository `<project>-<env>-api`（`containerimage/repositories.tf:4`），tag 不可變（`modules/ecr-repository/main.tf:3`）；arm64、512、10（`api/function.tf:9-11`）；環境變數 4 個（`api/function.tf:15-20`）；Lambda permission 的 `Sid` 是 `permissions` 的 key `apigateway`（`api/function.tf:22`、`modules/lambda-function/main.tf:124`），`source_arn` 是 `<execution_arn>/*/*`（`api/function.tf:24`）；role `<project>-<env>-api-lambda`，信任 `lambda.amazonaws.com` 加 `aws:SourceAccount`（`iam/roles.tf:4-5`）；log group `/aws/lambda/<name>`（`modules/lambda-function/main.tf:7`）；table `<project>-<env>-app`（`data/table.tf:5`）。`iam-role-policy` 掛的是 inline 還是 managed policy 沒有在本文確認，所以兩種都列。
+名稱怎麼來的：function 名稱（`api/function.tf:6`，跟 `iam/naming.tf:5` 同一規則）；映像 `<repository>:<api_image_tag>`（`api/function.tf:7`），repository `<project>-<env>-api`（`containerimage/repositories.tf:4`），tag 不可變（`modules/ecr-repository/main.tf:3`）；arm64、512、10（`api/function.tf:9-11`）；環境變數 4 個（`api/function.tf:15-20`）；Lambda permission 的 `Sid` 是 `permissions` 的 key `apigateway`（`api/function.tf:22`、`modules/lambda-function/main.tf:124`），`source_arn` 是 `<execution_arn>/*/*`（`api/function.tf:24`）；role `<project>-<env>-api-lambda`，信任 `lambda.amazonaws.com` 加 `aws:SourceAccount`（`iam/roles.tf:4-5`）；log group `/aws/lambda/<name>`（`modules/lambda-function/main.tf:7`）；table `<project>-<env>-app`（`data/table.tf:5`）。本文沒有確認 `iam-role-policy` 掛的是 inline 還是 managed policy，所以兩種都列。
 
 **預期結果**
 
@@ -581,8 +581,8 @@ aws iam get-role --role-name AWSServiceRoleForAPIGateway --query Role.Arn --outp
 - log group 的 `kmsKeyId` 是 `$KMS_ARN`，保留天數 dev 30、sit 90，`storedBytes` 大於 0（剛寫入時可能還是 0，隔幾分鐘再看）。
 - stage 的 `DestinationArn` 是這個 log group，`Format` 是 JSON。
 - log 是 JSON，有 `requestId`、`routeKey`、`status`、`domainName`、`authorizerError` 等欄位，沒有 JWT claim 與 header；`401` 的請求 `authorizerError` 有值。
-- `cloudwatchRoleArn` 是空的（`None`）而 log 照樣寫得進去：§5.6、§14「不需要帳號層的 role」成立。
-- 記在備註：`describe-resource-policies` 有沒有跟 API Gateway 有關的 policy（看名稱與建立時間是否跟 `api` 的 apply 同時）、service-linked role 存不存在。這兩個是 REFERENCE〈執行 apply 的身分要有的權限〉要不要補 `logs:PutResourcePolicy` 的依據。
+- `cloudwatchRoleArn` 是空的（`None`），log 照樣寫得進去：§5.6、§14「不需要帳號層的 role」成立。
+- 記在備註：`describe-resource-policies` 有沒有跟 API Gateway 有關的 policy（看名稱與建立時間是否跟 `api` 的 apply 同時）、service-linked role 存不存在。REFERENCE〈執行 apply 的身分要有的權限〉要不要補 `logs:PutResourcePolicy`，就看這兩個結果。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／resource policy 與 SLR 的狀態 ______
 
@@ -627,7 +627,10 @@ aws s3 ls "s3://$LOG_BUCKET/" --recursive | tail -5
 - bucket 在 `ap-northeast-1`，`AES256`；policy 有 `AllowVendedLogsWrite`、`AllowVendedLogsAclCheck`。
 - 流量後 bucket 有新物件，路徑在 `AWSLogs/<account>/` 底下。
 - `web plan` 是「No changes」。
-- 不通過時記下是哪一種：`web` apply 在建 delivery 時就失敗（記錯誤訊息，表示跨 region 不支援，§11 第 10 點不成立，要改成 us-east-1 的 bucket）；delivery 建得起來但沒有物件（看 bucket policy 的 `Resource` 前綴跟實際寫入路徑對不對得上）；或 plan 有 drift。
+- 不通過時記下是哪一種：
+  - `web` apply 在建 delivery 時就失敗：記下錯誤訊息。這表示跨 region 不支援，§11 第 10 點不成立，要改成 us-east-1 的 bucket。
+  - delivery 建得起來但沒有物件：看 bucket policy 的 `Resource` 前綴跟實際寫入路徑對不對得上。
+  - plan 有 drift。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／物件路徑 ______
 
@@ -636,7 +639,7 @@ aws s3 ls "s3://$LOG_BUCKET/" --recursive | tail -5
 **前提**
 
 - 階段 D、E 完成。CloudFront WAF 一律開（`web/waf.tf:1-2`）：兩個 managed rule group、每個 IP 每 5 分鐘 2000 次（`web/waf.tf:7-11`、`web/envs/<env>.tfvars:9`）。
-- log 進 us-east-1 的 `aws-waf-logs-<project>-<env>-web`，沒有 CMK，遮蔽 `authorization`、`cookie` 與 origin verify header（`web/waf.tf:13-16`、`modules/waf-web-acl/main.tf:18`）。origin verify header 是 CloudFront 回源時才加的，WAF 看的是 viewer 的請求，正常情況 log 裡不會有它；遮蔽是防 client 自己送。
+- log 進 us-east-1 的 `aws-waf-logs-<project>-<env>-web`，沒有 CMK，遮蔽 `authorization`、`cookie` 與 origin verify header（`web/waf.tf:13-16`、`modules/waf-web-acl/main.tf:18`）。CloudFront 回源時才加 origin verify header，而 WAF 看的是 viewer 的請求，所以正常情況下 log 裡不會有它；遮蔽是為了防 client 自己送這個 header。
 
 **指令**
 
@@ -808,12 +811,12 @@ for i in $(seq 1 5); do hc "https://$APP/api/health"; done
 aws lambda get-function-concurrency --function-name "$PREFIX-api"
 ```
 
-`lambda-errors` 的真實觸發要讓應用程式丟出錯誤，範本沒有固定的做法。應用程式有會失敗的測試路徑就用它；沒有就只驗通知路徑，記在備註。
+要真實觸發 `lambda-errors`，得讓應用程式丟出錯誤，範本沒有固定的做法。應用程式有會失敗的測試路徑就用它；沒有就只驗通知路徑，記在備註。
 
 **預期結果**
 
 - 兩條告警都在，平常是 `OK`；`AWS/Lambda` `Errors` 維度 `FunctionName`，`AWS/ApiGateway` `5xx` 維度 `ApiId`；`Sum`、300、1、`GreaterThanOrEqualToThreshold`、1 期、`notBreaching`；`alarm` 與 `ok` 都是 `$TOPIC`。
-- `list-metrics`：Lambda 有一組剛好是 `FunctionName` 的維度；API Gateway 的結果裡要有一組**只有** `ApiId` 的維度（其他組可能多 `Stage`）。只有帶 `Stage` 的組合時，告警看的是不存在的指標，因為 `notBreaching` 會一直是 `OK`，記為不通過。
+- `list-metrics`：Lambda 有一組剛好是 `FunctionName` 的維度；API Gateway 的結果裡要有一組**只有** `ApiId` 的維度（其他組可能多 `Stage`）。如果只有帶 `Stage` 的組合，告警看的就是不存在的指標，加上 `notBreaching`，會一直停在 `OK`。這種情況記為不通過。
 - topic 的 `KmsMasterKeyId` 是 `$KMS_ARN`；訂閱的 `SubscriptionArn` 是完整 ARN，不是 `PendingConfirmation`。
 - 兩次 `set-alarm-state` 都收到 email（證明 CloudWatch 能用 CMK 發到加密的 topic）。
 - 真實觸發：`api-5xx` 變 `ALARM` 並收到信；apply 之後 reserved concurrency 回到 tfvars 的值，告警回 `OK`。
@@ -825,7 +828,7 @@ aws lambda get-function-concurrency --function-name "$PREFIX-api"
 **前提**
 
 - 只在 dev 做。其他項目都做完、結果都記下來。
-- 先把會用到的值存在 shell 變數裡（上面的共用變數），destroy 之後 SSM 就讀不到了。另外存一份：`KMS_KEY_ID=${KMS_ARN##*/}`。
+- destroy 之後 SSM 就讀不到值，所以先把會用到的值存在 shell 變數裡（上面的共用變數）。另外存一份：`KMS_KEY_ID=${KMS_ARN##*/}`。
 - `web` 的 destroy 也要 `TF_VAR_origin_verify_header_value`（`web/variables.tf:11-20` 沒有預設值，至少 16 字元）。
 - 會擋住 destroy 的資源見 REFERENCE〈destroy〉（`REFERENCE.md:208-224`）。dev 的 `data`、`auth` 刪除保護是關的；下面用 `-var` 暫時打開，驗證 sit 的流程。
 
@@ -906,7 +909,7 @@ aws logs describe-log-groups --region us-east-1 --log-group-name-prefix "aws-waf
 
 ## 發現：文件與程式碼不一致
 
-寫這份 runbook 時從程式碼找到的，都沒有修，交給負責範本的人決定：
+下面是寫這份 runbook 時從程式碼找到的不一致，都還沒修，交給負責範本的人決定：
 
 1. `REFERENCE.md:203` 說 Lambda 的環境變數用共用 CMK。`api/function.tf:30-46` 沒有給環境變數的 KMS key，`lambda-function` 也只有 `log_kms_key_arn`（`modules/lambda-function/variables.tf:117`），所以環境變數用 AWS managed key。第 7 項的 `envKms` 會是 `null`。
 2. README〈第一次 apply〉與 `REFERENCE.md:89-95` 的步驟直接 `apply`，沒有先 `./stacks.sh <env> <stack> init`。`stacks.sh` 的 `apply` 不會自動 init（`stacks.sh:119`、`:125`），全新的 checkout 照文件做會失敗。
@@ -914,7 +917,7 @@ aws logs describe-log-groups --region us-east-1 --log-group-name-prefix "aws-waf
 
 ## 結果怎麼回寫
 
-執行人是負責 apply 的專案 app team 成員；回寫分三處，都用 PR：
+執行人是負責 apply 的專案 app team 成員；回寫分四處，都用 PR：
 
 | 回寫到哪裡 | 誰改 | 怎麼改 | 誰審 |
 |---|---|---|---|

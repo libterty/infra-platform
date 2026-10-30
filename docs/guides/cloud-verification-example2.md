@@ -2,17 +2,17 @@
 
 ## 結論
 
-這份 runbook 列出 `templates/example2` 第一次在真實 AWS 帳號 apply 時，v9 加進來的部分要逐項確認的事。照做完，就能把 design v9 §11 與 example2 README〈已知限制〉裡跟 CloudFront、DNS、憑證有關的推論，改成有證據的結論。
+`templates/example2` 第一次在真實 AWS 帳號 apply 時，照這份 runbook 逐項確認 v9 加進來的部分。全部做完，design v9 §11 與 example2 README〈已知限制〉裡跟 CloudFront、DNS、憑證有關的推論，就能改成有證據的結論。
 
 - 範圍只有 v9 加的東西：`dns`、`certificate`、`edge` 三個新 stack，CloudFront 擋在 ALB 前面、ALB 改 HTTPS、origin verify header、ALB security group 放 CloudFront prefix list、`application` 的 `trusted_proxies`、`foundation` 的 secret 改用 `secrets-manager-secret` 並用 `moved` 搬進 module。共 13 項。
 - v9 之前就有的 example2 內容（IAM 形狀、ALB access log、WAF logging 權限、AgentCore、no-NAT、S3 通知、autoscaling、跟應用程式的約定）不在本文。example2 的 REFERENCE.md 沒有〈雲端整合待驗證〉清單，那些項目只列在 README〈已知限制〉與 REFERENCE〈已知限制的細節〉，追蹤在 `docs/design/v2/design-docs.md` §5.8、§5.10。
 - 每一項都有：前提（要 apply 哪些 stack、tfvars 怎麼設）、指令、預期結果、結果紀錄。
 - 指令預設都是唯讀。會改變狀態的指令標【寫入】，只在 `dev` 執行。
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設行為或命名），執行時以實際輸出為準。
-- 從程式碼就看得出來、第一次驗證很可能卡住的三件事，先講：
+- 有三件事從程式碼就看得出來，第一次驗證很可能卡在這裡：
   1. **`dev` 的 ALB security group 很可能超過規則數配額**：CloudFront origin-facing prefix list 依它的 `MaxEntries` 計入配額，`dev` 另外有辦公室 CIDR 的 443 與 80 兩條（`network/security-groups.tf:17-38`）。預設上限 60 條，`MaxEntries` 接近 60 時 `network` apply 會失敗。第 4 項要在 apply `network` **之前**做。
   2. **prefix list 的 ID 沒查證**：`network/envs/*.tfvars` 的 `pl-58a04531` 是 ap-northeast-1 的佔位值，design §14 寫明沒有查證。ID 不對時 `network` apply 失敗，或 ALB 擋掉 CloudFront（全部 504）。
-  3. **換 origin verify 的值一定會中斷**：`alb` module 的 listener rule 只放一個值（`modules/alb/main.tf:180`），design §14 已確認。第 11 項只量中斷多久，不是驗會不會中斷。
+  3. **換 origin verify 的值一定會中斷**：`alb` module 的 listener rule 只放一個值（`modules/alb/main.tf:180`），design §14 已確認，所以第 11 項只量中斷多久。
 
 ## 範圍
 
@@ -75,7 +75,7 @@ design §11 各點的去處：
 網路：
 
 - 第 1 項的 `dig` 要能查公開 DNS。
-- 第 3、6 項直接連 ALB，只有 `dev` 的辦公室 CIDR 進得去。`sit` 的 ALB 只開 CloudFront prefix list（`network/envs/sit.tfvars:19`），從外面直接連會 timeout，這本身就是 `sit` 的預期結果。
+- 第 3、6 項直接連 ALB，只有 `dev` 的辦公室 CIDR 進得去。`sit` 的 ALB 只開 CloudFront prefix list（`network/envs/sit.tfvars:19`），從外面直接連會 timeout，`sit` 本來就應該這樣。
 
 ## 共用變數
 
@@ -101,7 +101,7 @@ DIST_ID=$(ssm "/$P/$E/edge/distribution_id")
 CF_DOMAIN=$(ssm "/$P/$E/edge/domain_name")
 ```
 
-還沒 apply 到的 stack，對應的變數會是空的或報 `ParameterNotFound`，先忽略，做到那一項再重跑。
+stack 還沒 apply 時，對應的變數會是空的或報 `ParameterNotFound`，先不用管，做到那一項再重跑。
 
 名稱怎麼來的：
 
@@ -113,7 +113,7 @@ CF_DOMAIN=$(ssm "/$P/$E/edge/domain_name")
 
 ## 執行順序
 
-順序照 `stacks.sh:8` 的 `ORDER`：`containerimage foundation dns certificate network database iam bridge loadbalancer edge agent application operation postdeploy`，以及 README〈第一次 apply〉。建議一個 stack 一個 stack apply，每個先跑 `--dry-run` 看一次指令，不要直接 `all apply`，才能在中間做驗證。
+順序照 `stacks.sh:8` 的 `ORDER`：`containerimage foundation dns certificate network database iam bridge loadbalancer edge agent application operation postdeploy`，以及 README〈第一次 apply〉。建議一個 stack 一個 stack apply，每個先用 `--dry-run` 看一次指令。不要直接 `all apply`，這樣才能在中間停下來驗證。
 
 | 階段 | 做什麼 | 做完接著驗 |
 |---|---|---|
@@ -166,7 +166,7 @@ dig SOA "$ZONE" +short
 - 委派之後 `dig NS` 回的就是這 4 個（順序可能不同），`+trace` 的最後一段由上層網域交給這 4 個；`dig SOA` 有回應。
 - 記下：從加 NS record 到 `dig` 查得到花了多久（上層網域的 NS TTL 決定，推測）。
 
-委派做錯時，`certificate` 會等滿 45 分鐘才失敗。如果第一次真的遇到，把錯誤訊息貼在備註，確認看得出是在等驗證（README〈第一次 apply〉第 3 步的說法）。
+如果委派做錯，`certificate` 會等滿 45 分鐘才失敗。第一次真的遇到時，把錯誤訊息貼在備註，並確認從訊息看得出是在等驗證（README〈第一次 apply〉第 3 步這樣寫）。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／委派生效花了 ______
 
@@ -175,7 +175,7 @@ dig SOA "$ZONE" +short
 **前提**
 
 - 階段 D 完成：`certificate` apply 成功（會等到兩張都簽發）。
-- `certificate` stack 只有一個 provider（`certificate/providers.tf:12-27`，region 是 `aws_region`），CloudFront 憑證靠 module 的 `region = "us-east-1"` 建在 us-east-1（`certificate/certificates.tf:15`、`:35`；`modules/acm-certificate/main.tf:12`）。這就是 design §2 第 1 點「不用 provider alias」要在真實帳號確認的事。
+- `certificate` stack 只有一個 provider（`certificate/providers.tf:12-27`，region 是 `aws_region`），CloudFront 憑證靠 module 的 `region = "us-east-1"` 建在 us-east-1（`certificate/certificates.tf:15`、`:35`；`modules/acm-certificate/main.tf:12`）。design §2 第 1 點「不用 provider alias」要在真實帳號確認的就是這件事。
 
 **指令**
 
@@ -209,11 +209,11 @@ ssm "/$P-shared/$E/infra/zone_name"
 - ALB 憑證：ARN 是 `arn:aws:acm:<aws_region>:...`，`ISSUED`，domain `api.<zone>`，SAN 有 `api.<zone>` 與 `origin-api.<zone>`，`RSA_2048`。
 - CloudFront 憑證：ARN 是 `arn:aws:acm:us-east-1:...`，`ISSUED`，domain `api.<zone>`。
 - 兩張憑證 `api.<zone>` 的 `ResourceRecord.Name` 相同；zone 裡剛好兩筆驗證 CNAME（`api` 共用一筆、`origin-api` 一筆）。
-- `certificate plan` 的 `exit=0`（沒有變更）。`exit=2` 表示共用 record 在兩個 module 之間互相覆蓋，把 plan 貼在備註。
+- `certificate plan` 的 `exit=0`（沒有變更）。如果是 `exit=2`，表示共用 record 被兩個 module 互相覆蓋，把 plan 貼在備註。
 - `bridge` apply 成功（region 檢查通過），樹 B 的 4 個值等於樹 A。
 - `InUseBy`：`loadbalancer` apply 後 ALB 憑證有 ALB 的 ARN；`edge` apply 後 CloudFront 憑證有 distribution 的 ARN。
 
-注意：兩張憑證共用的驗證 record 由兩個 module address 各管一份。只 destroy 或重建其中一張時，Terraform 會刪掉這筆 record，另一張憑證到期前的自動續約就驗不到。之後改憑證名稱時要先看 plan 有沒有刪這筆 record。
+注意：兩張憑證共用的驗證 record，兩個 module address 各管一份。只 destroy 或重建其中一張的話，Terraform 會刪掉這筆 record，另一張憑證到期前自動續約時就驗證不到。之後改憑證名稱，要先看 plan 有沒有刪這筆 record。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／簽發花了 ______
 
@@ -242,7 +242,7 @@ echo | openssl s_client -connect "$ORIGIN:443" -servername "$ORIGIN" 2>/dev/null
 echo | openssl s_client -connect "$ORIGIN:443" -servername "$API" 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName
 ```
 
-`$ORIGIN` 要等階段 G 的 `edge` 建好 `origin-api` record 才解得到。在那之前，把 `$ORIGIN` 換成 `$(ssm "/$P/$E/loadbalancer/alb_dns_name")`，`openssl` 加 `-servername` 照舊。
+`$ORIGIN` 要等階段 G 的 `edge` 建好 `origin-api` record 才解得到。在那之前，把 `$ORIGIN` 換成 `$(ssm "/$P/$E/loadbalancer/alb_dns_name")`，`openssl` 一樣要加 `-servername`。
 
 名稱怎麼來的：HTTPS listener 443、`ELBSecurityPolicy-TLS13-1-2-2021-06`、預設回 404（`modules/alb/main.tf:22-42`）；HTTP:80 有憑證時轉到 443、`HTTP_301`（`modules/alb/main.tf:51-79`）；rule 掛在 HTTPS listener（`modules/alb/main.tf:5`）；rule 的 priority、path、host、`require_origin_verify`（`loadbalancer/alb.tf:6-32`）；條件（`modules/alb/main.tf:157-182`）。
 
@@ -310,7 +310,7 @@ aws ec2 describe-security-group-rules --filters Name=group-id,Values="$ALB_SG" \
 
 - 階段 G 完成：`edge` apply 成功（會等 distribution 部署完）。
 - 「經 CloudFront 打到 api」的部分要等階段 H：`application` 已 apply，api 的 task 是 healthy。
-- design K8 與 §14：CloudFront 轉送 viewer 的 Host（`api.<zone>`）時，用它做 SNI 與憑證比對，所以 ALB 憑證要有 `api.<zone>`（第 2 項已確認憑證內容）。這一項確認實際行為。
+- design K8 與 §14：CloudFront 轉送 viewer 的 Host（`api.<zone>`）時，用它做 SNI 與憑證比對，所以 ALB 憑證要有 `api.<zone>`（第 2 項已確認憑證內容）。這一項確認實際上是不是這樣。
 
 **指令**
 
@@ -397,7 +397,7 @@ aws wafv2 get-logging-configuration --region us-east-1 \
 aws s3api get-bucket-encryption --bucket <state-bucket> --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault'
 ```
 
-`--resolve` 讓 `curl` 把 `api.<zone>` 直接連到 ALB 的位址，SNI 與 Host 都是 `api.<zone>`，模擬 CloudFront 的請求，只是少了正確的 header。
+`--resolve` 讓 `curl` 把 `api.<zone>` 直接連到 ALB 的位址，SNI 與 Host 都是 `api.<zone>`。這樣就跟 CloudFront 送出的請求一樣，只差在沒有正確的 header。
 
 名稱怎麼來的：WAF log group 是 `"aws-waf-logs-${var.name}"`（`modules/waf-web-acl/main.tf:20`），ALB WAF 的 `name` 是 `<project>-<env>-alb`（`loadbalancer/waf.tf:32`、`loadbalancer/alb.tf:2`），edge WAF 是 `<project>-<env>-api-edge`（`edge/waf.tf:5`），CloudFront 的 log group 在 us-east-1（`modules/waf-web-acl/main.tf:23`、`:261`）；遮蔽的 header 是 `authorization`、`cookie` 加 header 名稱的小寫（`modules/waf-web-acl/main.tf:18`、`loadbalancer/waf.tf:23`、`edge/waf.tf:20`）；`dev_page` rule 不要求 header（`loadbalancer/alb.tf:23-31`、`loadbalancer/envs/dev.tfvars:15`）。
 
@@ -417,7 +417,7 @@ aws s3api get-bucket-encryption --bucket <state-bucket> --query 'ServerSideEncry
 
 - 階段 G、H 完成。
 - 兩個 WAF 的 rate limit 預設都是每 5 分鐘、每個來源 IP 2000 次（`edge/variables.tf:28-32`、`loadbalancer/variables.tf:58-62`），allowlist 佔位 `198.51.100.0/24`（`edge/envs/dev.tfvars:12`、`loadbalancer/envs/dev.tfvars:12`）。
-- design K9：只有 CloudFront WAF 看得到 client 的真實 IP；ALB WAF 在 CDN 後面看到的是 CloudFront edge 的 IP。這一版不改，這一項是量出影響有多大。
+- design K9：只有 CloudFront WAF 看得到 client 的真實 IP；ALB WAF 在 CDN 後面看到的是 CloudFront edge 的 IP。這一版先不改，這一項量出影響有多大。
 
 **指令**
 
@@ -441,7 +441,7 @@ aws logs filter-log-events --log-group-name "aws-waf-logs-$P-$E-alb" --limit 50 
   --query 'events[].message' --output text | jq -r '.httpRequest.clientIp' | sort | uniq -c | sort -rn | head
 ```
 
-【寫入】打流量測 rate limit。在一台**不在** allowlist 裡的機器上，5 分鐘內送 2500 次（`dev`；只是請求，不改資源，但會讓這台機器被 edge WAF 擋幾分鐘）：
+【寫入】打流量測 rate limit：在一台**不在** allowlist 裡的機器上，5 分鐘內送 2500 次（`dev`；只送請求、不改資源，但這台機器會被 edge WAF 擋幾分鐘）：
 
 ```bash
 for i in $(seq 1 2500); do
@@ -459,7 +459,7 @@ done | sort | uniq -c
 - edge：`rate-limit`（30，2000，`IP`）、兩個 managed group（100、101）、`body-size-limit`（1000）。ALB：多一條 `kill-switch`（10）。
 - 平常的 log：edge 的 `clientIp` 是 client 的公網 IP；ALB 的 `clientIp` 都在 CloudFront origin-facing prefix list 裡。
 - 打流量時：edge WAF 在超過 2000 次後開始回 403（WAF 的 rate 計算有延遲，實際會多放一些，推測）；ALB WAF 不應該先擋。
-- 結論寫進備註：一個 client 的流量在 ALB 端分散到幾個 CloudFront IP、ALB 的 `rate_limit_per_5min` 要不要調高。正式流量下，一個 CloudFront IP 代表很多 client，ALB 的 2000 次很可能太低（K9）。
+- 在備註寫下結論：一個 client 的流量在 ALB 端分散到幾個 CloudFront IP、ALB 的 `rate_limit_per_5min` 要不要調高。正式流量下，同一個 CloudFront IP 背後有很多 client，ALB 的 2000 次很可能太低（K9）。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／ALB 端單一 IP 最多 ______ 次、建議的 ALB 上限 ______
 
@@ -495,7 +495,7 @@ aws s3 ls "s3://$LOG_BUCKET/AWSLogs/$ACCOUNT/" --recursive | tail -5
 
 **預期結果**
 
-- `edge` apply 成功，沒有建 delivery 時的錯誤。失敗時把錯誤訊息貼在備註，這就是 design §11 這一點不成立的證據。
+- `edge` apply 成功，建 delivery 時沒有報錯。如果失敗，把錯誤訊息貼在備註，當作 design §11 這一點不成立的證據。
 - source：`ACCESS_LOGS`，`resourceArns` 是 distribution 的 ARN。destination：`S3`，指到 `$LOG_BUCKET`。delivery 一筆。
 - bucket 在 `aws_region`（`ap-northeast-1` 時 `LocationConstraint` 是 `ap-northeast-1`），SSE 是 `AES256`。
 - 有流量後 5–10 分鐘內 `AWSLogs/<account>/` 底下有新物件（時間是推測，記下實際延遲）。
@@ -539,7 +539,7 @@ rm /tmp/forwarded.txt /tmp/pl.txt
 
 - 第一行是 VPC CIDR（`network/envs/<env>.tfvars:6`，佔位 `10.10.0.0/16`），其餘跟 prefix list 的 entries 完全一致。
 - api 的 log 裡記到的 client 位址是 `MYIP`，不是 CloudFront 的 IP（log 格式看應用程式；uvicorn 的 access log 有 client 位址，推測）。找不到時記下 log 裡實際的位址。
-- `application plan` 的 `exit=0`。AWS 改了 prefix list 的內容時會是 `exit=2`（新的 task definition），這是預期行為，記下來就好。
+- `application plan` 的 `exit=0`。如果 AWS 改了 prefix list 的內容，會是 `exit=2`（新的 task definition），這是預期的，記下來就好。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／api 記到的位址 ______
 
@@ -548,7 +548,7 @@ rm /tmp/forwarded.txt /tmp/pl.txt
 **前提**
 
 - 階段 H 完成，api 的 `/api/stream` 可以用。
-- `origin_read_timeout` 預設 60（`edge/variables.tf:22-26`），不申請配額的上限；ALB 的 `idle_timeout` 是 300（`loadbalancer/variables.tf:1-5`）。串流超過 60 秒沒送任何資料，CloudFront 會先斷線（REFERENCE〈已知限制的細節〉、design §14）。
+- `origin_read_timeout` 預設 60（`edge/variables.tf:22-26`），不申請配額的上限；ALB 的 `idle_timeout` 是 300（`loadbalancer/variables.tf:1-5`）。串流如果超過 60 秒沒送任何資料，CloudFront 會先斷線（REFERENCE〈已知限制的細節〉、design §14）。
 - 要知道應用程式的串流多久送一次資料（heartbeat）。這是跟應用程式的約定，repo 裡沒有。
 
 **指令**
@@ -603,7 +603,7 @@ awk '$2=="404"{if(!s)s=$1; e=$1} END{print "404 從", s, "到", e}' rotation.log
 
 - `loadbalancer` apply 結束前後開始回 404；`edge` apply 結束時（distribution 部署完）404 停止，之後回正常的狀態碼。
 - 中斷長度約等於 `edge` apply 的時間，REFERENCE 估計幾分鐘到十幾分鐘。記下實際分鐘數。
-- 中斷之後第 5、6 項的 `curl` 檢查再跑一次都通過。
+- 中斷結束後，再跑一次第 5、6 項的 `curl` 檢查，都通過。
 - 中斷超過可接受的範圍時，開 issue 給 platform team：讓 `alb` module 的 rule 接受多個值（design §4.1 的做法）。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／中斷 ______ 分鐘
@@ -630,7 +630,7 @@ done
 grep -E 'has moved to|will be created|will be destroyed|must be replaced|will be updated|^Plan:' foundation-plan.txt
 ```
 
-plan 看起來對了，【寫入】`./stacks.sh dev foundation apply`，再跑一次上面的 `describe-secret` 與 `list-secret-version-ids` 比對，最後：
+確認 plan 沒問題後，【寫入】`./stacks.sh dev foundation apply`，再跑一次上面的 `describe-secret` 與 `list-secret-version-ids` 比對，最後：
 
 ```bash
 ./stacks.sh "$E" foundation plan -- -detailed-exitcode; echo "exit=$?"
@@ -650,7 +650,7 @@ plan 看起來對了，【寫入】`./stacks.sh dev foundation apply`，再跑�
 
 **前提**
 
-- 只在 `dev`，所有驗證做完之後。這會刪掉整個環境。
+- 只在 `dev` 做，而且要等所有驗證都做完。這一步會刪掉整個環境。
 - 先讀 REFERENCE〈destroy 之前〉。這一項只看 v9 加的資源：distribution、CloudFront WAF、CloudFront log bucket、兩張憑證、hosted zone、secret。
 - `stacks.sh` 的 destroy 反向跑：`postdeploy operation application agent edge loadbalancer bridge iam database network certificate dns foundation containerimage`（`stacks.sh:8`、`:93-97`）。
 
@@ -690,12 +690,12 @@ aws secretsmanager describe-secret --secret-id "$P-$E/app-signing-public-key" --
 
 **預期結果**
 
-- 沒清空 log bucket 就 destroy `edge` 會失敗（`BucketNotEmpty`）；清空之後成功。`edge` destroy 要等 distribution 停用，十幾分鐘（REFERENCE〈destroy 之前〉）。記下實際時間。
+- 沒清空 log bucket 就 destroy `edge` 會失敗（`BucketNotEmpty`）；清空之後成功。`edge` destroy 要等 distribution 停用，要十幾分鐘（REFERENCE〈destroy 之前〉）。記下實際時間。
 - `edge` destroy 後：`get-distribution` 回 `NoSuchDistribution`；edge WAF 查不到；CloudFront 憑證 `InUseBy` 是空的。
-- `loadbalancer` destroy 後：ALB 憑證 `InUseBy` 是空的；`certificate` destroy 成功。兩張憑證共用的 `api` 驗證 record 只會被刪一次，第二個刪除不應該報錯（provider 對已經不存在的 record 的處理，推測）；報錯就貼在備註。
+- `loadbalancer` destroy 後：ALB 憑證 `InUseBy` 是空的；`certificate` destroy 成功。兩張憑證共用的 `api` 驗證 record 只會被刪一次，第二次刪除不應該報錯（provider 怎麼處理已經不存在的 record，推測）；報錯就貼在備註。
 - `certificate` destroy 後 zone 只剩 NS 與 SOA，`dns` destroy 成功；有 Terraform 以外的 record 時會失敗（`HostedZoneNotEmpty`）。
 - `foundation` destroy 後 secret 有 `DeletedDate`。
-- 不照反向順序、單獨 destroy `certificate` 時，憑證還被 ALB 或 CloudFront 用，會失敗（`ResourceInUseException`）。這一點不用故意測，遇到就記下。
+- 如果不照反向順序、單獨 destroy `certificate`，憑證還在被 ALB 或 CloudFront 使用，會失敗（`ResourceInUseException`）。這一點不用故意測，遇到就記下。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／`edge` destroy 花了 ______、卡住的資源 ______
 
@@ -703,7 +703,7 @@ aws secretsmanager describe-secret --secret-id "$P-$E/app-signing-public-key" --
 
 ## 結果怎麼回寫
 
-執行人是負責 apply 的專案 app team 成員；回寫分三處，都用 PR：
+執行人是專案 app team 裡負責 apply 的人。結果回寫到三個地方，都走 PR：
 
 | 回寫到哪裡 | 誰改 | 怎麼改 | 誰審 |
 |---|---|---|---|
