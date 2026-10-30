@@ -1,6 +1,6 @@
 # infra-platform v11 設計文件：CI/CD module 與 templates/example9
 
-> 狀態：設計中（2026-10-29），等使用者確認。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
+> 狀態：已實作（2026-10-30，L0–L7，見 [`implement-process.md`](./implement-process.md)）。實作時跟設計不同的決定記在 §14，兩邊不同時以 §14 與程式碼為準。§3.1 的 D 是使用者拍板的決策；§3.2 的 K 是照慣例的判斷，審閱時可以推翻。標「審閱重點」的是需要特別看的取捨。
 > 範圍：新增 AWS CI/CD 用的 module（CodeConnections、CodeBuild、CodePipeline），三個既有 module 升 minor（`ecs-service`、`lambda-function`、`iam-role`），新建範本 `templates/example9`。不改 example2–example6、account-baseline、project-infra。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。provider schema 是 aws 6.70.0（`terraform providers schema -json`）的結果。標「未確認」的要在實作或真實環境驗證。環境只有 `dev`、`sit`。
 
@@ -311,8 +311,8 @@ containerimage foundation network iam loadbalancer application web pipeline
 | 項目 | 價格 | 一個環境每月的量級 |
 |---|---|---|
 | CodePipeline V2 | 每分鐘 action 執行 0.002；每帳號每月 100 分鐘免費；manual approval 不計 | 三條 pipeline 各跑 20 次、每次約 10 分鐘：600 分鐘，扣掉免費約 1 |
-| CodeBuild | `general1.small` 每分鐘 0.005；`general1.small` 或 `arm1.small` 每月 100 分鐘免費；ARM 的單價未確認 | 每月 300 分鐘建置，約 1 |
-| CodeConnections | 未確認（L1 查價目頁） | — |
+| CodeBuild | ap-northeast-1 的 `arm1.small`（`ARM_CONTAINER` 配 `BUILD_GENERAL1_SMALL`）每分鐘 0.00425，`general1.small` 0.005；兩者合計每月 100 分鐘免費 | 每月 300 分鐘建置，約 1 |
+| CodeConnections | 官方價目頁與 AWS price list 都沒有列費用（未確認是否完全免費） | 0 |
 | artifact bucket | S3 標準儲存，30 天過期 | 低於 1 |
 | CMK | 每把每月 1 | 1 |
 | 應用程式本身（ECS、ALB、Lambda、CloudFront、NAT） | 照 example2、example6 | 最大宗；ALB 與 NAT 一個月就各十幾到幾十 |
@@ -357,8 +357,58 @@ containerimage foundation network iam loadbalancer application web pipeline
   - S3 部署 action：<https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-S3Deploy.html>
   - ECS 原生 blue/green：<https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-blue-green.html>、<https://docs.aws.amazon.com/AmazonECS/latest/developerguide/blue-green-deployment-implementation.html>、<https://docs.aws.amazon.com/AmazonECS/latest/developerguide/alb-resources-for-blue-green.html>
   - 從 CodeDeploy 遷移到 ECS blue/green（2025-09-16）：<https://aws.amazon.com/blogs/containers/migrating-from-aws-codedeploy-to-amazon-ecs-for-blue-green-deployments>
-  - 價格：<https://aws.amazon.com/codepipeline/pricing/>、<https://aws.amazon.com/codebuild/pricing/>
+  - 價格：<https://aws.amazon.com/codepipeline/pricing/>、<https://aws.amazon.com/codebuild/pricing/>、<https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/CodeBuild/current/ap-northeast-1/index.json>
+- 實作時查證（2026-10-30）：
+  - CodeConnections source action 與 pipeline role 的權限：<https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-CodestarConnectionSource.html>、<https://docs.aws.amazon.com/codepipeline/latest/userguide/how-to-custom-role.html>
+  - trigger：<https://docs.aws.amazon.com/codepipeline/latest/userguide/pipelines-triggers.html>
+  - 執行模式：<https://docs.aws.amazon.com/codepipeline/latest/userguide/concepts-how-it-works.html>
+  - CodeBuild compute 與映像：<https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html>、<https://docs.aws.amazon.com/codebuild/latest/userguide/ec2-compute-images.html>
+  - ECS 管 ALB 的 policy：<https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonECSInfrastructureRolePolicyForLoadBalancers.html>
 
 ## 14. 實作後的變更
 
-（實作時填）
+### 查證結果
+
+- §2 第 7 點：`DetectChanges = "false"` 時 CodePipeline 不會因為新的 commit 啟動；triggers 文件的「No trigger – do not detect」也說明不會加 trigger、不會自動執行。push 之後到底會不會跑，仍要在真實帳號確認一次。
+- `execution_mode` 的 `QUEUED` 只有 V2 能用，AWS 的預設是 `SUPERSEDED`；module 照設計預設 `QUEUED`。
+- pipeline role 要同時有 `codeconnections:UseConnection` 與 `codestar-connections:UseConnection`。
+- §5.6：`AmazonECSInfrastructureRolePolicyForLoadBalancers` 的 ARN 是 `arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers`，不在 `service-role/` 底下。
+- §10：CodeBuild 的 ARM small 在 ap-northeast-1 是每分鐘 0.00425 美元；預設映像用 `aws/codebuild/amazonlinux-aarch64-standard:3.0`。
+
+### module
+
+- `codepipeline`：
+  - 輸入 `source` 改名 `git_source`，因為 Terraform 在 module 區塊保留了 `source` 這個名稱。
+  - source stage 的名稱固定：action `Source`、artifact `SourceArtifact`、namespace `SourceVariables`。
+  - 多加的 validation：同一個 stage 的 action 名稱不重複、名稱格式、`run_order` 1–999。action 的 `timeout_in_minutes`、`region`、`role_arn` 不開放。
+- `codebuild-project`：
+  - `cache_modes` 預設改成不快取（設計是 Docker layer 加 source cache）。Docker layer cache 要搭配 privileged mode，加了 validation；source cache 對 `CODEPIPELINE` source 沒有作用。
+  - 映像與 `type` 是否一致只檢查官方映像，因為 ARM 與 x86 共用同一組 `compute_type` 名稱。
+  - `buildspec` 預設 `null`（用 repo 的 `buildspec.yml`），log group 預設 `/aws/codebuild/<name>`。
+- `codeconnections-connection`：provider 不接受 `provider_type` 與 `host_arn` 同時給，所以給了 host 時 module 不送 `provider_type`。
+- `ecs-service` 0.3.0：
+  - listener rule 原本就有 `count`，預設版本保留原位址，blue/green 另外建 `blue_green`，不需要 `moved`。
+  - blue/green 的 listener rule 轉到兩個 target group，權重 100／0，並忽略 `action`。這是 module 選的寫法，要在真實環境確認。
+  - 多加的 validation：`bake_time_in_minutes` 與 `role_arn` 只能搭 `BLUE_GREEN`；bake time 0–1440；alternate target group 名稱 `<name>-<port>-alt` 不超過 32 字元。
+  - 沒做 test listener rule、canary、linear，也沒有新增輸出。target group 互換仍未確認，沒有忽略 `load_balancer`。
+- `lambda-function` 0.2.0：`publish` 預設傳 `null`，跟 0.1.1 完全一樣。`aws_lambda_permission` 沒有 qualifier，透過 alias ARN 呼叫時可能不涵蓋；example9 沒有呼叫端，不受影響。
+- 既有測試只把位址從 `this` 改成 `this[0]`，斷言沒有改。
+
+### 範本
+
+- 前端 bucket 從 `foundation` 移到 `web`：`s3-bucket` 管整份 bucket policy，CloudFront 的讀取授權要寫 distribution，`foundation` 時還不存在。做法跟 example6 一樣，用 SSE-S3，名稱 `<name_prefix>-web-<account>`。
+- ORDER 隨 Phase 增加；`network` 多發布 `vpc_cidr` 給內部 ALB 用。
+- `iam`：
+  - 註冊 task definition 限定 api 的 family；`Resource = "*"` 只用在 `ecr:GetAuthorizationToken`、`ecs:DescribeTaskDefinition`。
+  - web-invalidate 用 distribution 的 tag 限定範圍（distribution ID 是隨機的）。
+  - web-build 不能寫前端 bucket，由 pipeline 的 S3 部署 action 寫入；api-deploy 與 web-invalidate 只能讀 artifact。
+  - fn 的部署沒有設 alarm，所以沒給 `cloudwatch:DescribeAlarms`。
+- `loadbalancer`：內部 ALB 沒有 access log 與 WAF；dev 關刪除保護，sit 開。
+- `application`：第一版映像的 tag 由 `api_bootstrap_image_tag`、`fn_bootstrap_image_tag` 決定，tfvars 是 `bootstrap`，不接受 `latest`。
+- `web`：沒有 WAF、沒有 log、不讀 SSM。
+- `ecs-service` 的部署策略從 rolling 改成 blue/green 時，service 與 listener rule 會換到另一個 resource 區塊，直接 apply 會刪掉重建 service。REFERENCE 附了 `moved` 的寫法，但沒有驗證過，採用前要在 dev 試一次。
+- `iam` 用 `iam-role` `~> 0.5.0`；改用 blue/green 的專案要另外用 0.6.0 建 ECS 管 ALB 的 role。
+- `pipeline`：
+  - 建置專案是五個（§8.1 寫四個；多的 web-invalidate 跟 §8.2 一致）。只有 api-build、fn-build 開 privileged 與 Docker layer cache。
+  - 人工核准由 tfvars 的 `approval_required` 控制；發布 `pipeline/{api,fn,web}_pipeline_name`。
+  - 未確認：Lambda 部署 action 不給 input artifact、只靠 `PublishedTargetVersion` 能不能跑；api-deploy 用 `EnvironmentVariables` 覆寫 `IMAGE_URI` 的行為；失敗事件用 pipeline 名稱比對。

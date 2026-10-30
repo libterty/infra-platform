@@ -132,6 +132,7 @@ HCP 怎麼認證、怎麼升版、範本複製出去要改哪些地方、git 的
 | [`templates/example4/`](./templates/example4/infra/README.md) | 資料平台：串流收資料、ETL、資料倉儲、BI 與搜尋 |
 | [`templates/example5/`](./templates/example5/infra/README.md) | IoT Edge AI：裝置開通與 OTA、遙測進 S3 與搜尋、Greengrass 邊緣推論、模型訓練與核准 |
 | [`templates/example6/`](./templates/example6/infra/README.md) | Serverless Web 應用：Cognito 登入、API Gateway 加 Lambda、DynamoDB，前端與 API 共用 CloudFront 和 WAF |
+| [`templates/example9/`](./templates/example9/infra/README.md) | 應用程式的 CI/CD：GitHub 加 CodePipeline、CodeBuild，部署 ECS、Lambda 與 S3 加 CloudFront 前端，pipeline 只能手動執行 |
 | [`templates/account-baseline/`](./templates/account-baseline/infra/README.md) | 每個 AWS 帳號一份的治理基線：CloudTrail、Config、GuardDuty、Security Hub、Inspector、備份與成本預算 |
 
 ## 不同團隊怎麼用

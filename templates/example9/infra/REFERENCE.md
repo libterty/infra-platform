@@ -571,7 +571,7 @@ scripts/validate.sh templates/example9/infra/terraform
 
 | 項目 | 結果 |
 |---|---|
-| `fmt` 與靜態規則 | 通過；S11 需要 terraform-docs 0.24.x |
+| `fmt`、靜態規則（含 S11）與 tflint | 通過 |
 | `init -backend=false`、`validate` | 8 個 stack 通過 |
 | `terraform test` | 8 個 stack、16 個測試檔跑 24 次（主測試 1 次，tfvars 測試 `dev`、`sit` 各 1 次），202 個 run 全過 |
 | `check-ssm-contract.sh` | 8 個 stack、38 個讀取、2 個 env 通過 |
