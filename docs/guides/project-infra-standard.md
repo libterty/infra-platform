@@ -2,7 +2,7 @@
 
 給專案的 app team。結論：把 `templates/project-infra/infra/` 整個複製到專案 repo 根目錄，換掉 module source、帳號、state bucket 與 tfvars 的佔位值，再照 9 個 stack 的順序 apply（`infra/terraform/stacks.sh` 依順序執行）。stack 只呼叫 module，跨 stack 只透過 SSM 傳值，兩個 stack 都要知道的開關只在上游決定一次。
 
-這份以 `project-infra` 範本為準。repo 另有五份拆法不同的範本：`templates/example2/`（14 個 stack）、它的 EKS 版 `templates/example3/`（13 個 stack）、資料平台 `templates/example4/`（12 個 stack）、IoT Edge AI `templates/example5/`（15 個 stack），以及 serverless 的 `templates/example6/`（9 個 stack），環境都是 `dev`、`sit`。帳號層的治理（CloudTrail、Config、GuardDuty、Security Hub 等）不放在專案範本裡，每個帳號另外套一份 `templates/account-baseline/`（7 個 stack）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
+這份以 `project-infra` 範本為準。repo 另有六份拆法不同的範本：`templates/example2/`（14 個 stack）、它的 EKS 版 `templates/example3/`（13 個 stack）、資料平台 `templates/example4/`（12 個 stack）、IoT Edge AI `templates/example5/`（15 個 stack）、serverless 的 `templates/example6/`（9 個 stack），以及示範 CI/CD pipeline 的 `templates/example9/`（8 個 stack），環境都是 `dev`、`sit`。帳號層的治理（CloudTrail、Config、GuardDuty、Security Hub 等）不放在專案範本裡，每個帳號另外套一份 `templates/account-baseline/`（7 個 stack）。複製與改值的做法一樣，細節看各自的 `infra/README.md`。
 
 這份講「怎麼做、為什麼」；stack 清單、SSM 合約表、單一決定點、流量規格表的完整內容在範本的 `templates/project-infra/infra/README.md` 與 `REFERENCE.md`，複製出去之後就是專案的 `infra/README.md`、`infra/REFERENCE.md`，這裡不重複。
 

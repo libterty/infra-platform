@@ -1,6 +1,6 @@
 # infra-platform v11 實作流程：CI/CD module 與 templates/example9
 
-> 狀態：設計中（2026-10-29），等使用者確認。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
+> 狀態：L0–L7 全部完成（2026-10-30）。實作時跟設計不同的決定記在 design §14。這份只講「一步一步怎麼做、每步怎麼驗收」；兩份衝突時以 [`design-docs.md`](./design-docs.md) 為準，回頭改這份。
 > 文中路徑除非特別註明，都是 repo 內相對路徑。「design §x」指 design-docs.md 的章節。
 
 ## 結論
@@ -41,14 +41,14 @@
 
 | Phase | 內容 | 狀態 | PR |
 |---|---|---|---|
-| L0 | v11 設計文件與實作流程 | 等使用者確認 | |
-| L1 | `codeconnections-connection`、`codebuild-project` | | |
-| L2 | `codepipeline` | | |
-| L3 | `ecs-service` 0.3.0、`lambda-function` 0.2.0、`iam-role` 0.6.0 | | |
-| L4 | 範本骨架、`containerimage`、`foundation`、`network`、`iam` | | |
-| L5 | `loadbalancer`、`application`、`web` | | |
-| L6 | `pipeline` | | |
-| L7 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | | |
+| L0 | v11 設計文件與實作流程 | 完成（2026-10-29 確認） | #293 |
+| L1 | `codeconnections-connection`、`codebuild-project` | 完成：發版、HCP ok | #296 |
+| L2 | `codepipeline` | 完成：發版、HCP ok | #294 |
+| L3 | `ecs-service` 0.3.0、`lambda-function` 0.2.0、`iam-role` 0.6.0 | 完成：發版、HCP ok | #299 |
+| L4 | 範本骨架、`containerimage`、`foundation`、`network`、`iam` | 完成 | #303 |
+| L5 | `loadbalancer`、`application`、`web` | 完成 | #304 |
+| L6 | `pipeline` | 完成 | #305 |
+| L7 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | #306 |
 
 ## 每個 Phase 的做法與驗收
 
