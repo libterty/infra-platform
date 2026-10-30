@@ -171,7 +171,7 @@ scripts/validate.sh --changed-since origin/main  # 只跑這次改動影響得�
 | 專案怎麼照範本開 `infra/`：stack 拆分、apply 順序、單一決定點、環境切換、客戶自管模式 | [`docs/guides/project-infra-standard.md`](./docs/guides/project-infra-standard.md) |
 | 怎麼改 module、semver、release-please、第一次手動打 tag | [`docs/guides/releasing-modules.md`](./docs/guides/releasing-modules.md) |
 | ADOT sidecar、X-Ray 權限與抽樣、log 告警 | [`docs/guides/observability.md`](./docs/guides/observability.md) |
-| example3 第一次在真實帳號驗證：每一項的前提、指令、預期結果 | [`docs/guides/cloud-verification-example3.md`](./docs/guides/cloud-verification-example3.md) |
+| 範本第一次在真實帳號驗證：每一項的前提、指令、預期結果（example2 只含 CDN 的部分） | [example2](./docs/guides/cloud-verification-example2.md)、[example3](./docs/guides/cloud-verification-example3.md)、[example4](./docs/guides/cloud-verification-example4.md)、[example5](./docs/guides/cloud-verification-example5.md)、[example6](./docs/guides/cloud-verification-example6.md)、[example9](./docs/guides/cloud-verification-example9.md)、[account-baseline](./docs/guides/cloud-verification-account-baseline.md) |
 | LLM 與 AgentCore：Runtime、guardrail、Memory、Gateway、Knowledge Base（Aurora pgvector）怎麼接進範本 | [`docs/guides/llm-agentcore.md`](./docs/guides/llm-agentcore.md) |
 | FDE 交付：vendoring、provider 鏡像、客戶自管的 SSM 合約 | [`docs/guides/delivering-to-customer.md`](./docs/guides/delivering-to-customer.md) |
 | 四個團隊的責任與交接點 | [`docs/guides/team-roles.md`](./docs/guides/team-roles.md) |
