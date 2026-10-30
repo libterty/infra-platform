@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/libterty/infra-platform/compare/ecs-service-v0.2.1...ecs-service-v0.3.0) (2026-10-30)
+
+
+### Features
+
+* **ecs-service:** add pipeline-managed deployments and native blue/green ([734c7f1](https://github.com/libterty/infra-platform/commit/734c7f17a745f5e069c989b80221e72e8c5b44bd))
+
 ## [0.2.1](https://github.com/libterty/infra-platform/compare/ecs-service-v0.2.0...ecs-service-v0.2.1) (2026-10-23)
 
 
