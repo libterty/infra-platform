@@ -48,7 +48,7 @@
 | L4 | 範本骨架、`containerimage`、`foundation`、`network`、`iam` | 完成 | #303 |
 | L5 | `loadbalancer`、`application`、`web` | 完成 | #304 |
 | L6 | `pipeline` | 完成 | #305 |
-| L7 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | |
+| L7 | 文件、根 README、標準指南、全量驗證、價格查證、design §14 | 完成 | #306 |
 
 ## 每個 Phase 的做法與驗收
 
