@@ -464,6 +464,15 @@ run "sagemaker_endpoint_reads_models_and_creates_enis_in_the_vpc" {
     error_message = "The endpoint may only read the models/ prefix of the ml bucket"
   }
 
+  # Data capture (inference/endpoint.tf) writes request and response samples under capture/.
+  assert {
+    condition = anytrue([
+      for s in jsondecode(one(values(local.roles["sagemaker_endpoint"].policies))).Statement :
+      s.Sid == "WriteDataCapture" && s.Action == ["s3:PutObject"] && s.Resource == ["arn:aws:s3:::example-dev-ml-artifacts-111111111111/capture/*"]
+    ])
+    error_message = "The endpoint may write only the capture/ prefix of the ml bucket"
+  }
+
   assert {
     condition = anytrue([
       for s in jsondecode(one(values(local.roles["sagemaker_endpoint"].policies))).Statement :

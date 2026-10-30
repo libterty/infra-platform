@@ -167,6 +167,8 @@ locals {
 
   sagemaker_endpoint_statements = concat([
     { Sid = "ReadModels", Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${local.ml_bucket_arn}/models/*"] },
+    # Data capture of instance variants (inference stack) writes under capture/.
+    { Sid = "WriteDataCapture", Effect = "Allow", Action = ["s3:PutObject"], Resource = ["${local.ml_bucket_arn}/capture/*"] },
     {
       # Instance variants run in the VPC (design K19) with the SageMaker security group of network.
       Sid    = "CreateNetworkInterfaces"
