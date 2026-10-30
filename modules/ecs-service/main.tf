@@ -5,6 +5,8 @@ locals {
   log_group    = coalesce(var.log_group_name, "/ecs/${var.name}")
   tags         = merge(var.tags, { Name = var.name })
   has_lb       = var.load_balancer != null
+  blue_green   = var.deployment.strategy == "BLUE_GREEN"
+  service      = one(concat(aws_ecs_service.this, aws_ecs_service.pipeline_managed, aws_ecs_service.blue_green))
 
   container_definition = merge(
     {
@@ -125,6 +127,8 @@ resource "aws_ecs_task_definition" "this" {
 }
 
 resource "aws_ecs_service" "this" {
+  count = var.pipeline_managed ? 0 : 1
+
   name            = var.name
   cluster         = var.cluster_arn
   task_definition = aws_ecs_task_definition.this.arn
@@ -190,5 +194,160 @@ resource "aws_ecs_service" "this" {
   # The autoscaling target owns capacity; without this every apply resets desired_count.
   lifecycle {
     ignore_changes = [desired_count]
+  }
+}
+
+moved {
+  from = aws_ecs_service.this
+  to   = aws_ecs_service.this[0]
+}
+
+# lifecycle.ignore_changes cannot depend on a variable, so each lifecycle is its own block.
+resource "aws_ecs_service" "pipeline_managed" {
+  count = var.pipeline_managed && !local.blue_green ? 1 : 0
+
+  name            = var.name
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.this.arn
+  desired_count   = var.desired_count
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.capacity_provider_strategy
+    content {
+      capacity_provider = capacity_provider_strategy.value.capacity_provider
+      weight            = capacity_provider_strategy.value.weight
+      base              = capacity_provider_strategy.value.base
+    }
+  }
+
+  network_configuration {
+    subnets          = var.network.subnet_ids
+    security_groups  = var.network.security_group_ids
+    assign_public_ip = false
+  }
+
+  dynamic "load_balancer" {
+    for_each = local.has_lb ? [1] : []
+    content {
+      target_group_arn = local.target_group_arn
+      container_name   = "app"
+      container_port   = var.container_port
+    }
+  }
+
+  health_check_grace_period_seconds = local.has_lb ? var.health_check_grace_period_seconds : null
+
+  dynamic "service_connect_configuration" {
+    for_each = var.service_connect != null ? [var.service_connect] : []
+    content {
+      enabled   = true
+      namespace = service_connect_configuration.value.namespace_arn
+
+      service {
+        port_name = "app"
+        client_alias {
+          port     = var.container_port
+          dns_name = coalesce(service_connect_configuration.value.dns_name, var.name)
+        }
+      }
+    }
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  propagate_tags                = "SERVICE"
+  availability_zone_rebalancing = "ENABLED"
+  enable_execute_command        = var.enable_execute_command
+  wait_for_steady_state         = false
+
+  tags = local.tags
+
+  # The pipeline registers task definition revisions and points the service at them.
+  lifecycle {
+    ignore_changes = [desired_count, task_definition]
+  }
+}
+
+resource "aws_ecs_service" "blue_green" {
+  count = local.blue_green ? 1 : 0
+
+  name            = var.name
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.this.arn
+  desired_count   = var.desired_count
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.capacity_provider_strategy
+    content {
+      capacity_provider = capacity_provider_strategy.value.capacity_provider
+      weight            = capacity_provider_strategy.value.weight
+      base              = capacity_provider_strategy.value.base
+    }
+  }
+
+  network_configuration {
+    subnets          = var.network.subnet_ids
+    security_groups  = var.network.security_group_ids
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = local.target_group_arn
+    container_name   = "app"
+    container_port   = var.container_port
+
+    advanced_configuration {
+      alternate_target_group_arn = aws_lb_target_group.alternate[0].arn
+      production_listener_rule   = aws_lb_listener_rule.blue_green[0].arn
+      role_arn                   = var.deployment.role_arn
+    }
+  }
+
+  health_check_grace_period_seconds = local.has_lb ? var.health_check_grace_period_seconds : null
+
+  dynamic "service_connect_configuration" {
+    for_each = var.service_connect != null ? [var.service_connect] : []
+    content {
+      enabled   = true
+      namespace = service_connect_configuration.value.namespace_arn
+
+      service {
+        port_name = "app"
+        client_alias {
+          port     = var.container_port
+          dns_name = coalesce(service_connect_configuration.value.dns_name, var.name)
+        }
+      }
+    }
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_configuration {
+    strategy             = "BLUE_GREEN"
+    bake_time_in_minutes = var.deployment.bake_time_in_minutes == null ? null : tostring(var.deployment.bake_time_in_minutes)
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  propagate_tags                = "SERVICE"
+  availability_zone_rebalancing = "ENABLED"
+  enable_execute_command        = var.enable_execute_command
+  wait_for_steady_state         = false
+
+  tags = local.tags
+
+  lifecycle {
+    ignore_changes = [desired_count, task_definition]
   }
 }

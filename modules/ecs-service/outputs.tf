@@ -1,10 +1,10 @@
 output "service_name" {
-  value       = aws_ecs_service.this.name
+  value       = local.service.name
   description = "ECS service 名稱。"
 }
 
 output "service_arn" {
-  value       = aws_ecs_service.this.id
+  value       = local.service.id
   description = "ECS service ARN。"
 }
 

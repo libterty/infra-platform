@@ -301,6 +301,58 @@ variable "load_balancer" {
   }
 }
 
+variable "pipeline_managed" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "`true` 時部署交給 pipeline：service 忽略 `task_definition` 的變動。Terraform 改設定時還是會註冊新的 task definition 版本，但 service 不會改用，要等下一次 pipeline 部署；`image` 只用在第一次建立。見〈交給 pipeline 部署〉。"
+}
+
+variable "deployment" {
+  type = object({
+    strategy             = optional(string, "ROLLING")
+    bake_time_in_minutes = optional(number)
+    role_arn             = optional(string)
+  })
+  default     = { strategy = "ROLLING" }
+  nullable    = false
+  description = "部署策略。欄位：`strategy`（`ROLLING` 或 `BLUE_GREEN`，預設 `ROLLING`）、`bake_time_in_minutes`（0–1440，只用在 `BLUE_GREEN`）、`role_arn`（讓 ECS 改 ALB listener rule 的 IAM role，`BLUE_GREEN` 必填）。`BLUE_GREEN` 必須搭配 `pipeline_managed = true` 與 `load_balancer.listener_arn` 接法。見〈原生 blue/green〉。"
+
+  validation {
+    condition     = contains(["ROLLING", "BLUE_GREEN"], var.deployment.strategy)
+    error_message = "deployment.strategy must be ROLLING or BLUE_GREEN."
+  }
+
+  validation {
+    condition = var.deployment.strategy == "BLUE_GREEN" ? can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/", var.deployment.role_arn)) : (
+      var.deployment.role_arn == null && var.deployment.bake_time_in_minutes == null
+    )
+    error_message = "BLUE_GREEN needs deployment.role_arn as an IAM role ARN; role_arn and bake_time_in_minutes are only for BLUE_GREEN."
+  }
+
+  validation {
+    condition = var.deployment.bake_time_in_minutes == null ? true : (
+      var.deployment.bake_time_in_minutes >= 0 && var.deployment.bake_time_in_minutes <= 1440 &&
+      floor(var.deployment.bake_time_in_minutes) == var.deployment.bake_time_in_minutes
+    )
+    error_message = "deployment.bake_time_in_minutes must be a whole number from 0 to 1440."
+  }
+
+  # ECS rewrites the listener rule weights during a deployment, so Terraform must ignore them.
+  validation {
+    condition     = var.deployment.strategy != "BLUE_GREEN" || var.pipeline_managed
+    error_message = "BLUE_GREEN needs pipeline_managed = true."
+  }
+
+  validation {
+    condition = var.deployment.strategy != "BLUE_GREEN" || (
+      try(var.load_balancer.listener_arn, null) != null &&
+      length("${var.name}-${coalesce(var.container_port, 0)}-alt") <= 32
+    )
+    error_message = "BLUE_GREEN needs load_balancer.listener_arn (the module creates both target groups and the listener rule), and the alternate target group name <name>-<container_port>-alt must fit in 32 chars."
+  }
+}
+
 variable "health_check_grace_period_seconds" {
   type        = number
   default     = 180

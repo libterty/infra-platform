@@ -170,6 +170,27 @@ variable "permissions" {
   }
 }
 
+variable "alias" {
+  type        = string
+  default     = null
+  description = "alias 名稱，1–128 字元，限英數字、`-`、`_`，不能全是數字。給了就開 `publish`，每次 apply 改到 function 都會發布新版本，alias 指到最新發布的版本；`null` 時不發布版本也不建 alias。"
+  validation {
+    condition     = var.alias == null ? true : can(regex("^[A-Za-z0-9_-]{1,128}$", var.alias)) && !can(regex("^[0-9]+$", var.alias))
+    error_message = "alias must be 1-128 chars of letters, digits, - or _, and must not be all digits."
+  }
+}
+
+variable "pipeline_managed" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "`true` 時程式碼版本交給 pipeline：function 忽略 `image_uri` 的變動（`image_uri` 只用在第一次建立），alias 忽略 `function_version` 與 `routing_config`。必須搭配 `alias`。"
+  validation {
+    condition     = !var.pipeline_managed || var.alias != null
+    error_message = "pipeline_managed needs alias: the pipeline deploys by moving the alias."
+  }
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}

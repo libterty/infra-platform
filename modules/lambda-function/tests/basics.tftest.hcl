@@ -10,37 +10,37 @@ run "defaults" {
   command = plan
 
   assert {
-    condition     = aws_lambda_function.this.function_name == "alpha-dev-worker"
+    condition     = aws_lambda_function.this[0].function_name == "alpha-dev-worker"
     error_message = "function_name must equal the name input"
   }
 
   assert {
-    condition     = aws_lambda_function.this.package_type == "Image"
+    condition     = aws_lambda_function.this[0].package_type == "Image"
     error_message = "The function must be a container image function"
   }
 
   assert {
-    condition     = aws_lambda_function.this.image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:v1.0.0"
+    condition     = aws_lambda_function.this[0].image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:v1.0.0"
     error_message = "image_uri must follow the input"
   }
 
   assert {
-    condition     = aws_lambda_function.this.role == "arn:aws:iam::111111111111:role/alpha-dev-worker"
+    condition     = aws_lambda_function.this[0].role == "arn:aws:iam::111111111111:role/alpha-dev-worker"
     error_message = "role must follow role_arn"
   }
 
   assert {
-    condition     = aws_lambda_function.this.architectures == tolist(["arm64"])
+    condition     = aws_lambda_function.this[0].architectures == tolist(["arm64"])
     error_message = "Default architecture must be arm64"
   }
 
   assert {
-    condition     = aws_lambda_function.this.memory_size == 512 && aws_lambda_function.this.timeout == 30
+    condition     = aws_lambda_function.this[0].memory_size == 512 && aws_lambda_function.this[0].timeout == 30
     error_message = "Default memory_size must be 512 and timeout 30"
   }
 
   assert {
-    condition     = aws_lambda_function.this.tags == tomap({ Name = "alpha-dev-worker" })
+    condition     = aws_lambda_function.this[0].tags == tomap({ Name = "alpha-dev-worker" })
     error_message = "Without tags input the only tag is Name"
   }
 }
@@ -51,10 +51,10 @@ run "sets_no_zip_package_settings" {
 
   assert {
     condition = (
-      aws_lambda_function.this.handler == null &&
-      aws_lambda_function.this.runtime == null &&
-      aws_lambda_function.this.filename == null &&
-      aws_lambda_function.this.s3_bucket == null
+      aws_lambda_function.this[0].handler == null &&
+      aws_lambda_function.this[0].runtime == null &&
+      aws_lambda_function.this[0].filename == null &&
+      aws_lambda_function.this[0].s3_bucket == null
     )
     error_message = "handler, runtime, filename and s3_bucket must stay unset for an Image function"
   }
@@ -68,7 +68,7 @@ run "tags_are_merged_with_name" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.tags == tomap({ Project = "alpha", Name = "alpha-dev-worker" })
+    condition     = aws_lambda_function.this[0].tags == tomap({ Project = "alpha", Name = "alpha-dev-worker" })
     error_message = "Input tags must be kept and Name added"
   }
 
@@ -86,7 +86,7 @@ run "reserved_concurrency_follows_input" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.reserved_concurrent_executions == 5
+    condition     = aws_lambda_function.this[0].reserved_concurrent_executions == 5
     error_message = "reserved_concurrent_executions must follow the input"
   }
 }
@@ -114,12 +114,12 @@ run "logging_config_points_at_the_module_log_group" {
   command = plan
 
   assert {
-    condition     = aws_lambda_function.this.logging_config[0].log_group == "/aws/lambda/alpha-dev-worker"
+    condition     = aws_lambda_function.this[0].logging_config[0].log_group == "/aws/lambda/alpha-dev-worker"
     error_message = "logging_config.log_group must be the module's log group"
   }
 
   assert {
-    condition     = aws_lambda_function.this.logging_config[0].log_format == "Text"
+    condition     = aws_lambda_function.this[0].logging_config[0].log_format == "Text"
     error_message = "Default log_format must be Text"
   }
 }
@@ -144,7 +144,7 @@ run "log_settings_follow_input" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.logging_config[0].log_format == "JSON"
+    condition     = aws_lambda_function.this[0].logging_config[0].log_format == "JSON"
     error_message = "log_format must follow the input"
   }
 }
@@ -153,7 +153,7 @@ run "no_vpc_config_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_lambda_function.this.vpc_config) == 0
+    condition     = length(aws_lambda_function.this[0].vpc_config) == 0
     error_message = "Without vpc the function must not have a vpc_config"
   }
 }
@@ -169,17 +169,17 @@ run "vpc_config_when_vpc_is_given" {
   }
 
   assert {
-    condition     = length(aws_lambda_function.this.vpc_config) == 1
+    condition     = length(aws_lambda_function.this[0].vpc_config) == 1
     error_message = "vpc must create one vpc_config"
   }
 
   assert {
-    condition     = aws_lambda_function.this.vpc_config[0].subnet_ids == toset(["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"])
+    condition     = aws_lambda_function.this[0].vpc_config[0].subnet_ids == toset(["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"])
     error_message = "vpc_config subnet_ids must follow the input"
   }
 
   assert {
-    condition     = aws_lambda_function.this.vpc_config[0].security_group_ids == toset(["sg-0123456789abcdef0"])
+    condition     = aws_lambda_function.this[0].vpc_config[0].security_group_ids == toset(["sg-0123456789abcdef0"])
     error_message = "vpc_config security_group_ids must follow the input"
   }
 }
@@ -203,12 +203,12 @@ run "outputs" {
   }
 
   assert {
-    condition     = output.function_arn == aws_lambda_function.this.arn
+    condition     = output.function_arn == aws_lambda_function.this[0].arn
     error_message = "function_arn must be the function ARN"
   }
 
   assert {
-    condition     = output.invoke_arn == aws_lambda_function.this.invoke_arn
+    condition     = output.invoke_arn == aws_lambda_function.this[0].invoke_arn
     error_message = "invoke_arn must be the function invoke ARN"
   }
 
@@ -256,7 +256,7 @@ run "accepts_lowercase_name" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.function_name == "alpha-sit-worker"
+    condition     = aws_lambda_function.this[0].function_name == "alpha-sit-worker"
     error_message = "A lowercase name must be accepted"
   }
 }
@@ -289,7 +289,7 @@ run "accepts_role_arn_with_path" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.role == "arn:aws:iam::111111111111:role/service/alpha-dev-worker"
+    condition     = aws_lambda_function.this[0].role == "arn:aws:iam::111111111111:role/service/alpha-dev-worker"
     error_message = "A role ARN with a path must be accepted"
   }
 }
@@ -332,7 +332,7 @@ run "accepts_x86_64_architecture" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.architectures == tolist(["x86_64"])
+    condition     = aws_lambda_function.this[0].architectures == tolist(["x86_64"])
     error_message = "x86_64 must be accepted"
   }
 }
@@ -375,7 +375,7 @@ run "accepts_memory_size_128" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.memory_size == 128
+    condition     = aws_lambda_function.this[0].memory_size == 128
     error_message = "128 MB must be accepted"
   }
 }
@@ -388,7 +388,7 @@ run "accepts_memory_size_10240" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.memory_size == 10240
+    condition     = aws_lambda_function.this[0].memory_size == 10240
     error_message = "10240 MB must be accepted"
   }
 }
@@ -421,7 +421,7 @@ run "accepts_timeout_1" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.timeout == 1
+    condition     = aws_lambda_function.this[0].timeout == 1
     error_message = "1 second must be accepted"
   }
 }
@@ -434,7 +434,7 @@ run "accepts_timeout_900" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.timeout == 900
+    condition     = aws_lambda_function.this[0].timeout == 900
     error_message = "900 seconds must be accepted"
   }
 }
@@ -457,7 +457,7 @@ run "accepts_zero_reserved_concurrency" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.reserved_concurrent_executions == 0
+    condition     = aws_lambda_function.this[0].reserved_concurrent_executions == 0
     error_message = "0 (throttle everything) must be accepted"
   }
 }
@@ -543,7 +543,7 @@ run "accepts_json_log_format" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.logging_config[0].log_format == "JSON"
+    condition     = aws_lambda_function.this[0].logging_config[0].log_format == "JSON"
     error_message = "JSON must be accepted"
   }
 }
@@ -611,7 +611,7 @@ run "accepts_vpc_with_one_subnet_and_one_security_group" {
   }
 
   assert {
-    condition     = length(aws_lambda_function.this.vpc_config) == 1
+    condition     = length(aws_lambda_function.this[0].vpc_config) == 1
     error_message = "One subnet and one security group must be accepted"
   }
 }

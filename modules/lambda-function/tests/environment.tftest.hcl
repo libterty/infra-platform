@@ -10,7 +10,7 @@ run "no_environment_block_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_lambda_function.this.environment) == 0
+    condition     = length(aws_lambda_function.this[0].environment) == 0
     error_message = "Without environment the function must not have an environment block"
   }
 }
@@ -26,7 +26,7 @@ run "environment_follows_input" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.environment[0].variables == tomap({ LOG_LEVEL = "info", STAGE = "dev" })
+    condition     = aws_lambda_function.this[0].environment[0].variables == tomap({ LOG_LEVEL = "info", STAGE = "dev" })
     error_message = "environment variables must follow the input"
   }
 }
@@ -198,7 +198,7 @@ run "accepts_plain_environment_name" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.environment[0].variables == tomap({ LOG_LEVEL = "info" })
+    condition     = aws_lambda_function.this[0].environment[0].variables == tomap({ LOG_LEVEL = "info" })
     error_message = "A plain name must be accepted"
   }
 }
@@ -213,7 +213,7 @@ run "accepts_secret_arn_name_with_an_arn_value" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.environment[0].variables["DB_PASSWORD_ARN"] == "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-db-AbCdEf"
+    condition     = aws_lambda_function.this[0].environment[0].variables["DB_PASSWORD_ARN"] == "arn:aws:secretsmanager:ap-northeast-1:111111111111:secret:alpha-dev-db-AbCdEf"
     error_message = "A secret name ending in _ARN with an ARN value must be accepted"
   }
 }

@@ -101,7 +101,7 @@ run "name_accepts_26_chars" {
   variables { name = replace(format("%26s", ""), " ", "a") }
 
   assert {
-    condition     = length(aws_ecs_service.this.name) == 26
+    condition     = length(aws_ecs_service.this[0].name) == 26
     error_message = "26-char name must be accepted"
   }
 }

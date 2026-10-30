@@ -16,7 +16,7 @@ run "no_load_balancer" {
   command = plan
 
   assert {
-    condition     = length(aws_ecs_service.this.load_balancer) == 0
+    condition     = length(aws_ecs_service.this[0].load_balancer) == 0
     error_message = "No load_balancer block without a load balancer"
   }
 
@@ -26,7 +26,7 @@ run "no_load_balancer" {
   }
 
   assert {
-    condition     = aws_ecs_service.this.health_check_grace_period_seconds == null
+    condition     = aws_ecs_service.this[0].health_check_grace_period_seconds == null
     error_message = "Grace period must be null without a load balancer"
   }
 }
@@ -42,7 +42,7 @@ run "grace_period_with_lb" {
   }
 
   assert {
-    condition     = aws_ecs_service.this.health_check_grace_period_seconds == 180
+    condition     = aws_ecs_service.this[0].health_check_grace_period_seconds == 180
     error_message = "Grace period must be 180 with a load balancer"
   }
 }
@@ -59,7 +59,7 @@ run "grace_period_is_configurable" {
   }
 
   assert {
-    condition     = aws_ecs_service.this.health_check_grace_period_seconds == 300
+    condition     = aws_ecs_service.this[0].health_check_grace_period_seconds == 300
     error_message = "Grace period must follow the input"
   }
 }
@@ -75,12 +75,12 @@ run "external_target_group" {
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.load_balancer).target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/alpha-api-8000/0123456789abcdef"
+    condition     = one(aws_ecs_service.this[0].load_balancer).target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/alpha-api-8000/0123456789abcdef"
     error_message = "Service must use the given target group"
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.load_balancer).container_name == "app" && one(aws_ecs_service.this.load_balancer).container_port == 8000
+    condition     = one(aws_ecs_service.this[0].load_balancer).container_name == "app" && one(aws_ecs_service.this[0].load_balancer).container_port == 8000
     error_message = "Service must register container app on the container port"
   }
 
@@ -150,7 +150,7 @@ run "module_creates_target_group" {
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.load_balancer).target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/alpha-api-8000/0123456789abcdef"
+    condition     = one(aws_ecs_service.this[0].load_balancer).target_group_arn == "arn:aws:elasticloadbalancing:ap-northeast-1:111111111111:targetgroup/alpha-api-8000/0123456789abcdef"
     error_message = "Service must use the created target group"
   }
 
@@ -274,17 +274,17 @@ run "service_connect_configured" {
   }
 
   assert {
-    condition     = one(aws_ecs_service.this.service_connect_configuration).enabled == true && one(aws_ecs_service.this.service_connect_configuration).namespace == "arn:aws:servicediscovery:ap-northeast-1:111111111111:namespace/ns-abc"
+    condition     = one(aws_ecs_service.this[0].service_connect_configuration).enabled == true && one(aws_ecs_service.this[0].service_connect_configuration).namespace == "arn:aws:servicediscovery:ap-northeast-1:111111111111:namespace/ns-abc"
     error_message = "service_connect_configuration must be enabled in the namespace"
   }
 
   assert {
-    condition     = one(one(one(aws_ecs_service.this.service_connect_configuration).service).client_alias).dns_name == "alpha-api"
+    condition     = one(one(one(aws_ecs_service.this[0].service_connect_configuration).service).client_alias).dns_name == "alpha-api"
     error_message = "dns_name must default to name"
   }
 
   assert {
-    condition     = one(one(one(aws_ecs_service.this.service_connect_configuration).service).client_alias).port == 8000 && one(one(aws_ecs_service.this.service_connect_configuration).service).port_name == "app"
+    condition     = one(one(one(aws_ecs_service.this[0].service_connect_configuration).service).client_alias).port == 8000 && one(one(aws_ecs_service.this[0].service_connect_configuration).service).port_name == "app"
     error_message = "client alias must use container_port and port name app"
   }
 
@@ -303,7 +303,7 @@ run "service_connect_dns_name_override" {
   }
 
   assert {
-    condition     = one(one(one(aws_ecs_service.this.service_connect_configuration).service).client_alias).dns_name == "api"
+    condition     = one(one(one(aws_ecs_service.this[0].service_connect_configuration).service).client_alias).dns_name == "api"
     error_message = "dns_name override must apply"
   }
 }
@@ -312,7 +312,7 @@ run "no_service_connect_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_ecs_service.this.service_connect_configuration) == 0
+    condition     = length(aws_ecs_service.this[0].service_connect_configuration) == 0
     error_message = "No service connect by default"
   }
 }

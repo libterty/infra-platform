@@ -68,6 +68,38 @@ module "worker" {
 
 範例見 `examples/adot-sidecar/`。
 
+## 交給 pipeline 部署
+
+`pipeline_managed`（0.3.0 起）預設 `false`，行為跟 0.2.1 一樣。設成 `true` 時：
+
+- service 忽略 `task_definition` 的變動。Terraform 改環境變數、secret、CPU 這類設定時還是會註冊新的 task definition 版本，但 service 不會改用，要等下一次 pipeline 部署才會上線。
+- `image` 只用在第一次建立，之後的映像檔由 pipeline 換。
+- pipeline 的部署步驟建議是：取得 task definition family 的最新版本（Terraform 最後註冊的那一版）、換上新映像檔、註冊成新版本，再 `UpdateService`。CodePipeline 的 ECS 標準 action 會複製 service 目前用的版本，Terraform 改的設定永遠帶不上去，所以不要用（v11 設計文件 §5.4）。
+- state 裡的 task definition 跟 service 實際用的不同，這是預期的，`terraform plan` 不會顯示差異。
+
+## 原生 blue/green
+
+`deployment`（0.3.0 起）預設 `{ strategy = "ROLLING" }`。設成 `BLUE_GREEN` 時用 ECS 原生的 blue/green，不需要 CodeDeploy：
+
+```hcl
+  pipeline_managed = true
+  deployment = {
+    strategy             = "BLUE_GREEN"
+    bake_time_in_minutes = 5
+    role_arn             = module.ecs_infrastructure_role.role_arn
+  }
+```
+
+- 必須搭配 `pipeline_managed = true`，而且只支援 `load_balancer.listener_arn` 接法：module 多建一個 alternate target group（`<name>-<container_port>-alt`，所以這兩段加起來最多 32 字元），listener rule 改成同時轉到兩個 target group（權重 100／0）。部署時 ECS 會改這兩個權重，所以 Terraform 忽略 rule 的 `action`。
+- `role_arn` 是讓 ECS 改 ALB 的 role，trust `ecs.amazonaws.com`，掛 AWS managed policy `AmazonECSInfrastructureRolePolicyForLoadBalancers`（`iam-role` 0.6.0 起在白名單內）。
+- `bake_time_in_minutes`（0–1440）是流量切到新版本後，新舊兩組 task 一起跑的時間；不給時用 ECS 的預設值。
+- 部署完 service 的 `load_balancer.target_group_arn` 會不會跟 alternate 互換，還沒在真實環境確認。如果會換，下一次 `terraform plan` 會想把它改回來，採用前要先驗證。
+- `target_group_arn`、`target_group_arn_suffix` 輸出的是主要的 target group。部署後流量可能在 alternate 上，用這兩個輸出建的告警要一併確認。
+
+## 0.3.0 的位址變動
+
+service 從 `aws_ecs_service.this` 變成 `aws_ecs_service.this[0]`，module 內有 `moved` 區塊，升版不會重建；listener rule 本來就有 `count`，位址不變。`pipeline_managed` 或 `strategy` 改值會換成另一個 resource 區塊，service 會被刪掉重建，要先用 `terraform state mv` 搬位址。
+
 ## 呼叫端要準備的
 
 module 不建 IAM 與 security group，兩者都由呼叫端傳入。
@@ -87,6 +119,7 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 - 不建 security group、不建 IAM。
 - 不寫死任何 sidecar 產品（ADOT、log router 等）；`sidecars` 只負責把額外 container 放進 task，映像、設定與權限由呼叫端決定。
 - 不做 `readonlyRootFilesystem`。
+- 不做 canary、linear 部署策略，也不建 blue/green 的 test listener rule；外部 target group 接法不支援 blue/green。
 
 <!-- BEGIN_TF_DOCS -->
 ## 輸入
@@ -110,6 +143,8 @@ module 不建 IAM 與 security group，兩者都由呼叫端傳入。
 | `autoscaling` | `object` | `null` | 否 | autoscaling 設定；`null` 時仍建 scalable target，`min = max = desired_count`。`policy` 可為 `target_tracking`（預設）、`step`、`custom`，`custom` 不建內建 policy；`scheduled_actions`、`step_policies`（皆預設 `{}`）可搭配任何 policy。行為見〈Autoscaling〉，欄位見〈`autoscaling` 欄位〉。 |
 | `system_controls` | `map(string)` | `{}` | 否 | `app` container 的 namespaced 核心參數，例如 `net.ipv4.tcp_keepalive_time` 對應 `"240"`。空的時候 container definition 不含 `systemControls`；非空會產生新的 task definition 並觸發一次部署。見〈system\_controls〉。 |
 | `load_balancer` | `object` | `null` | 否 | LB 設定；`null` 時不接 LB。`target_group_arn`（外部 target group）與 `listener_arn`（module 建 target group 與 listener rule）擇一。接法見〈兩種 LB 接法〉，欄位見〈`load_balancer` 欄位〉。 |
+| `pipeline_managed` | `bool` | `false` | 否 | `true` 時部署交給 pipeline：service 忽略 `task_definition` 的變動。Terraform 改設定時還是會註冊新的 task definition 版本，但 service 不會改用，要等下一次 pipeline 部署；`image` 只用在第一次建立。見〈交給 pipeline 部署〉。 |
+| `deployment` | `object` | `{ "strategy": "ROLLING" }` | 否 | 部署策略。欄位：`strategy`（`ROLLING` 或 `BLUE_GREEN`，預設 `ROLLING`）、`bake_time_in_minutes`（0–1440，只用在 `BLUE_GREEN`）、`role_arn`（讓 ECS 改 ALB listener rule 的 IAM role，`BLUE_GREEN` 必填）。`BLUE_GREEN` 必須搭配 `pipeline_managed = true` 與 `load_balancer.listener_arn` 接法。見〈原生 blue/green〉。 |
 | `health_check_grace_period_seconds` | `number` | `180` | 否 | health check 寬限秒數，只在設了 `load_balancer` 時套用，否則 service 拿到 `null`。 |
 | `container_health_check` | `object` | `null` | 否 | 主 container 的 health check；`null` 時不設。欄位：`command`（必填）、`interval`（預設 `10`）、`timeout`（預設 `5`）、`retries`（預設 `3`）、`start_period`（預設 `60`）。 |
 | `service_connect` | `object` | `null` | 否 | Service Connect 註冊；`null` 時停用。欄位：`namespace_arn`（必填）、`dns_name`（`null` 時用 `name`）。 |
