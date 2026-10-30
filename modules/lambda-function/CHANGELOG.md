@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/libterty/infra-platform/compare/lambda-function-v0.1.1...lambda-function-v0.2.0) (2026-10-30)
+
+
+### Features
+
+* **lambda-function:** add alias and pipeline-managed code versions ([9ef730c](https://github.com/libterty/infra-platform/commit/9ef730c4420ec7ff38b03803ba5a69e8f53050fe))
+
 ## [0.1.1](https://github.com/libterty/infra-platform/compare/lambda-function-v0.1.0...lambda-function-v0.1.1) (2026-10-23)
 
 
