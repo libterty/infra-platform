@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Apply order, on one line: check-ssm-contract.sh parses it from here. Destroy runs it backwards.
-ORDER=(containerimage foundation network iam loadbalancer)
+ORDER=(containerimage foundation network iam loadbalancer application)
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
