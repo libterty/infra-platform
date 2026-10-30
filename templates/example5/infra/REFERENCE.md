@@ -293,7 +293,7 @@ destroy 不會刪範本以外建的東西：state bucket、開通出來的 thing
 
 | 範圍 | 限制 |
 |---|---|
-| fleet provisioning | 沒有 pre-provisioning hook（〈安全取捨〉）；序號格式不檢查；開通出來的 thing 一律是 `-device` thing type、附加 `-device` policy，core device 要人工附加 `-core` policy 並搬群組 |
+| fleet provisioning | 沒有 pre-provisioning hook（〈安全取捨〉）；序號格式不檢查；claim policy 只放行 `$aws/certificates/create/*`，裝置要用 `CreateKeysAndCertificate`（金鑰由 AWS 產生），自己產生金鑰、送 CSR 的 `create-from-csr` 會被擋，要用的話在 `fleet/fleet.tf` 的 claim policy 加上 `$aws/certificates/create-from-csr/*`；開通出來的 thing 一律是 `-device` thing type、附加 `-device` policy，core device 要人工附加 `-core` policy 並搬群組 |
 | core device policy | Greengrass data plane 的四個動作（`GetComponentVersionArtifact`、`ResolveComponentCandidates`、`GetDeploymentConfiguration`、`ListThingGroupsForCoreDevice`）用 Resource `*`，照 Greengrass 的最小 policy；其他動作用 `client/<prefix>-core-*` 命名規則 |
 | IoT rule | 只送 Kinesis，再由 Firehose 進 S3 與 OpenSearch（IoT rule 的 OpenSearch action 送不進 VPC 內的 domain）。`iot-topic-rule` 的 action 由輸入型別限定，型別以外的 key（例如 `http`）會被 Terraform 丟掉而不是報錯 |
 | Greengrass | 部署每次變更都 replace；拿掉的元件會在裝置上解除安裝；awscc 的 `inline_recipe` 在 plan 是否持續顯示變更未確認，有的話要加 `ignore_changes` |

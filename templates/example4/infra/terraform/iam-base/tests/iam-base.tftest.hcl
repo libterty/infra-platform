@@ -357,6 +357,18 @@ run "glue_roles_write_logs_only_under_aws_glue" {
     ])
     error_message = "Glue roles may write log events only to log groups under /aws-glue/"
   }
+
+  # glue-etl turns on SSE-KMS for the job's CloudWatch logs, which needs AssociateKmsKey on the log groups.
+  assert {
+    condition = alltrue([
+      for role, name in { glue_crawler = "crawl-and-catalog", glue_job = "etl-data-catalog-and-logs" } :
+      toset(flatten([for s in jsondecode(local.roles[role].policies[name]).Statement : s.Resource if contains(s.Action, "logs:AssociateKmsKey")])) == toset([
+        "arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws-glue/*",
+        "arn:aws:logs:ap-northeast-1:111111111111:log-group:/aws-glue/*:log-stream:*",
+      ])
+    ])
+    error_message = "Glue roles need logs:AssociateKmsKey on /aws-glue/ log groups for the encrypted job logs"
+  }
 }
 
 run "redshift_only_reads_curated_and_its_catalog" {

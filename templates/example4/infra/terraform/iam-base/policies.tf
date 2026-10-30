@@ -47,10 +47,11 @@ locals {
     Resource = [local.kms_key_arn]
   }
 
+  # glue-etl encrypts the job's CloudWatch logs with the shared key (SSE-KMS), which needs AssociateKmsKey.
   glue_log_statement = {
     Sid      = "WriteGlueLogs"
     Effect   = "Allow"
-    Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:AssociateKmsKey"]
     Resource = [local.glue_log_group_arn, "${local.glue_log_group_arn}:log-stream:*"]
   }
 

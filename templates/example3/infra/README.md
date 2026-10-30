@@ -40,6 +40,7 @@ Terraform 部分用 `stacks.sh`：
 
 ```bash
 cd infra/terraform
+./stacks.sh dev all init                  # 第一次、或換環境時先跑：依 envs/dev.tfbackend 設定 backend
 ./stacks.sh dev all plan --dry-run        # 只看會跑哪些指令
 ./stacks.sh dev network plan              # 單一 stack
 ./stacks.sh dev all apply --yes           # 依序 apply，不再詢問
