@@ -84,7 +84,7 @@ run "accepts_image_uri_with_tag" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:v2.3.4"
+    condition     = aws_lambda_function.this[0].image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:v2.3.4"
     error_message = "An ECR URI with a version tag must be accepted"
   }
 }
@@ -97,7 +97,7 @@ run "accepts_image_uri_with_digest" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    condition     = aws_lambda_function.this[0].image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     error_message = "An ECR URI with a sha256 digest must be accepted"
   }
 }
@@ -110,7 +110,7 @@ run "accepts_image_uri_with_tag_that_starts_with_latest" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:latest-1"
+    condition     = aws_lambda_function.this[0].image_uri == "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/worker:latest-1"
     error_message = "Only the exact latest tag is rejected"
   }
 }

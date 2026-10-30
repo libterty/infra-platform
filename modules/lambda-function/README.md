@@ -31,6 +31,21 @@ module "worker" {
 }
 ```
 
+程式碼版本交給 pipeline 時（0.2.0 起），加上 `alias` 與 `pipeline_managed`：
+
+```hcl
+module "fn" {
+  source = "git::https://github.com/<org>/<repo>.git//modules/lambda-function?ref=lambda-function-v0.2.0"
+
+  name      = "alpha-dev-fn"
+  image_uri = "111111111111.dkr.ecr.ap-northeast-1.amazonaws.com/alpha/fn:v1.0.0"
+  role_arn  = module.fn_role.role_arn
+
+  alias            = "live"
+  pipeline_managed = true
+}
+```
+
 完整範例（含 VPC 與 S3 notification）見 [`examples/basic/`](./examples/basic/main.tf)。
 
 ## 注意
@@ -43,12 +58,15 @@ module "worker" {
 - log group 由 module 建，名稱 `/aws/lambda/<name>`，預設保留 30 天，不接受 0（永不過期）。用 `log_kms_key_arn` 時，key policy 必須允許 `logs.<region>.amazonaws.com`。execution role 要有這個 log group 的寫入權限（role 用 `iam-role` 建）。
 - 給 `vpc` 時，execution role 需要建立 network interface 的權限，subnet 也要連得到 Lambda 要用的服務（透過 NAT 或 VPC endpoint）。
 - `reserved_concurrent_executions` 預設 `null`（不保留）；設成 `0`，function 就完全不能被呼叫。
+- **`alias`**：給名稱時 module 開 `publish`，每次 apply 改到 function 都會發布新版本，alias 指到最新發布的版本。呼叫端（EventBridge target、API Gateway）要走 alias 時用 `alias_arn`。`permissions` 建在沒有 qualifier 的 function 上，透過 alias ARN 呼叫時，授權要另外確認。
+- **`pipeline_managed = true`** 時程式碼版本交給 pipeline（必須搭配 `alias`）：function 忽略 `image_uri` 的變動，alias 忽略 `function_version` 與 `routing_config`。`image_uri` 只用在第一次建立，之後換映像檔、發布版本、切 alias 都由 pipeline 做。Terraform 改環境變數、記憶體這類設定時還是會發布新版本，但 alias 不會跟著切，要等下一次 pipeline 部署。state 裡的 `image_uri` 與 alias 版本會跟實際不同，這是預期的，`terraform plan` 不會顯示差異。
+- 0.2.0 起 function 的位址從 `aws_lambda_function.this` 變成 `aws_lambda_function.this[0]`，module 內有 `moved` 區塊，升版不會重建。從 `pipeline_managed = false` 切到 `true`（或反過來）會換成另一個 resource 區塊，function 會被刪掉重建，要先用 `terraform state mv` 搬位址。
 - `log_format = "JSON"` 時，runtime 與 Lambda 自己的訊息都以 JSON 輸出；module 沒有設定 `application_log_level`、`system_log_level`。
 
 ## 刻意不做
 
 - zip 套件（`handler`、`runtime`、`filename`、`s3_bucket`）、layer。
-- alias、版本發佈、function URL、dead letter queue、EFS、event source mapping。
+- 多個 alias、alias 的加權流量（`routing_config`，canary 由 pipeline 做）、function URL、dead letter queue、EFS、event source mapping。
 - IAM role；用 `iam-role` 建。
 - S3 notification、EventBridge rule 等觸發來源；由呼叫端建，建的時候用 `function_arn`。
 
@@ -70,6 +88,8 @@ module "worker" {
 | `log_kms_key_arn` | `string` | `null` | 否 | log group 的客戶自管 KMS key ARN（`key/<id>`，不接受 alias）。key policy 必須允許 `logs.<region>.amazonaws.com`。 |
 | `log_format` | `string` | `"Text"` | 否 | log 格式，`Text` 或 `JSON`。 |
 | `permissions` | `map(object)` | `{}` | 否 | statement id（1–100 字元，限英數字、`_`、`-`）對應可呼叫 function 的對象。欄位：`principal`（AWS 服務，`*.amazonaws.com`，不可有萬用字元）、`source_arn`（必填，resource 部分不可以萬用字元開頭）、`source_account`（12 位數帳號 ID；`s3.amazonaws.com` 必填，因為 bucket ARN 沒有帳號，避免 confused deputy）、`action`（預設 `lambda:InvokeFunction`，單一 `lambda:` action，不可有萬用字元）。 |
+| `alias` | `string` | `null` | 否 | alias 名稱，1–128 字元，限英數字、`-`、`_`，不能全是數字。給了就開 `publish`，每次 apply 改到 function 都會發布新版本，alias 指到最新發布的版本；`null` 時不發布版本也不建 alias。 |
+| `pipeline_managed` | `bool` | `false` | 否 | `true` 時程式碼版本交給 pipeline：function 忽略 `image_uri` 的變動（`image_uri` 只用在第一次建立），alias 忽略 `function_version` 與 `routing_config`。必須搭配 `alias`。 |
 | `tags` | `map(string)` | `{}` | 否 | function 與 log group 的 tag；`Name` 由 module 加上。 |
 
 ## 輸出
@@ -80,6 +100,9 @@ module "worker" {
 | `function_arn` | function ARN。等所有 permission 建好才可用，所以下游的 S3 notification 或 EventBridge target 用它，會在呼叫權限建好之後才建立。 |
 | `invoke_arn` | invoke ARN，給 API Gateway 整合用。 |
 | `log_group_name` | module 建的 log group 名稱。 |
+| `version` | 最新發布的版本號；沒有 `alias` 時不發布版本，值是 `$LATEST`。`pipeline_managed` 時是 Terraform 最後發布的版本，不一定是 alias 目前指的版本。 |
+| `alias_name` | alias 名稱；沒有 `alias` 時是 `null`。 |
+| `alias_arn` | alias ARN，給 EventBridge target、API Gateway 這類呼叫端指到 alias 用；沒有 `alias` 時是 `null`。 |
 <!-- END_TF_DOCS -->
 
 ## 測試
