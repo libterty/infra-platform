@@ -91,5 +91,6 @@
   "modules/account-security-defaults": "0.1.0",
   "modules/access-analyzer": "0.1.0",
   "modules/codepipeline": "0.1.0",
-  "modules/codeconnections-connection": "0.1.0"
+  "modules/codeconnections-connection": "0.1.0",
+  "modules/codebuild-project": "0.1.0"
 }
