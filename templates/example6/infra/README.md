@@ -39,6 +39,7 @@ containerimage foundation dns certificate auth data iam api web
 ```bash
 cd infra/terraform
 export TF_VAR_origin_verify_header_value=<跟 origin verify secret 相同的值，至少 16 字元>
+aws-vault exec <profile> -- ./stacks.sh dev all init             # 第一次、或換環境時先跑：依 envs/dev.tfbackend 設定 backend
 aws-vault exec <profile> -- ./stacks.sh dev all plan --dry-run   # 只印出會執行的指令
 aws-vault exec <profile> -- ./stacks.sh dev api plan             # 單一 stack
 aws-vault exec <profile> -- ./stacks.sh dev all apply            # 依 ORDER，任何一個失敗就停

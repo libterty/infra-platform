@@ -248,7 +248,7 @@ Firehose 寫 raw/ → S3（raw bucket eventbridge = true）送 Object Created �
 
 切換步驟：
 
-1. **備份**。provisioned → serverless 會留 final snapshot（`<project>-<env>-warehouse-final`），仍建議先 UNLOAD 到 curated。**serverless → provisioned 不會留任何 snapshot**（namespace 沒有 final snapshot，刪除即丟資料），一定要先 UNLOAD 或手動 snapshot 並確認完成。
+1. **備份**。provisioned → serverless 會留 final snapshot（`<project>-<env>-warehouse-final`）。**serverless → provisioned 不會留任何 snapshot**（namespace 沒有 final snapshot，刪除即丟資料），一定要先做手動 snapshot 並確認完成。範本的 `redshift` role 只能讀 curated，沒有寫入權限，所以不能直接 UNLOAD 到 curated；要 UNLOAD 的話，先另外給這個 role curated 某個 prefix 的 `s3:PutObject` 與共用 key 的 `kms:GenerateDataKey`，用完拿掉。
 2. 在自己的工作目錄把 `guard.tf` 的 `prevent_destroy` 改成 `false`。**這是本機暫時修改，不 commit**（design K23）。
 3. 改 tfvars 的 `warehouse_mode` 與對應物件（另一個設 `null`；範例 `envs/examples/provisioned.tfvars`）。這個改動要 commit、走 PR。
 4. `./stacks.sh <env> warehouse plan`，確認只有預期的 destroy 與 create，再 apply。
@@ -271,7 +271,7 @@ Firehose 寫 raw/ → S3（raw bucket eventbridge = true）送 Object Created �
 | S3 bucket（`storage` 的四個、`foundation` 的 flow log bucket） | `force_destroy = false` | 不是空的會刪不掉。先清空（含舊版本與刪除標記），確認資料不需要再刪。raw 的物件可能已轉到 `GLACIER_IR`，清空前先確認不用取回 |
 | OpenSearch 的 warm／cold index（`search`） | ISM 依年齡搬移 | 先刪除或搬回 hot 所有 warm 與 cold 的 index，再 destroy `search`；停用 warm／cold 也要先做這一步 |
 | DynamoDB table（`storage`） | `deletion_protection = true`，stack 沒有開關 | 本機在 `storage/tables.tf` 的 module 呼叫加 `deletion_protection = false`，apply 之後再 destroy；要保留資料先匯出 |
-| Redshift（`warehouse`） | Serverless 沒有 final snapshot；provisioned `skip_final_snapshot = false` | Serverless 先 UNLOAD 到 curated 或手動 snapshot；provisioned 會留 `<project>-<env>-warehouse-final`，不需要就事後刪掉。兩種都要照上面第 3 步解除防呆 |
+| Redshift（`warehouse`） | Serverless 沒有 final snapshot；provisioned `skip_final_snapshot = false` | Serverless 先做手動 snapshot（UNLOAD 要另外給寫入權限，見〈`warehouse_mode` 切換〉第 1 步）；provisioned 會留 `<project>-<env>-warehouse-final`，不需要就事後刪掉。兩種都要照上面第 3 步解除防呆 |
 | Athena workgroup（`analytics`） | `force_destroy = false` | 在 Terraform 外建的 named query 要先刪掉 |
 | Secrets Manager secret（`foundation`） | 刪除後保留 30 天 | 期間不能用同名重建；值在 Terraform 外寫，刪了就沒有，要先備份 |
 | CMK（`foundation`） | 刪除等待 30 天 | 等待期間 key 不能用、可以取消刪除。其他 stack 都拆完再 destroy `foundation`，不然 snapshot、備份檔解不開 |

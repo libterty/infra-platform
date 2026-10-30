@@ -53,6 +53,7 @@ foundation network vpn storage iam-base search search-config analytics iam-app p
 
 ```bash
 cd infra/terraform
+aws-vault exec <profile> -- ./stacks.sh dev all init             # 第一次、或換環境時先跑：依 envs/dev.tfbackend 設定 backend
 aws-vault exec <profile> -- ./stacks.sh dev all plan --dry-run   # 只印出會執行的指令
 aws-vault exec <profile> -- ./stacks.sh dev network plan         # 單一 stack
 aws-vault exec <profile> -- ./stacks.sh dev all apply            # 依 ORDER，任何一個失敗就停
