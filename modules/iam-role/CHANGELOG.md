@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.5.0...iam-role-v0.6.0) (2026-10-30)
+
+
+### Features
+
+* **iam-role:** allow the ECS infrastructure policy for load balancers ([7d53d53](https://github.com/libterty/infra-platform/commit/7d53d53dcdccbe52a8987b3fff610af2c19a4b4c))
+
 ## [0.5.0](https://github.com/libterty/infra-platform/compare/iam-role-v0.4.1...iam-role-v0.5.0) (2026-10-29)
 
 
