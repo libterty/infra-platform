@@ -2,7 +2,7 @@
 
 [Floci](https://floci.io) 是在本機模擬 AWS API 的工具。`floci.sh` 會把 account-baseline 照 `stacks.sh` 的順序 apply 到 Floci，再檢查結果，最後 destroy。整個過程不連任何 AWS 帳號，也不改範本本身。
 
-這不等於雲端驗證。Floci 只能證明 stack 之間串得起來、帳號層的設定建得起來；log 和 finding 有沒有真的送出、IAM 權限夠不夠、destroy 遇到有資料的 vault 和 bucket 會怎樣，還是要照 [`docs/guides/cloud-verification-account-baseline.md`](../../../../docs/guides/cloud-verification-account-baseline.md) 在真實帳號確認。
+這不等於雲端驗證。Floci 只能證明 stack 之間串得起來、帳號層的設定建得起來。log 和 finding 有沒有真的送出、IAM 權限夠不夠，以及 vault 和 bucket 有資料時 destroy 會怎樣，還是要照 [`docs/guides/cloud-verification-account-baseline.md`](../../../../docs/guides/cloud-verification-account-baseline.md) 在真實帳號確認。
 
 ## 怎麼跑
 
@@ -23,7 +23,7 @@ Floci 固定用 port 4566。example6 的 Floci 還在跑的話，先在 `templat
 2. 每個 stack 加一個 `floci_override.tf`（內容見 `provider_override.tf.tmpl`），寫死假的 access key。就算 `AWS_ENDPOINT_URL` 漏設，請求也會因為驗證失敗被擋下，碰不到真實帳號。access key 用 12 位數的 `111111111111`，Floci 會把它當成帳號 ID 回傳，`allowed_account_ids` 的檢查才過得了。
 3. 每個 stack 的 `envs/dev.tfbackend` 換成 Floci 裡的 S3，state key 沿用原本的值。
 
-這個範本沒有 Lambda、ECS 或 ECR，Floci 不需要啟動其他 container，所以不用掛 Docker 或 Podman 的 socket。
+這個範本沒有 Lambda、ECS 或 ECR，Floci 不用另外啟動 container，所以不必掛 Docker 或 Podman 的 socket。
 
 ## verify 檢查什麼
 
@@ -51,7 +51,7 @@ Floci 固定用 port 4566。example6 的 Floci 還在跑的話，先在 `templat
 
 ### 第二次 plan 的已知差異
 
-直接呼叫 Floci 的 API 確認過，是 Floci 回傳的值跟 AWS 不一樣：
+這筆差異直接呼叫 Floci 的 API 確認過，原因是 Floci 回傳的值跟 AWS 不同：
 
 | 資源 | Floci 的行為 |
 |---|---|
@@ -59,7 +59,7 @@ Floci 固定用 port 4566。example6 的 Floci 還在跑的話，先在 `templat
 
 ### destroy 時從 state 移除、不刪除的資源
 
-Floci 建得起來但刪不掉，`floci.sh destroy` 會先把它們從 state 移除，`down` 時再跟著 Floci 一起清掉：
+這兩個資源 Floci 建得起來、刪不掉。所以 `floci.sh destroy` 先把它們從 state 移除，`down` 時再跟 Floci 一起清掉：
 
 | 資源 | 原因 |
 |---|---|
