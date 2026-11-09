@@ -200,7 +200,8 @@ API：推新映像（〈第一次 apply〉第 4 步，換 tag），改 `api/envs
 |---|---|---|
 | `ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer` | `api` | execution role 沒有 ECR 權限；同帳號的 Lambda 建立或更新映像時，靠執行 apply 的身分拉映像（跟 example2 相同）。沒有在真實帳號確認 |
 | `iam:PassRole`（`<prefix>-api-lambda`） | `api` | 把 execution role 交給 Lambda |
-| `kms:CreateGrant`、`kms:Decrypt` | `data`、`api` | DynamoDB 與 Lambda（環境變數、log group）用共用 CMK |
+| `kms:CreateGrant`、`kms:Decrypt` | `data`、`api` | DynamoDB 與 Lambda 的 log group 用共用 CMK。Lambda 的環境變數沒有指定 key，用 AWS managed key（`lambda-function` 只有 `log_kms_key_arn`） |
+| `logs:CreateLogDelivery`、`logs:GetLogDelivery`、`logs:UpdateLogDelivery`、`logs:DeleteLogDelivery`、`logs:ListLogDeliveries`、`logs:PutResourcePolicy`、`logs:DescribeResourcePolicies` | `api` | HTTP API 的 access log。清單照 AWS 文件〈[Configuring logging for an HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html)〉，沒有在真實帳號確認 |
 | `logs:CreateDelivery`、`logs:PutDeliverySource`、`logs:PutDeliveryDestination` 等 vended log 權限，含 us-east-1 | `web` | CloudFront 標準 log v2 |
 | `wafv2:*` 與 `logs:*`（us-east-1） | `web` | CloudFront WAF 與它的 log group 都在 us-east-1 |
 | `acm:*`（us-east-1） | `certificate` | 憑證在 us-east-1 |

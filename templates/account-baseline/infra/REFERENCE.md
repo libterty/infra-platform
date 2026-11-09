@@ -308,6 +308,8 @@ vault policy 另外對所有人 deny `backup:DeleteRecoveryPoint`、`backup:Upda
 | CMK（`foundation`） | 刪除等待 30 天 | key 刪掉之後，bucket 裡的 log 與 vault 裡的備份都解不開。bucket 要留，key 就要留：一起 `terraform state rm module.kms`，或在等待期內取消刪除 |
 | 告警 topic（`foundation`） | | 刪掉後 email 訂閱一起消失 |
 
+vault 或 bucket 刪不掉時，它們的保護設定已經先被刪掉了。Terraform 會先刪依賴 vault 或 bucket 的資源，再刪它們本身：vault 的 policy、lock、通知，bucket 的 policy、lifecycle、加密設定。所以 destroy 失敗後，vault 與 bucket 還在，資料也還在，但已經沒有保護。要保留就在 destroy 前先 `terraform state rm`（vault 是 `module.vault`，bucket 見上表）；已經失敗的話，馬上重跑那個 stack 的 `apply` 補回來。這段是照 Terraform 的相依順序推的，還沒在真實帳號確認（runbook 第 8 項）。
+
 ## 複製出去之後要改什麼
 
 | 項目 | 改什麼 |
