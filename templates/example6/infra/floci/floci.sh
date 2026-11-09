@@ -224,7 +224,9 @@ push_stub_image() {
   rt="$(runtime)"
   repo="$(cd "${work_tf}/containerimage" && TF_DATA_DIR=".terraform-${ENV_NAME}" terraform output -raw api_repository_url)"
   tag="$(sed -n 's/^api_image_tag *= *"\(.*\)"$/\1/p' "${work_tf}/api/envs/${ENV_NAME}.tfvars")"
-  [ -n "$repo" ] && [ -n "$tag" ] || die "拿不到 repository URL 或 api_image_tag"
+  if [ -z "$repo" ] || [ -z "$tag" ]; then
+    die "拿不到 repository URL 或 api_image_tag"
+  fi
   image="${repo}:${tag}"
   # An image under the AWS registry name makes Floci pull from the real ECR instead of its own registry.
   if "$rt" image inspect "${image/.localhost:${FLOCI_PORT}\//.amazonaws.com/}" >/dev/null 2>&1; then
@@ -366,7 +368,9 @@ empty_repository() {
     sed -n 's/^ *name *= *"\(.*\)"$/\1/p')" || true
   [ -n "$repo" ] || return 0
   ids="$(awsl ecr list-images --repository-name "$repo" --query 'imageIds[].imageDigest' --output text)"
-  [ -n "$ids" ] && [ "$ids" != None ] || return 0
+  if [ -z "$ids" ] || [ "$ids" = None ]; then
+    return 0
+  fi
   log "清空 ECR repository ${repo}"
   read -ra digests <<<"$ids"
   for d in "${digests[@]}"; do image_ids+=("imageDigest=${d}"); done
