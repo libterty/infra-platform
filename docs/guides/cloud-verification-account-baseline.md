@@ -10,7 +10,7 @@
 - 這份文件的指令都**沒有實際跑過**，名稱與數值都從程式碼推出來，出處寫在每段的「名稱怎麼來的」。標「推測」的是 repo 以外的慣例（AWS 的預設命名或行為），執行時以實際輸出為準。
 - 這份範本改的是**整個帳號**，不是某個專案。apply 要帳號管理者等級的權限，有幾個動作會影響同帳號的其他專案，或做了就收不回來。哪些動作、怎麼復原，集中寫在〈帳號層的動作與復原〉，執行前一定要先看。
 - 有四件事從程式碼就看得出來，第一次驗證很可能不通過或要調整，先講：
-  1. **`destroy` 失敗後保護已經被拆掉**：`backup` 的 vault policy 與 lock、`foundation` 的 bucket policy、lifecycle、加密設定都依賴 vault 或 bucket，所以 Terraform 會先刪掉這些設定，再去刪 vault 或 bucket；vault 與 bucket 裡面有資料，刪除失敗。結果 vault 與 bucket 還在，保護卻沒了。REFERENCE〈destroy〉只寫「刪不掉是預期的」，沒寫這件事。第 8 項會確認，並寫了怎麼補回來。
+  1. **`destroy` 失敗後保護已經被拆掉**：`backup` 的 vault policy 與 lock、`foundation` 的 bucket policy、lifecycle、加密設定都依賴 vault 或 bucket，所以 Terraform 會先刪掉這些設定，再去刪 vault 或 bucket；vault 與 bucket 裡面有資料，刪除失敗。結果 vault 與 bucket 還在，保護卻沒了。REFERENCE〈destroy〉已經補上這件事與預防做法；第 8 項確認實際行為，並寫了怎麼補回來。
   2. **`destroy` 不是復原**：`defaults` 的 destroy 會直接刪掉設定（public access block、密碼政策都被刪），不會回到 apply 前的值（`modules/account-security-defaults/README.md:38`）。帳號原本就有密碼政策或 public access block 時，要靠第 0 項的快照手動恢復。
   3. **第一天會收到很多信**：Security Hub 的 rule 會把所有 `HIGH`、`CRITICAL` 而且 `ACTIVE` 的 finding 寄出來（`detect/findings.tf:14-26`），包括 FSBP、CIS 第一次評估時 `FAILED` 的 control；`UnauthorizedApiCalls` 告警門檻是 1 分鐘內 1 次（`modules/log-metric-alarm/variables.tf:32-37`），帳號裡任何 `AccessDenied` 都會觸發。第 2、5 項要記下第一週收到幾封，決定要不要調門檻。
   4. **EBS 的 recovery point 不一定用治理 CMK 加密**：REFERENCE〈Backup 的 tag 約定〉說「備份用治理 CMK 加密存進 vault」（`REFERENCE.md:74`）。像 EBS 這種不是由 AWS Backup 完整管理的資源，snapshot 可能沿用來源 volume 的 key（推測）。第 6 項會記下實際的 key。
@@ -22,8 +22,8 @@
 | 編號 | 項目 | 來源 |
 |---|---|---|
 | 0 | apply 前盤點帳號現況、留快照 | `templates/account-baseline/infra/README.md:44-60`〈第一次 apply〉 |
-| 1–8 | CloudTrail、CloudTrail 告警、Config、Security Hub、finding 告警、Backup、Budgets、destroy | `templates/account-baseline/infra/REFERENCE.md:359-372`〈雲端整合待驗證〉 |
-| S1–S5 | design §11、§14 與 REFERENCE〈已知限制的細節〉裡上表沒涵蓋的部分（對照見下表） | `docs/design/v10/design-docs.md` §11、§14；`REFERENCE.md:326-341` |
+| 1–8 | CloudTrail、CloudTrail 告警、Config、Security Hub、finding 告警、Backup、Budgets、destroy | `templates/account-baseline/infra/REFERENCE.md:361-374`〈雲端整合待驗證〉 |
+| S1–S5 | design §11、§14 與 REFERENCE〈已知限制的細節〉裡上表沒涵蓋的部分（對照見下表） | `docs/design/v10/design-docs.md` §11、§14；`REFERENCE.md:328-343` |
 
 design §11、§14 與 REFERENCE〈已知限制的細節〉的每一點，在本文對應到哪裡：
 
@@ -776,7 +776,7 @@ aws iam list-roles --path-prefix /aws-service-role/ --query 'Roles[].RoleName' -
 - `defaults` 的四個帳號設定，apply 前的原值見第 0 項的快照；原本有值的要手動恢復（〈帳號層的動作與復原〉）。
 - 真的要清掉 vault 與 bucket：vault 要等 recovery point 到期（dev 最後一次備份後 7 天）；bucket 要清空所有版本。key 要留到這兩者都不需要為止（REFERENCE〈destroy〉）。
 
-名稱怎麼來的：destroy 的預期照 REFERENCE〈destroy〉（`REFERENCE.md:296-309`）；vault policy、lock、通知都引用 vault（`modules/backup-vault/main.tf:14`、`:36`、`:46`），bucket 的 policy、lifecycle、加密、versioning 都引用 bucket（`modules/s3-bucket/main.tf:182`、`:191` 與其後各 resource），所以 Terraform 會先刪它們再刪 vault 或 bucket。
+名稱怎麼來的：destroy 的預期照 REFERENCE〈destroy〉（`REFERENCE.md:296-311`）；vault policy、lock、通知都引用 vault（`modules/backup-vault/main.tf:14`、`:36`、`:46`），bucket 的 policy、lifecycle、加密、versioning 都引用 bucket（`modules/s3-bucket/main.tf:182`、`:191` 與其後各 resource），所以 Terraform 會先刪它們再刪 vault 或 bucket。
 
 **預期結果**
 
@@ -785,7 +785,7 @@ aws iam list-roles --path-prefix /aws-service-role/ --query 'Roles[].RoleName' -
 - `backup` destroy 失敗，錯誤是 vault 裡還有 recovery point。失敗後 vault 還在、recovery point 還在；**記下 vault policy 與 lock 是不是已經不見了**（照 Terraform 的相依順序應該已經刪掉，這是〈結論〉第 1 點）。
 - `foundation` destroy 失敗，錯誤是 bucket 不是空的（`BucketNotEmpty`）。bucket 還在；**記下 bucket policy、lifecycle、加密設定是不是已經不見了，versioning 是 `Enabled` 還是 `Suspended`**（推測 provider 刪 versioning resource 時會改成 `Suspended`）。key 應該還是 `Enabled`（bucket 沒刪成，key 不會被排進刪除）；topic 可能已經刪掉（topic 只依賴 key，不依賴 bucket）。
 - service-linked role（GuardDuty、Security Hub、Inspector、Access Analyzer）還在（推測）。
-- 如果上面兩個「保護已經不見」成立，在 REFERENCE〈destroy〉補一句：destroy 前先 `terraform state rm` vault 與 bucket，或失敗後立刻重 apply。
+- REFERENCE〈destroy〉已經照 Terraform 的相依順序寫了「保護會先被刪掉」與預防做法。上面兩個「保護已經不見」成立時，把那段的「還沒在真實帳號確認」拿掉；不成立時，改寫那段。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／只做 8a □ 做了 8b □ ／通過 □ 不通過 □ ／失敗後 vault 與 bucket 剩下的設定 ______
 

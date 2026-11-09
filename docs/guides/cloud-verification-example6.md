@@ -19,7 +19,7 @@
 
 | 編號 | 項目 | 來源 |
 |---|---|---|
-| 1–13 | DNS 委派與憑證、CloudFront 到 S3、CloudFront 到 API Gateway、繞過 WAF、JWT、origin verify 換值、Lambda、HTTP API access log、CloudFront log、WAF、Cognito、告警、destroy | `templates/example6/infra/REFERENCE.md:282-296`〈雲端整合待驗證〉 |
+| 1–13 | DNS 委派與憑證、CloudFront 到 S3、CloudFront 到 API Gateway、繞過 WAF、JWT、origin verify 換值、Lambda、HTTP API access log、CloudFront log、WAF、Cognito、告警、destroy | `templates/example6/infra/REFERENCE.md:283-297`〈雲端整合待驗證〉 |
 
 design §11、§14 各點的去處：
 
@@ -54,7 +54,7 @@ design §11、§14 各點的去處：
 
 | 用途 | 身分 | 依據 |
 |---|---|---|
-| apply 9 個 stack | 各 stack 的 apply 身分；要有 REFERENCE〈執行 apply 的身分要有的權限〉列的項目，含 `ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer` 與 us-east-1 的 `acm:*`、`wafv2:*`、`logs:*` | `REFERENCE.md:195-206` |
+| apply 9 個 stack | 各 stack 的 apply 身分；要有 REFERENCE〈執行 apply 的身分要有的權限〉列的項目，含 `ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer` 與 us-east-1 的 `acm:*`、`wafv2:*`、`logs:*` | `REFERENCE.md:195-207` |
 | 執行本文的唯讀指令 | 驗證身分（權限見下面） | 無 |
 | 第 5、11 項登入 | Cognito 的測試使用者（第 11 項建立） | 無 |
 
@@ -539,7 +539,7 @@ aws dynamodb scan --table-name "$TABLE" --select COUNT --query Count
 **預期結果**
 
 - `state` 是 `Active`、`update` 是 `Successful`、`Image`、`["arm64"]`、512、10；`role` 是 `<project>-<env>-api-lambda`；`log` 是 `/aws/lambda/<project>-<env>-api`；`env` 是 `API_SECRET_ARN`、`ORIGIN_VERIFY_HEADER_NAME`、`ORIGIN_VERIFY_SECRET_ARN`、`TABLE_NAME`。
-- `envKms` 是 `null`：環境變數用 AWS managed key。REFERENCE `:203` 寫 Lambda 的環境變數用共用 CMK，跟程式碼不一致（見文末〈發現〉）。
+- `envKms` 是 `null`：環境變數用 AWS managed key，跟 REFERENCE〈執行 apply 的身分要有的權限〉寫的一致。
 - `resolved` 是 `@sha256:` 結尾，tag 等於 tfvars 的 `api_image_tag`。
 - reserved concurrency 等於 tfvars；記下帳號的 `total` 與 `unreserved`。
 - Lambda policy 一條：`Sid` `apigateway`，principal `apigateway.amazonaws.com`，`AWS:SourceArn` 是 `arn:aws:execute-api:<region>:<account>:<api id>/*/*`。
@@ -582,7 +582,7 @@ aws iam get-role --role-name AWSServiceRoleForAPIGateway --query Role.Arn --outp
 - stage 的 `DestinationArn` 是這個 log group，`Format` 是 JSON。
 - log 是 JSON，有 `requestId`、`routeKey`、`status`、`domainName`、`authorizerError` 等欄位，沒有 JWT claim 與 header；`401` 的請求 `authorizerError` 有值。
 - `cloudwatchRoleArn` 是空的（`None`），log 照樣寫得進去：§5.6、§14「不需要帳號層的 role」成立。
-- 記在備註：`describe-resource-policies` 有沒有跟 API Gateway 有關的 policy（看名稱與建立時間是否跟 `api` 的 apply 同時）、service-linked role 存不存在。REFERENCE〈執行 apply 的身分要有的權限〉要不要補 `logs:PutResourcePolicy`，就看這兩個結果。
+- 記在備註：`describe-resource-policies` 有沒有跟 API Gateway 有關的 policy（看名稱與建立時間是否跟 `api` 的 apply 同時）、service-linked role 存不存在。REFERENCE〈執行 apply 的身分要有的權限〉照 AWS 文件列了 `logs:PutResourcePolicy` 等權限，這兩個結果用來確認那份清單是不是真的需要。
 
 **結果紀錄**：日期 ______ ／執行人 ______ ／通過 □ 不通過 □ ／resource policy 與 SLR 的狀態 ______
 
@@ -830,7 +830,7 @@ aws lambda get-function-concurrency --function-name "$PREFIX-api"
 - 只在 dev 做。其他項目都做完、結果都記下來。
 - destroy 之後 SSM 就讀不到值，所以先把會用到的值存在 shell 變數裡（上面的共用變數）。另外存一份：`KMS_KEY_ID=${KMS_ARN##*/}`。
 - `web` 的 destroy 也要 `TF_VAR_origin_verify_header_value`（`web/variables.tf:11-20` 沒有預設值，至少 16 字元）。
-- 會擋住 destroy 的資源見 REFERENCE〈destroy〉（`REFERENCE.md:208-224`）。dev 的 `data`、`auth` 刪除保護是關的；下面用 `-var` 暫時打開，驗證 sit 的流程。
+- 會擋住 destroy 的資源見 REFERENCE〈destroy〉（`REFERENCE.md:209-225`）。dev 的 `data`、`auth` 刪除保護是關的；下面用 `-var` 暫時打開，驗證 sit 的流程。
 
 **指令**
 
@@ -909,11 +909,11 @@ aws logs describe-log-groups --region us-east-1 --log-group-name-prefix "aws-waf
 
 ## 發現：文件與程式碼不一致
 
-下面是寫這份 runbook 時從程式碼找到的不一致，都還沒修，交給負責範本的人決定：
+下面是寫這份 runbook 時從程式碼找到的不一致，都已經修正：
 
-1. `REFERENCE.md:203` 說 Lambda 的環境變數用共用 CMK。`api/function.tf:30-46` 沒有給環境變數的 KMS key，`lambda-function` 也只有 `log_kms_key_arn`（`modules/lambda-function/variables.tf:117`），所以環境變數用 AWS managed key。第 7 項的 `envKms` 會是 `null`。
-2. README〈第一次 apply〉與 `REFERENCE.md:89-95` 的步驟直接 `apply`，沒有先 `./stacks.sh <env> <stack> init`。`stacks.sh` 的 `apply` 不會自動 init（`stacks.sh:119`、`:125`），全新的 checkout 照文件做會失敗。
-3. `modules/apigateway-http/README.md:56` 說 apply 身分要有 `logs:CreateLogDelivery`、`logs:PutResourcePolicy`；REFERENCE〈執行 apply 的身分要有的權限〉（`REFERENCE.md:195-206`）的 `api` 列沒有這兩個。第 8 項的結果決定要不要補。
+1. `REFERENCE.md:203` 說 Lambda 的環境變數用共用 CMK。`api/function.tf:30-46` 沒有給環境變數的 KMS key，`lambda-function` 也只有 `log_kms_key_arn`（`modules/lambda-function/variables.tf:117`），所以環境變數用 AWS managed key。第 7 項的 `envKms` 會是 `null`。已修正：REFERENCE 改成環境變數用 AWS managed key。
+2. README〈第一次 apply〉與 `REFERENCE.md:89-95` 的步驟直接 `apply`，沒有先 `./stacks.sh <env> <stack> init`。`stacks.sh` 的 `apply` 不會自動 init（`stacks.sh:119`、`:125`），全新的 checkout 照文件做會失敗。已修正：步驟加上 init（#308）。
+3. `modules/apigateway-http/README.md:56` 說 apply 身分要有 `logs:CreateLogDelivery`、`logs:PutResourcePolicy`；REFERENCE〈執行 apply 的身分要有的權限〉（`REFERENCE.md:195-207`）的 `api` 列沒有這兩個。已修正：REFERENCE 照 AWS 文件補上 HTTP API access log 要的 `logs:*` 權限，第 8 項確認是否真的需要。
 
 ## 結果怎麼回寫
 
@@ -922,7 +922,7 @@ aws logs describe-log-groups --region us-east-1 --log-group-name-prefix "aws-waf
 | 回寫到哪裡 | 誰改 | 怎麼改 | 誰審 |
 |---|---|---|---|
 | 本 runbook 的「結果紀錄」 | 執行人 | 每一項填完那一行；不通過的附 issue 連結 | 跟下一列同一個 PR |
-| `templates/example6/infra/REFERENCE.md`〈雲端整合待驗證〉表（`:278-296`） | 執行人 | 表格加一欄「結果」，寫 `通過（YYYY-MM-DD，dev）` 或 `不通過：<一句話>（#issue）`。13 項都通過時，比照〈靜態驗證通過（2026-10-28）〉另開一節〈雲端驗證通過（日期）〉把表搬過去；〈已知限制的細節〉裡已經確認的條目改寫成確認後的事實；README 開頭的狀態句（`README.md:11`）與 REFERENCE 的狀態句（`REFERENCE.md:5`）改成實際狀態；第 13 項量到的憑證等待時間寫進〈destroy〉 | platform team ＋ 專案代表（`/templates/` 的 CODEOWNERS） |
+| `templates/example6/infra/REFERENCE.md`〈雲端整合待驗證〉表（`:279-297`） | 執行人 | 表格加一欄「結果」，寫 `通過（YYYY-MM-DD，dev）` 或 `不通過：<一句話>（#issue）`。13 項都通過時，比照〈靜態驗證通過（2026-10-28）〉另開一節〈雲端驗證通過（日期）〉把表搬過去；〈已知限制的細節〉裡已經確認的條目改寫成確認後的事實；README 開頭的狀態句（`README.md:11`）與 REFERENCE 的狀態句（`REFERENCE.md:5`）改成實際狀態；第 13 項量到的憑證等待時間寫進〈destroy〉 | platform team ＋ 專案代表（`/templates/` 的 CODEOWNERS） |
 | `docs/design/v9/design-docs.md` §11 | platform team | 每一點後面加 `→ 已確認（YYYY-MM-DD，runbook 第 <n> 項）`，或 `→ 不成立：<實際行為>，改法見 #issue`。不成立而要改設計的，在 §14 後面加一段記下決定 | platform team |
 | module README 的「還沒在真實帳號 apply 過」或「未實測」 | platform team | 對應項目通過後改成實際驗證的日期與帳號類型：`acm-certificate`（第 1 項）、`route53-zone`、`route53-record`（第 1 項）、`cognito-user-pool`（第 5、11 項）、`apigateway-http`（第 3、4、8 項）、`secrets-manager-secret`（第 6、7 項）、`log-delivery` 的跨 region S3（第 9 項，`modules/log-delivery/README.md:79`） | platform team |
 

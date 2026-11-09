@@ -86,7 +86,7 @@ module "worker" {
   deployment = {
     strategy             = "BLUE_GREEN"
     bake_time_in_minutes = 5
-    role_arn             = module.ecs_infrastructure_role.role_arn
+    role_arn             = module.ecs_infrastructure_role.arn
   }
 ```
 
