@@ -2,7 +2,7 @@
 
 [Floci](https://floci.io) 是在本機模擬 AWS API 的工具。`floci.sh` 把 example2 的 14 個 stack 照 `stacks.sh` 的順序 apply 到 Floci，再檢查結果，最後 destroy。整個過程不連任何 AWS 帳號，也不改範本本身。
 
-跟 example6、account-baseline 不一樣的是，example2 在 Floci 裡會真的跑起來：ECS 的 `api`、`worker` 是真的 container，Aurora 是真的 Postgres，兩組 Redis 是真的 Valkey，ALB 會把請求轉給 `api`。所以除了確認 stack 串得起來，也可以從本機送一個請求進去，看它經過哪些服務。
+example2 跟 example6、account-baseline 不同，它在 Floci 裡會真的跑起來：ECS 的 `api`、`worker` 是真的 container，Aurora 是真的 Postgres，兩組 Redis 是真的 Valkey，ALB 會把請求轉給 `api`。所以除了確認 stack 串得起來，還能從本機送一個請求進去，看它經過哪些服務。
 
 這不等於雲端驗證。IAM 權限夠不夠、CloudFront 與 WAF 的實際行為、配額與費用，還是要照 [`docs/guides/cloud-verification-example2.md`](../../../../docs/guides/cloud-verification-example2.md) 在真實帳號確認。
 
@@ -72,7 +72,7 @@ ECS task 的映像來自 `localhost:4566`，也就是 Floci 自己的 ECR，不�
       api ──▶ AgentCore Runtime（Floci 的 stub）
 ```
 
-`api` 用的是 `app-stub/` 的測試映像，不是應用程式。它收到請求後，依序連每個依賴，把每一跳的結果回傳，所以一個請求就看得到整條路徑。`trace` 先確認 ALB 的規則：沒帶 origin verify header、或打不在規則裡的 path，都要回 404。再印出每一跳：
+`api` 用的是 `app-stub/` 的測試映像，不是應用程式。它收到請求後依序連每個依賴，再把每一跳的結果回傳，所以送一個請求就看得到整條路徑。`trace` 先確認 ALB 的規則：沒帶 origin verify header，或打不在規則裡的 path，都要回 404。接著印出每一跳：
 
 | 標記 | 意思 |
 |---|---|
@@ -118,8 +118,8 @@ ECS task 的映像來自 `localhost:4566`，也就是 Floci 自己的 ECR，不�
 
 ### `trace` 的已知限制（`KN`）
 
-- **Redis 要求登入**：兩組 Redis 開了傳輸加密、沒設 AUTH token，在 AWS 上用 TLS 就能連。Floci 的 cache proxy 接受 TLS，但還是要求 AUTH，所以這兩跳停在「Authentication required」。走到這一步，代表 endpoint、port 和 TLS 都接對了。連線被拒、逾時等其他錯誤仍然判失敗。因為這樣，`worker` 也讀不到 stream。
-- **Redis 的 port 可能指到另一組**：上一節的 port 問題也讓 SSM 裡的 endpoint 可能寫成另一組 Redis 的 port。
+- **Redis 要求登入**：兩組 Redis 開了傳輸加密、沒設 AUTH token，在 AWS 上用 TLS 就能連。Floci 的 cache proxy 接受 TLS，但還是要求 AUTH，所以這兩跳停在「Authentication required」。能走到這一步，代表 endpoint、port 和 TLS 都接對了；連線被拒、逾時等其他錯誤還是判失敗。也因為這樣，`worker` 讀不到 stream。
+- **Redis 的 port 可能指到另一組**：因為上一節的 port 問題，SSM 裡的 endpoint 有可能寫成另一組 Redis 的 port。
 - **AgentCore 是 stub**：Floci 不會真的跑 agent，呼叫一律回固定的 `{"output":"yes"}`。這一跳只證明 `api` 拿到的 runtime ARN 是對的。
 
 ### 本來就驗不到的
