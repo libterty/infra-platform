@@ -344,7 +344,9 @@ push_stub_images() {
     tag="$(sed -n "s/^${var} *= *\"\(.*\)\"$/\1/p" "${work_tf}/${stack}/envs/${ENV_NAME}.tfvars")"
     [ -n "$tag" ] || tag="$(sed -n "/variable \"${var}\"/,/^}/s/^ *default *= *\"\(.*\)\"$/\1/p" \
       "${work_tf}/${stack}/variables.tf")"
-    [ -n "$repo" ] && [ -n "$tag" ] || die "拿不到 ${key} 的 repository 或 ${var}"
+    if [ -z "$repo" ] || [ -z "$tag" ]; then
+      die "拿不到 ${key} 的 repository 或 ${var}"
+    fi
     image="${repo}:${tag}"
     if "$rt" image inspect "${image/.localhost:${FLOCI_PORT}\//.amazonaws.com/}" >/dev/null 2>&1; then
       die "本機有用 AWS registry 名稱命名的 ${key} 映像；先 ${rt} rmi 它"
