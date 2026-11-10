@@ -1,0 +1,11 @@
+# Copied into every stack of the Floci work copy as floci_override.tf; never into the template itself.
+# Static fake keys win over AWS_PROFILE and the shared config, so a missing AWS_ENDPOINT_URL fails with an auth error
+# instead of reaching a real account. A 12-digit access key makes Floci answer with that account ID, which keeps
+# allowed_account_ids (expected_account_id = 111111111111) passing.
+provider "aws" {
+  access_key                  = "111111111111"
+  secret_key                  = "floci"
+  skip_metadata_api_check     = true
+  skip_region_validation      = true
+  s3_use_path_style           = true
+}
