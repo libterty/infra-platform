@@ -1,4 +1,8 @@
 locals {
+  # OpenSearch fills in any retry field an action leaves out (count 3, exponential backoff, 1m delay) and returns it on
+  # read, so every action spells all three out; otherwise each plan would show the policy changing.
+  default_retry = { count = 3, backoff = "exponential", delay = "1m" }
+
   # Ages are cumulative index ages (ISM min_index_age). Cold requires warm (validated), so the chain is
   # hot -> [warm] -> [cold] -> delete, and an index that went through cold is removed with cold_delete.
   ism_states = {
@@ -15,7 +19,7 @@ locals {
         name = "warm"
         actions = [{
           warm_migration = {}
-          retry          = { count = 5, delay = "1h" }
+          retry          = { count = 5, backoff = "exponential", delay = "1h" }
         }]
         transitions = [{
           state_name = p.cold_days != null ? "cold" : "delete"
@@ -24,7 +28,7 @@ locals {
       }],
       p.cold_days == null ? [] : [{
         name    = "cold"
-        actions = [{ cold_migration = { timestamp_field = p.timestamp_field } }]
+        actions = [{ cold_migration = { timestamp_field = p.timestamp_field }, retry = local.default_retry }]
         transitions = [{
           state_name = "delete"
           conditions = { min_index_age = "${p.delete_days}d" }
@@ -32,7 +36,7 @@ locals {
       }],
       [{
         name        = "delete"
-        actions     = [{ for action in [p.cold_days != null ? "cold_delete" : "delete"] : action => {} }]
+        actions     = [{ (p.cold_days != null ? "cold_delete" : "delete") = {}, retry = local.default_retry }]
         transitions = []
       }],
     )

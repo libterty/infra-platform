@@ -78,6 +78,48 @@ run "hot_warm_cold_delete" {
   }
 }
 
+# OpenSearch fills in retry { count = 3, backoff = "exponential", delay = "1m" } for an action that leaves any of it
+# out, and returns it on read, so a policy without it shows a change on every plan.
+run "every_action_states_its_retry" {
+  command = plan
+
+  variables {
+    ism_policies = {
+      logs = {
+        index_patterns  = ["logs-*"]
+        warm_days       = 3
+        cold_days       = 7
+        delete_days     = 30
+        timestamp_field = "@timestamp"
+      }
+      app = {
+        index_patterns = ["app-*"]
+        delete_days    = 14
+      }
+    }
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for p in values(opensearch_ism_policy.this) : [
+        for s in jsondecode(p.body).policy.states : [
+          for a in s.actions : can(a.retry.count) && can(a.retry.backoff) && can(a.retry.delay)
+        ]
+      ]
+    ]))
+    error_message = "every ISM action must set retry count, backoff and delay, or OpenSearch adds defaults and plans drift"
+  }
+
+  assert {
+    condition = (
+      jsondecode(opensearch_ism_policy.this["logs"].body).policy.states[1].actions[0].retry == { count = 5, backoff = "exponential", delay = "1h" } &&
+      jsondecode(opensearch_ism_policy.this["logs"].body).policy.states[2].actions[0].retry == { count = 3, backoff = "exponential", delay = "1m" } &&
+      jsondecode(opensearch_ism_policy.this["app"].body).policy.states[1].actions[0].retry == { count = 3, backoff = "exponential", delay = "1m" }
+    )
+    error_message = "warm_migration keeps 5 retries an hour apart; the other actions spell out OpenSearch's defaults"
+  }
+}
+
 run "hot_warm_delete" {
   command = plan
 
