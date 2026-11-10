@@ -246,7 +246,6 @@ opensearch_url() {
 # Format: <stack>|<resource address>|<reason>
 KNOWN_DRIFT=(
   "search|module.domain.aws_opensearch_domain.this|DescribeDomain 不回 dedicated master、UltraWarm、cold storage、zone awareness 與 log publishing 設定"
-  "search-config|module.config.opensearch_ism_policy.this[\"logs\"]|OpenSearch 替沒寫 retry 的 action 補上預設 retry（count 3、exponential、1m）；這是 OpenSearch 本身的行為，雲端可能也會出現"
   "analytics|module.workgroup.aws_athena_workgroup.this|GetWorkGroup 不回查詢結果的 SSE_KMS 加密設定"
   "pipeline|module.firehose_opensearch.aws_kinesis_firehose_delivery_stream.this|不保存 OpenSearch 目的地，讀回來是 extended_s3，plan 要重建"
   "pipeline|module.ssm_publish.aws_ssm_parameter.string[\"firehose_opensearch_arn\"]|跟著被重建的 Firehose 變動"
@@ -328,6 +327,21 @@ seed_master_secret() {
     awsl secretsmanager put-secret-value --secret-id "$MASTER_SECRET" --secret-string file:///dev/stdin >/dev/null
 }
 
+# search-config talks to the OpenSearch container directly, and once found it not answering right after search
+# finished (cause not seen). Wait for it, and show the container state and log when it never answers.
+wait_opensearch() {
+  local _
+  for _ in $(seq 1 120); do
+    if [ -n "$TF_VAR_floci_opensearch_url" ] && curl -sf --max-time 2 "$TF_VAR_floci_opensearch_url" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  "$(runtime)" ps -a --filter "name=${OPENSEARCH_CONTAINER}" --format '  {{.Names}}  |  {{.Status}}' >&2
+  "$(runtime)" logs --tail 20 "$OPENSEARCH_CONTAINER" >&2 2>&1 || true
+  die "OpenSearch 120 秒內沒有回應：${TF_VAR_floci_opensearch_url}"
+}
+
 cmd_apply() {
   require_work
   floci_env
@@ -335,6 +349,7 @@ cmd_apply() {
   # One stack at a time: search-config needs the OpenSearch port, which exists only once search created the domain.
   for s in $(order); do
     floci_env
+    [ "$s" != search-config ] || wait_opensearch
     stacks "$s" apply --yes
     [ "$s" != foundation ] || seed_master_secret
   done
