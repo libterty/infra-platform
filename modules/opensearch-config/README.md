@@ -56,6 +56,8 @@ module "search_config" {
 
 policy 同時帶 `ism_template`（`index_patterns`、priority 1），新建立的 index 會自動套用。
 
+每個 action 都明確寫出 `retry` 的三個欄位。只寫一部分或不寫時，OpenSearch 會補上預設值（重試 3 次、`exponential`、間隔 1 分鐘），讀回來的 policy 跟設定不一樣，每次 plan 都會顯示有變更。所以 `warm_migration` 以外的 action 直接寫上這組預設值。
+
 ## 注意
 
 - **cold 一定要 `timestamp_field`。** AWS 文件：ISM 搬到 cold storage 必須明確指定時間欄位，所以有 `cold_days` 就必須有 `warm_days` 與 `timestamp_field`；index 的 mapping 裡要真的有這個欄位（建議用 `index_templates` 定義成 `date`）。
