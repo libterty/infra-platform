@@ -95,7 +95,7 @@ cmd_up() {
   floci_env
   local _
   for _ in $(seq 1 30); do
-    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -qx "$ACCOUNT_ID"; then
+    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -x "$ACCOUNT_ID" >/dev/null; then
       log "Floci 就緒，帳號 ${ACCOUNT_ID}"
       return 0
     fi
@@ -278,7 +278,7 @@ forget_undeletable() {
     stack="${entry%%|*}"
     addr="$(echo "$entry" | cut -d'|' -f2)"
     if (cd "${work_tf}/${stack}" && TF_DATA_DIR=".terraform-${ENV_NAME}" terraform state list "$addr" 2>/dev/null |
-      grep -qxF "$addr"); then
+      grep -xF "$addr" >/dev/null); then
       echo "  ${stack}：${addr} 從 state 移除，不 destroy（$(echo "$entry" | cut -d'|' -f3-)）"
       (cd "${work_tf}/${stack}" && TF_DATA_DIR=".terraform-${ENV_NAME}" terraform state rm "$addr" >/dev/null)
     fi

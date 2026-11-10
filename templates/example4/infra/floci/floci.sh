@@ -122,7 +122,7 @@ cmd_up() {
   floci_env
   local _
   for _ in $(seq 1 30); do
-    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -qx "$ACCOUNT_ID"; then
+    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -x "$ACCOUNT_ID" >/dev/null; then
       log "Floci 就緒，帳號 ${ACCOUNT_ID}"
       return 0
     fi
@@ -262,7 +262,7 @@ forget_undeletable() {
   for entry in "${UNDELETABLE[@]}"; do
     stack="${entry%%|*}"
     addr="$(echo "$entry" | cut -d'|' -f2)"
-    if tf_in "$stack" state list "$addr" 2>/dev/null | grep -qxF "$addr"; then
+    if tf_in "$stack" state list "$addr" 2>/dev/null | grep -xF "$addr" >/dev/null; then
       echo "  ${stack}：${addr} 從 state 移除，不 destroy（$(echo "$entry" | cut -d'|' -f3-)）"
       tf_in "$stack" state rm "$addr" >/dev/null
     fi
@@ -317,7 +317,7 @@ seed_master_secret() {
   # Floci's CreateSecret adds an AWSCURRENT version without a value, so the check is on SecretString, not the version.
   # The value itself is not kept: only whether one exists.
   if awsl secretsmanager get-secret-value --secret-id "$MASTER_SECRET" --query SecretString --output text \
-    2>/dev/null | grep -qv '^None$'; then
+    2>/dev/null | grep -v '^None$' >/dev/null; then
     return 0
   fi
   log "寫入 ${MASTER_SECRET} 的值（REFERENCE.md〈前置作業〉第 2 項）"
@@ -553,13 +553,14 @@ EOF
 
   # 5. S3 Object Created → EventBridge rule → Glue workflow.
   # The event follows the Firehose write by a moment, so both signals are polled for a while.
+  # grep reads all of its input (no -q): with pipefail, an early exit would fail the pipeline through SIGPIPE.
   local wf runs matched=0
   wf="$(ssm pipeline/glue_workflow_name)"
   for _ in $(seq 1 15); do
     runs="$(awsl glue get-workflow-runs --name "$wf" --query 'length(Runs)' --output text 2>/dev/null || echo 0)"
     if [ "${runs:-0}" != 0 ] && [ "$runs" != None ]; then break; fi
     if "$(runtime)" logs --since "$started" "$FLOCI_CONTAINER" 2>&1 |
-      grep -q "unsupported target ARN type: .*workflow/${wf}"; then
+      grep "unsupported target ARN type: .*workflow/${wf}" >/dev/null; then
       matched=1
       break
     fi

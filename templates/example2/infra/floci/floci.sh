@@ -156,7 +156,7 @@ cmd_up() {
   floci_env
   local _
   for _ in $(seq 1 30); do
-    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -qx "$ACCOUNT_ID"; then
+    if awsl sts get-caller-identity --query Account --output text 2>/dev/null | grep -x "$ACCOUNT_ID" >/dev/null; then
       log "Floci 就緒，帳號 ${ACCOUNT_ID}"
       return 0
     fi
