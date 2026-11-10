@@ -80,6 +80,9 @@ floci_env() {
   export AWS_REGION="$REGION"
   export AWS_DEFAULT_REGION="$REGION"
   export AWS_PAGER=""
+  # One provider download shared by every stack (and every Floci harness) instead of a copy per stack.
+  export TF_PLUGIN_CACHE_DIR="${FLOCI_PLUGIN_CACHE:-${tmp_root%/}/floci-terraform-plugin-cache}"
+  mkdir -p "$TF_PLUGIN_CACHE_DIR"
 }
 
 awsl() { aws --endpoint-url "$endpoint" "$@"; }
