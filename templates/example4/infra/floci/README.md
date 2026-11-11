@@ -108,7 +108,6 @@ Firehose 平常照範本的 buffering interval 寫出（`to-raw` 是 900 秒）�
 | 資源 | 原因 |
 |---|---|
 | `search`：OpenSearch domain | Floci 不回 dedicated master、UltraWarm、cold storage、zone awareness 與 log publishing 設定 |
-| `search-config`：ISM policy | OpenSearch 會替沒寫 `retry` 的 action 補上預設值（count 3、exponential、1m）。這是 OpenSearch 本身的行為，不是 Floci 的，真實帳號上也可能每次 plan 都有差異，要在雲端驗證時確認 |
 | `analytics`：Athena workgroup | Floci 不回查詢結果的 SSE-KMS 加密設定 |
 | `pipeline`：Firehose `to-search` 與它的 SSM 參數 | Floci 不保存 OpenSearch 目的地，讀回來是 `extended_s3`，plan 每次都要重建 |
 
